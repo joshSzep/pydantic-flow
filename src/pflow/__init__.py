@@ -2,10 +2,42 @@
 
 This package provides a comprehensive framework built on top of pydantic-ai,
 offering a batteries-included approach for building AI-powered applications.
+
+The framework enables type-safe, composable AI workflows using Pydantic models
+as inputs and outputs for each processing node.
 """
 
 from pathlib import Path
 import tomllib
+
+from pflow.flow import CyclicDependencyError
+from pflow.flow import Flow
+from pflow.flow import FlowError
+from pflow.nodes import BaseNode
+from pflow.nodes import IfNode
+from pflow.nodes import NodeOutput
+from pflow.nodes import NodeWithInput
+from pflow.nodes import ParserNode
+from pflow.nodes import PromptConfig
+from pflow.nodes import PromptNode
+from pflow.nodes import RetryNode
+from pflow.nodes import ToolNode
+
+# Public API - supports both direct and module imports
+__all__ = [
+    "BaseNode",
+    "CyclicDependencyError",
+    "Flow",
+    "FlowError",
+    "IfNode",
+    "NodeOutput",
+    "NodeWithInput",
+    "ParserNode",
+    "PromptConfig",
+    "PromptNode",
+    "RetryNode",
+    "ToolNode",
+]
 
 
 def get_project_info():
@@ -43,7 +75,3 @@ def main():
     description, version = get_project_info()
     print(f"PFlow v{version}")
     print(f"Description: {description}")
-
-
-if __name__ == "__main__":
-    main()

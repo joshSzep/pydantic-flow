@@ -13,6 +13,11 @@ repos:
         entry: bash -c "uvx --from pre-commit-hooks mixed-line-ending --fix=lf"
         language: system
         pass_filenames: true
+      - id: trailing-whitespace
+        name: trailing-whitespace
+        entry: bash -c "uvx --from pre-commit-hooks trailing-whitespace-fixer"
+        language: system
+        pass_filenames: true
       - id: ruff-format
         name: ruff format
         entry: bash -c "uv run ruff format"

@@ -1,12 +1,294 @@
-# pflow
+# pflow: A Type-Safe Pydantic-AI Workflow Framework
 
-> A type-safe, batteries-included AI agent framework built on pydantic-ai
+A modern, type-safe, composable Python framework for building AI workflows using Pydantic models as inputs and outputs for each processing node.
 
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-**pflow** is designed to rival LangChain while maintaining the developer experience and type safety that the Pydantic ecosystem is known for. Built on [pydantic-ai](https://ai.pydantic.dev/), it provides a comprehensive toolkit for building complex AI agents from 0 to 100.
+## 🌟 Features
+
+- **Type-Safe by Design**: Full Python 3.13+ generics support with comprehensive IDE integration
+- **Pydantic-Powered**: Built around `BaseModel` for schema definition and validation
+- **Reference-Based Wiring**: Connect nodes using `.output` references, not magic strings
+- **Automatic DAG Resolution**: Intelligent dependency tracking and execution ordering
+- **Serializable & Inspectable**: Full observability and debugging support
+- **Built-in Node Types**: Comprehensive set of workflow building blocks
+
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+pip install pflow
+```
+
+### Basic Example
+
+```python
+import asyncio
+from pydantic import BaseModel
+from pflow import Flow, PromptNode, ParserNode, ToolNode
+
+# Define your data models
+class WeatherQuery(BaseModel):
+    location: str
+    temperature_unit: str = "celsius"
+
+class WeatherInfo(BaseModel):
+    temperature: float
+    condition: str
+    location: str
+
+# Define transformation functions
+def call_weather_api(query: WeatherQuery) -> WeatherInfo:
+    # Your weather API integration
+    return WeatherInfo(
+        temperature=22.5,
+        condition="sunny", 
+        location=query.location
+    )
+
+def parse_weather_response(response: str) -> WeatherInfo:
+    # Parse LLM response into structured data
+    parts = response.split("|")
+    return WeatherInfo(
+        temperature=float(parts[0]),
+        condition=parts[1].strip(),
+        location=parts[2].strip()
+    )
+
+async def main():
+    # Create workflow nodes
+    api_node = ToolNode[WeatherQuery, WeatherInfo](
+        tool_func=call_weather_api,
+        name="weather_api"
+    )
+    
+    llm_node = PromptNode[WeatherQuery, str](
+        prompt="What's the weather like in {location}?",
+        name="weather_llm"
+    )
+    
+    parser_node = ParserNode[str, WeatherInfo](
+        parser_func=parse_weather_response,
+        input=llm_node.output,  # Type-safe wiring!
+        name="weather_parser"
+    )
+    
+    # Create and run workflow
+    flow = Flow()
+    flow.add_nodes(api_node)  # Simple API-based flow
+    
+    # Execute with type safety
+    query = WeatherQuery(location="Paris")
+    results = await flow.run(query)
+    
+    weather = results["weather_api"]  # Fully typed!
+    print(f"Temperature: {weather.temperature}°C")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## 🧩 Core Concepts
+
+### Nodes
+
+Nodes are the building blocks of your workflow. Each node is typed with input and output models:
+
+#### PromptNode[InputModel, OutputType]
+Calls an LLM using a templated prompt:
+
+```python
+weather_prompt = PromptNode[WeatherQuery, str](
+    prompt="Get weather for {location} in {temperature_unit}",
+    model="openai:gpt-4",
+    name="weather_prompt"
+)
+```
+
+#### ParserNode[InputType, OutputModel]
+Applies a function to transform data:
+
+```python
+weather_parser = ParserNode[str, WeatherInfo](
+    parser_func=parse_weather_text,
+    input=weather_prompt.output,
+    name="weather_parser"
+)
+```
+
+#### ToolNode[InputModel, OutputModel]
+Calls external tools/APIs:
+
+```python
+weather_api = ToolNode[WeatherQuery, WeatherInfo](
+    tool_func=call_weather_service,
+    name="weather_api"
+)
+```
+
+#### RetryNode[OutputModel]
+Wraps nodes with retry logic:
+
+```python
+reliable_api = RetryNode(
+    wrapped_node=weather_api,
+    max_retries=3,
+    name="reliable_weather"
+)
+```
+
+#### IfNode[OutputModel]
+Enables conditional branching:
+
+```python
+weather_branch = IfNode(
+    predicate=lambda data: data.temperature > 25,
+    if_true=hot_weather_node,
+    if_false=normal_weather_node,
+    input=weather_api.output,
+    name="weather_condition"
+)
+```
+
+### Flow Orchestration
+
+The `Flow` class manages execution with automatic dependency resolution:
+
+```python
+flow = Flow()
+flow.add_nodes(node1, node2, node3)
+
+# Automatic topological sorting
+execution_order = flow.get_execution_order()
+
+# Type-safe execution
+results = await flow.run(input_data)
+```
+
+## 🎯 Design Philosophy
+
+### Type Safety First
+```python
+# Full IDE support with autocomplete
+weather_node: PromptNode[WeatherQuery, str] = ...
+parsed_node: ParserNode[str, WeatherInfo] = ...
+
+# Compile-time type checking
+weather_info = results["weather_api"]  # Type: WeatherInfo
+temperature = weather_info.temperature  # Type: float
+```
+
+### Reference-Based Wiring
+```python
+# ✅ Type-safe references
+parser_node = ParserNode(
+    parser_func=parse_data,
+    input=prompt_node.output  # NodeOutput[str]
+)
+
+# ❌ No magic strings
+parser_node = ParserNode(
+    parser_func=parse_data,
+    input="prompt_node.output"  # Fragile!
+)
+```
+
+### Pydantic Integration
+```python
+class MyInput(BaseModel):
+    query: str
+    options: list[str] = []
+
+class MyOutput(BaseModel):
+    result: str
+    confidence: float
+    
+# Automatic validation and serialization
+node = ToolNode[MyInput, MyOutput](...)
+```
+
+## 🔧 Advanced Features
+
+### Complex Workflows
+```python
+# Multi-path workflow with branching
+flow = Flow()
+
+# Initial processing
+data_node = ToolNode[Input, Data](...)
+
+# Conditional branching  
+branch_node = IfNode(
+    predicate=lambda x: x.value > threshold,
+    if_true=high_value_processor,
+    if_false=low_value_processor,
+    input=data_node.output
+)
+
+# Merge results
+final_node = ParserNode[ProcessedData, Output](
+    input=branch_node.output,
+    ...
+)
+
+flow.add_nodes(data_node, branch_node, final_node)
+```
+
+### Error Handling
+```python
+# Automatic retries with backoff
+retry_node = RetryNode(
+    wrapped_node=unreliable_api,
+    max_retries=5
+)
+
+# Flow-level error handling
+try:
+    results = await flow.run(input_data)
+except FlowError as e:
+    print(f"Workflow failed: {e}")
+```
+
+### Observability
+```python
+# Inspect execution order
+print(flow.get_execution_order())
+
+# Access intermediate results
+results = await flow.run(input_data)
+intermediate = results["parser_node"]
+final = results["summary_node"]
+```
+
+## 🏗️ Architecture
+
+Built on modern Python foundations:
+
+- **Python 3.13+**: Latest type system features
+- **Pydantic**: Data validation and serialization  
+- **Async-First**: All operations are async by default
+- **Modern Generics**: `Node[Input, Output]` syntax
+- **Entry Points**: Plugin system for extensibility
+
+## 🤝 Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## 🔗 Related Projects
+
+- [pydantic-ai](https://ai.pydantic.dev/) - The foundational AI framework we build upon
+- [Pydantic](https://pydantic.dev/) - Data validation using Python type annotations
+
+---
+
+**Made with ❤️ for the Python AI community**
 
 ## Table of Contents
 

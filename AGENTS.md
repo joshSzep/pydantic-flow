@@ -26,6 +26,10 @@ The framework follows pydantic-ai's lead in being developer-experience focused, 
 - **Absolute Imports**: One symbol per line, no relative imports
 - **Pydantic Configuration**: All config backed by Pydantic models with environment variable support
 - **Comprehensive Testing**: Fast-running test suite critical to developer experience
+- **Comments**: Use sparingly and only to explain the _WHY_. If a section of code is complex enough to warrant a _HOW_ comment, it should be extracted. **NEVER** leave comments which explain differences between before/after edits.
+- **Documentation**: Clear, concise, and minimal examples that get the point across without overwhelming the reader. NEVER generate change summary documents: instead update existing documentation (README.md, AGENTS.md) from a present-tense perspective.
+- **Tests**: All new features must include tests that validate functionality and type safety. Only start class names with `Test` if they are test classes.
+
 
 ## Agent Architecture
 
