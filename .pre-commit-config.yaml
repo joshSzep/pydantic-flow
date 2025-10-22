@@ -1,0 +1,37 @@
+# All hooks run via uvx using repo: local
+repos:
+  - repo: local
+    hooks:
+      - id: eof-fixer
+        name: end-of-file-fixer
+        entry: bash -c "uvx --from pre-commit-hooks end-of-file-fixer"
+        language: system
+        pass_filenames: true
+        files: "\\.(py|md|toml|yml|yaml)$"
+      - id: mixed-line-ending
+        name: mixed-line-ending
+        entry: bash -c "uvx --from pre-commit-hooks mixed-line-ending --fix=lf"
+        language: system
+        pass_filenames: true
+      - id: ruff-format
+        name: ruff format
+        entry: bash -c "uv run ruff format"
+        language: system
+        pass_filenames: true
+        types_or: [python]
+      - id: ruff-check
+        name: ruff check
+        entry: bash -c "uv run ruff check --force-exclude"
+        language: system
+        pass_filenames: true
+        types_or: [python]
+      - id: ty-check
+        name: ty check
+        entry: bash -c "uv run ty check"
+        language: system
+        pass_filenames: false
+      - id: pytest
+        name: pytest
+        entry: bash -c "uv run pytest ."
+        language: system
+        pass_filenames: false

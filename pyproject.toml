@@ -1,0 +1,83 @@
+[project]
+name = "pflow"
+version = "0.1.0"
+description = "A pydantic-ai based framework with batteries included."
+readme = "README.md"
+authors = [
+    { name = "Szepietowski, Joshua", email = "joshszep@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "anyio>=4.11.0",
+    "numpy>=2.3.4",
+    "opentelemetry-api>=1.38.0",
+    "opentelemetry-exporter-otlp>=1.38.0",
+    "opentelemetry-sdk>=1.38.0",
+    "pydantic-ai>=1.2.1",
+    "rich>=14.2.0",
+    "sqlite-utils>=3.38",
+    "typer>=0.20.0",
+]
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.1",
+    "ty>=0.0.1a23",
+]
+
+[project.urls]
+Homepage = "https://github.com/joshSzep/pflow"
+Repository = "https://github.com/joshSzep/pflow"
+Issues = "https://github.com/joshSzep/pflow/issues"
+Documentation = "https://github.com/joshSzep/pflow#readme"
+
+[tool.uv]
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E","F","W","I","UP","NPY","PTH","B","C4","SIM","PL","RUF","D"]
+ignore = ["D203","D213"]
+
+[tool.ruff.format]
+preview = true
+
+[tool.ruff.lint.isort]
+combine-as-imports = false
+force-single-line = true
+force-sort-within-sections = true
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ty.rules]
+
+[tool.pytest.ini_options]
+addopts = [
+    "--cov=src/pflow",  # Coverage for pflow package
+    "--cov-report=term-missing",  # Show missing lines in coverage
+    "--cov-report=html",  # Generate HTML coverage report
+    "--cov-fail-under=80",  # Fail if coverage is below 80%
+]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+filterwarnings = [
+    "error",  # Turn warnings into errors
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src/pflow"]
+
+[build-system]
+requires = ["uv_build>=0.9.4,<0.10.0"]
+build-backend = "uv_build"
