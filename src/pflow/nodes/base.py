@@ -19,7 +19,7 @@ class NodeOutput[OutputT]:
     a strongly-typed reference to another node's output.
     """
 
-    node: "BaseNode[Any, OutputT]"
+    node: BaseNode[Any, OutputT]
 
     @property
     def type_hint(self) -> type[OutputT]:

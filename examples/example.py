@@ -74,7 +74,7 @@ def parse_weather_response(weather_text: str) -> WeatherInfo:
             location=parts[2].strip(),
             humidity=65,  # default value
         )
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         # Fallback for unstructured responses
         return WeatherInfo(
             temperature=20.0,

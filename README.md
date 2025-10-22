@@ -2,13 +2,13 @@
 
 A modern, type-safe, composable Python framework for building AI workflows using Pydantic models as inputs and outputs for each processing node.
 
-[![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 ## 🌟 Features
 
-- **Type-Safe by Design**: Full Python 3.13+ generics support with comprehensive IDE integration
+- **Type-Safe by Design**: Full Python 3.14+ generics support with comprehensive IDE integration
 - **Pydantic-Powered**: Built around `BaseModel` for schema definition and validation
 - **Reference-Based Wiring**: Connect nodes using `.output` references, not magic strings
 - **Automatic DAG Resolution**: Intelligent dependency tracking and execution ordering
@@ -309,7 +309,7 @@ final = results["summary_node"]
 
 Built on modern Python foundations:
 
-- **Python 3.13+**: Latest type system features
+- **Python 3.14+**: Latest type system features
 - **Pydantic**: Data validation and serialization  
 - **Async-First**: All operations are async by default
 - **Modern Generics**: `Node[Input, Output]` syntax
@@ -354,7 +354,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ### 🔒 Type Safety First
 - Full type annotations with comprehensive IDE support
-- Modern Python 3.13+ syntax (`A | B`, `dict`/`list`/`tuple`)
+- Modern Python 3.14+ syntax (`A | B`, `dict`/`list`/`tuple`)
 - Pydantic models for all public interfaces
 - Runtime validation with detailed error messages
 
@@ -404,7 +404,7 @@ For detailed architectural decisions and patterns, see [AGENTS.md](./AGENTS.md).
 ## Development
 
 ### Requirements
-- Python 3.13+
+- Python 3.14+
 - uv for dependency management
 
 ### Setup

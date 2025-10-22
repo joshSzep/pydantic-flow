@@ -25,7 +25,7 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
 
     def __init__(
         self,
-        flow: "Flow[InputModel, OutputModel]",
+        flow: Flow[InputModel, OutputModel],
         *,
         input: NodeOutput[InputModel] | None = None,
         name: str | None = None,
@@ -65,7 +65,7 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
         return await self.flow.run(input_data)
 
     @property
-    def dependencies(self) -> list["BaseNode[Any, Any]"]:
+    def dependencies(self) -> list[BaseNode[Any, Any]]:
         """Get the list of nodes this FlowNode depends on.
 
         Returns:

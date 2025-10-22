@@ -126,7 +126,7 @@ uv run python sub_flow_example.py
 ## Requirements
 
 All examples use the same dependencies as the main pflow project:
-- Python 3.13+
+- Python 3.14+
 - pydantic for data validation
 - The pflow framework itself
 

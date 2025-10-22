@@ -19,7 +19,7 @@ The framework follows pydantic-ai's lead in being developer-experience focused, 
 
 ### Technical Standards
 
-- **Python 3.13+**: Leveraging modern Python features
+- **Python 3.14+**: Leveraging modern Python features
 - **Modern Type Syntax**: `dict`/`list`/`tuple` over `Dict`/`List`/`Tuple`, `A | B` over `Union[A,B]`, `A | None` over `Optional[A]`
 - **Structured Data**: Pydantic models and dataclasses for all public interfaces - no bare tuples/dicts
 - **Enumerations**: Type-safe enums over hard-coded strings wherever possible
