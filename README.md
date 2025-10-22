@@ -168,6 +168,48 @@ execution_order = flow.get_execution_order()
 results = await flow.run(input_data)
 ```
 
+### Sub-flow Composition with FlowNode
+
+The `FlowNode` enables hierarchical composition by wrapping complete flows as nodes:
+
+```python
+# Create a reusable sub-flow
+research_flow = Flow(input_type=UserQuery, output_type=ResearchResults)
+research_node = ToolNode[UserQuery, ResearchData](
+    tool_func=research_api,
+    name="research"
+)
+research_flow.add_nodes(research_node)
+
+# Wrap the sub-flow as a node
+research_flow_node = FlowNode[UserQuery, ResearchResults](
+    flow=research_flow,
+    name="research_sub_flow"
+)
+
+# Use in a parent flow
+parent_flow = Flow(input_type=UserQuery, output_type=FinalResults)
+summary_node = ToolNode[ResearchResults, SummaryData](
+    tool_func=generate_summary,
+    input=research_flow_node.output,  # Chain sub-flows
+    name="summary"
+)
+
+parent_flow.add_nodes(research_flow_node, summary_node)
+
+# Execute hierarchical workflow
+results = await parent_flow.run(query)
+research_data = results.research_sub_flow.research
+summary_data = results.summary
+```
+
+Key benefits of sub-flow composition:
+- **Hierarchical Architecture**: Build complex workflows from simpler, reusable components
+- **Encapsulation**: Sub-flows hide internal complexity behind clean interfaces
+- **Reusability**: Same sub-flow can be used in multiple parent flows
+- **Type Safety**: Full type checking across sub-flow boundaries
+- **Testing**: Sub-flows can be tested in isolation
+
 ## 🎯 Design Philosophy
 
 ### Type Safety First

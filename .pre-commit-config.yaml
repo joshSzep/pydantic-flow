@@ -26,7 +26,7 @@ repos:
         types_or: [python]
       - id: ruff-check
         name: ruff check
-        entry: bash -c "uv run ruff check --force-exclude"
+        entry: bash -c "uv run ruff check --force-exclude --fix"
         language: system
         pass_filenames: true
         types_or: [python]

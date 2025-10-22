@@ -33,7 +33,7 @@ class TestInitCoverage:
         )
 
         assert result.returncode == 0
-        assert "PFlow v" in result.stdout
+        assert "pflow v" in result.stdout
         assert "Description:" in result.stdout
 
     @patch("pflow.get_project_info")
@@ -45,7 +45,7 @@ class TestInitCoverage:
             main()
 
         # Verify print was called with expected content
-        mock_print.assert_any_call("PFlow v1.0.0")
+        mock_print.assert_any_call("pflow v1.0.0")
         mock_print.assert_any_call("Description: Test Description")
 
     def test_main_module_execution(self):
@@ -67,7 +67,7 @@ class TestInitCoverage:
 
         # This should succeed and cover the exit path
         assert result.returncode == 0
-        assert "PFlow v" in result.stdout
+        assert "pflow v" in result.stdout
         assert "Description:" in result.stdout
 
     def test_main_module_with_coverage(self):

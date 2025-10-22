@@ -10,6 +10,7 @@ from pydantic import BaseModel
 import pytest
 
 from pflow import Flow
+from pflow import FlowNode
 from pflow import IfNode
 from pflow import ParserNode
 from pflow import PromptConfig
@@ -80,6 +81,18 @@ class EmptyFlowResults(BaseModel):
     """Results for empty flow tests."""
 
     pass
+
+
+class FlowNodeResults(BaseModel):
+    """Results for FlowNode testing with sub-flow outputs."""
+
+    weather_sub_flow: SimpleFlowResults
+
+
+class NestedFlowResults(BaseModel):
+    """Results for nested FlowNode testing."""
+
+    level2_wrapper: FlowNodeResults
 
 
 # Test helper functions
@@ -811,6 +824,189 @@ class TestCoverageEdgeCases:
         # Verify the exception was wrapped properly
         assert "Flow validation failed" in str(exc_info.value)
         assert "Intentional failure accessing dependencies" in str(exc_info.value)
+
+
+class TestFlowNode:
+    """Test FlowNode functionality for sub-flow composition."""
+
+    def test_flow_node_initialization(self):
+        """Test FlowNode initialization with wrapped flow."""
+        # Create a simple sub-flow
+        sub_flow = Flow(input_type=WeatherQuery, output_type=SimpleFlowResults)
+        weather_node = ToolNode[WeatherQuery, WeatherInfo](
+            tool_func=call_weather_api,
+            name="weather_api",
+        )
+        sub_flow.add_nodes(weather_node)
+
+        # Create FlowNode
+        flow_node = FlowNode[WeatherQuery, SimpleFlowResults](
+            flow=sub_flow,
+            name="weather_sub_flow",
+        )
+
+        assert flow_node.flow is sub_flow
+        assert flow_node.name == "weather_sub_flow"
+        assert flow_node.dependencies == []
+
+    def test_flow_node_default_name(self):
+        """Test FlowNode default name generation."""
+        sub_flow = Flow(input_type=WeatherQuery, output_type=SimpleFlowResults)
+        flow_node = FlowNode[WeatherQuery, SimpleFlowResults](flow=sub_flow)
+
+        # Default name should include flow representation
+        assert flow_node.name.startswith("FlowNode_")
+        assert "Flow[WeatherQuery, SimpleFlowResults]" in flow_node.name
+
+    @pytest.mark.asyncio
+    async def test_flow_node_execution(self):
+        """Test FlowNode execution of wrapped flow."""
+        # Create a sub-flow that processes weather data
+        sub_flow = Flow(input_type=WeatherQuery, output_type=SimpleFlowResults)
+        weather_node = ToolNode[WeatherQuery, WeatherInfo](
+            tool_func=call_weather_api,
+            name="weather_api",
+        )
+        sub_flow.add_nodes(weather_node)
+
+        # Create FlowNode
+        flow_node = FlowNode[WeatherQuery, SimpleFlowResults](flow=sub_flow)
+
+        # Execute the FlowNode
+        query = WeatherQuery(location="Tokyo")
+        result = await flow_node.run(query)
+
+        assert isinstance(result, SimpleFlowResults)
+        assert hasattr(result, "weather_api")
+        assert result.weather_api.location == "Tokyo"
+        assert result.weather_api.temperature == EXPECTED_TEMPERATURE
+
+    @pytest.mark.asyncio
+    async def test_flow_node_in_parent_flow(self):
+        """Test FlowNode used as a node within a parent flow."""
+        # Create a sub-flow for weather data
+        weather_sub_flow = Flow(input_type=WeatherQuery, output_type=SimpleFlowResults)
+        weather_node = ToolNode[WeatherQuery, WeatherInfo](
+            tool_func=call_weather_api,
+            name="weather_api",
+        )
+        weather_sub_flow.add_nodes(weather_node)
+
+        # Create a parent flow that uses the sub-flow
+        parent_flow = Flow(input_type=WeatherQuery, output_type=FlowNodeResults)
+
+        # Add FlowNode to parent flow
+        sub_flow_node = FlowNode[WeatherQuery, SimpleFlowResults](
+            flow=weather_sub_flow,
+            name="weather_sub_flow",
+        )
+        parent_flow.add_nodes(sub_flow_node)
+
+        # Execute parent flow
+        query = WeatherQuery(location="London")
+        results = await parent_flow.run(query)
+
+        # Results should contain the sub-flow output
+        assert hasattr(results, "weather_sub_flow")
+        sub_result = results.weather_sub_flow
+        assert isinstance(sub_result, SimpleFlowResults)
+        assert sub_result.weather_api.location == "London"
+
+    @pytest.mark.asyncio
+    async def test_nested_flows_multiple_levels(self):
+        """Test deeply nested flows with multiple levels."""
+        # Level 1: Basic weather sub-flow
+        level1_flow = Flow(input_type=WeatherQuery, output_type=SimpleFlowResults)
+        weather_node = ToolNode[WeatherQuery, WeatherInfo](
+            tool_func=call_weather_api,
+            name="weather_api",
+        )
+        level1_flow.add_nodes(weather_node)
+
+        # Level 2: Wrapper flow
+        level2_flow = Flow(input_type=WeatherQuery, output_type=FlowNodeResults)
+        level1_node = FlowNode[WeatherQuery, SimpleFlowResults](
+            flow=level1_flow,
+            name="weather_sub_flow",  # Use the expected field name
+        )
+        level2_flow.add_nodes(level1_node)
+
+        # Level 3: Top-level flow
+        level3_flow = Flow(input_type=WeatherQuery, output_type=NestedFlowResults)
+        level2_node = FlowNode[WeatherQuery, FlowNodeResults](
+            flow=level2_flow,
+            name="level2_wrapper",
+        )
+        level3_flow.add_nodes(level2_node)
+
+        # Execute the deeply nested flow
+        query = WeatherQuery(location="Berlin")
+        results = await level3_flow.run(query)
+
+        # Verify the nested structure worked
+        assert hasattr(results, "level2_wrapper")
+        level2_result = results.level2_wrapper
+        assert hasattr(level2_result, "weather_sub_flow")
+        level1_result = level2_result.weather_sub_flow
+        assert level1_result.weather_api.location == "Berlin"
+
+    def test_flow_node_with_input_dependency(self):
+        """Test FlowNode that takes input from another node."""
+        # Create a sub-flow
+        sub_flow = Flow(input_type=WeatherQuery, output_type=SimpleFlowResults)
+        weather_node = ToolNode[WeatherQuery, WeatherInfo](
+            tool_func=call_weather_api,
+            name="weather_api",
+        )
+        sub_flow.add_nodes(weather_node)
+
+        # Create a FlowNode that doesn't depend on other nodes
+        flow_node = FlowNode[WeatherQuery, SimpleFlowResults](
+            flow=sub_flow,
+            name="dependent_sub_flow",
+        )
+
+        # Verify dependencies are tracked correctly
+        assert flow_node.dependencies == []  # No direct dependencies from other nodes
+
+    def test_flow_node_repr(self):
+        """Test FlowNode string representation."""
+        sub_flow = Flow(input_type=WeatherQuery, output_type=SimpleFlowResults)
+        flow_node = FlowNode[WeatherQuery, SimpleFlowResults](
+            flow=sub_flow,
+            name="test_flow_node",
+        )
+
+        repr_str = repr(flow_node)
+        assert "FlowNode(name='test_flow_node'" in repr_str
+        assert "Flow[WeatherQuery, SimpleFlowResults]" in repr_str
+
+    @pytest.mark.asyncio
+    async def test_flow_node_error_propagation(self):
+        """Test that errors from wrapped flows are properly propagated."""
+        # Create a sub-flow with a node that will fail
+        sub_flow = Flow(input_type=WeatherQuery, output_type=SimpleFlowResults)
+
+        def failing_tool(query: WeatherQuery) -> WeatherInfo:
+            msg = f"Intentional failure for {query.location}"
+            raise ValueError(msg)
+
+        failing_node = ToolNode[WeatherQuery, WeatherInfo](
+            tool_func=failing_tool,
+            name="failing_node",
+        )
+        sub_flow.add_nodes(failing_node)
+
+        # Create FlowNode
+        flow_node = FlowNode[WeatherQuery, SimpleFlowResults](flow=sub_flow)
+
+        # Execution should fail and propagate the error
+        query = WeatherQuery(location="ErrorCity")
+        with pytest.raises(FlowError) as exc_info:
+            await flow_node.run(query)
+
+        assert "Flow execution failed" in str(exc_info.value)
+        assert "Intentional failure for ErrorCity" in str(exc_info.value)
 
 
 if __name__ == "__main__":

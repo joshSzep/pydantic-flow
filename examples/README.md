@@ -48,6 +48,65 @@ uv run python type_safety_demo.py
 - Type annotation patterns
 - Type safety benefits
 
+### 🏗️ `hierarchical_flows.py`
+**Hierarchical Flow Architecture**
+
+A sophisticated example demonstrating hierarchical flow composition using FlowNode:
+- Multi-level flow architecture (Level 1: Sub-flows, Level 2: Master pipeline)
+- Real-world AI content creation pipeline
+- Reusable sub-flow components
+- Complex workflow orchestration
+
+**Run with:**
+```bash
+cd examples
+uv run python hierarchical_flows.py
+```
+
+**Features demonstrated:**
+- `FlowNode` for sub-flow composition
+- 4-phase content creation pipeline (Research → Planning → Writing → Publishing)
+- Individual sub-flow testing and isolation
+- Hierarchical flow reusability across different content types
+- Type-safe flow boundaries with complex data models
+- Enterprise-level workflow patterns
+
+**Architecture:**
+```
+Content Creation Pipeline
+├── Research Flow (ContentRequest → ResearchResults)
+│   ├── Research Data Gathering
+│   └── Research Validation
+├── Planning Flow (ResearchResults → PlanningResults)
+│   ├── Content Outline Creation
+│   └── Content Strategy Development
+├── Writing Flow (PlanningResults → WritingResults)
+│   ├── Draft Content Writing
+│   └── Content Review & Editing
+└── Publishing Flow (WritingResults → PublishingResults)
+    ├── Content Formatting
+    └── Publishing Assets Creation
+```
+
+### 🔄 `sub_flow_example.py`
+**Sub-flow Composition Basics**
+
+Basic demonstration of using FlowNode to compose sub-flows:
+- Simple sub-flow wrapping
+- Multi-level nested flows
+- Sub-flow reusability patterns
+
+**Run with:**
+```bash
+cd examples
+uv run python sub_flow_example.py
+```
+
+**Features demonstrated:**
+- Basic FlowNode usage
+- Nested flow composition
+- Sub-flow reuse across contexts
+
 ## Getting Started
 
 1. Navigate to the examples directory:

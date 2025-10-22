@@ -14,7 +14,7 @@ def test_get_project_info_success():
     description, version = get_project_info()
 
     # Verify we get the expected values from the actual pyproject.toml
-    assert version == "0.1.0"
+    assert version == "0.2.0"
     assert description == "A pydantic-ai based framework with batteries included."
 
 

@@ -1,4 +1,4 @@
-"""PFlow - A pydantic-ai based framework with batteries included.
+"""pflow - A pydantic-ai based framework with batteries included.
 
 This package provides a comprehensive framework built on top of pydantic-ai,
 offering a batteries-included approach for building AI-powered applications.
@@ -14,6 +14,7 @@ from pflow.flow import CyclicDependencyError
 from pflow.flow import Flow
 from pflow.flow import FlowError
 from pflow.nodes import BaseNode
+from pflow.nodes import FlowNode
 from pflow.nodes import IfNode
 from pflow.nodes import NodeOutput
 from pflow.nodes import NodeWithInput
@@ -29,6 +30,7 @@ __all__ = [
     "CyclicDependencyError",
     "Flow",
     "FlowError",
+    "FlowNode",
     "IfNode",
     "NodeOutput",
     "NodeWithInput",
@@ -73,5 +75,5 @@ def get_project_info():
 def main():
     """Print project description and version."""
     description, version = get_project_info()
-    print(f"PFlow v{version}")
+    print(f"pflow v{version}")
     print(f"Description: {description}")
