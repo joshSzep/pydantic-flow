@@ -1,12 +1,12 @@
-"""PromptNode implementation for LLM calls."""
+"""PromptNode implementation for LLM-based processing."""
 
 from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel
 
-from pflow.nodes.base import NodeOutput
-from pflow.nodes.base import NodeWithInput
+from pydantic_flow.nodes.base import NodeOutput
+from pydantic_flow.nodes.base import NodeWithInput
 
 
 @dataclass

@@ -3,8 +3,8 @@
 from pydantic import BaseModel
 import pytest
 
-from pflow import Flow
-from pflow import ToolNode
+from pydantic_flow import Flow
+from pydantic_flow import ToolNode
 
 # Test constants
 EXPECTED_RESULT_10 = 10

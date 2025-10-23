@@ -1,10 +1,12 @@
-# pflow: A Type-Safe Pydantic-AI Workflow Framework
+# pydantic-flow: A Type-Safe Pydantic-AI Workflow Framework
 
 A modern, type-safe, composable Python framework for building AI workflows using Pydantic models as inputs and outputs for each processing node.
 
 [![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Type checked: ty](https://img.shields.io/badge/type%20checked-ty-blue.svg)](https://github.com/pydantic/ty)
+[![Built with: uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 
 ## 🌟 Features
 
@@ -20,7 +22,7 @@ A modern, type-safe, composable Python framework for building AI workflows using
 ### Installation
 
 ```bash
-pip install pflow
+pip install pydantic-flow
 ```
 
 ### Basic Example
@@ -28,7 +30,7 @@ pip install pflow
 ```python
 import asyncio
 from pydantic import BaseModel
-from pflow import Flow, PromptNode, ParserNode, ToolNode
+from pydantic_flow import Flow, PromptNode, ParserNode, ToolNode
 
 # Define your data models
 class WeatherQuery(BaseModel):
@@ -366,21 +368,21 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ### 🔌 Extensible
 - Plugin architecture inspired by pytest ecosystem
-- External libraries can create `pflow-*` extensions
+- External libraries can create `pydantic-flow-*` extensions
 - Type-safe protocol-based interfaces
 - Dependency injection with automatic wiring
 
 ## Installation
 
 ```bash
-pip install pflow
+pip install pydantic-flow
 ```
 
 ### Development Installation
 
 ```bash
-git clone https://github.com/joshSzep/pflow.git
-cd pflow
+git clone https://github.com/joshSzep/pydantic-flow.git
+cd pydantic-flow
 uv sync
 ```
 
@@ -392,7 +394,7 @@ uv sync
 
 ## Architecture
 
-pflow follows core principles that ensure scalability and maintainability:
+pydantic-flow follows core principles that ensure scalability and maintainability:
 
 - **Long-Lived Agents**: Persistent objects with integrated memory and tools
 - **Immutable State**: Idempotent APIs over stateful operations
@@ -425,8 +427,8 @@ uv run ruff format
 
 ### Project Structure
 ```
-pflow/
-├── src/pflow/           # Core framework
+pydantic-flow/
+├── src/pydantic_flow/   # Core framework
 ├── tests/               # Test suite
 ├── docs/                # Documentation
 ├── AGENTS.md           # Architecture guide

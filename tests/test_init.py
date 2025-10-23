@@ -1,4 +1,4 @@
-"""Tests for the pflow.__init__ module."""
+"""Tests for the pydantic_flow.__init__ module."""
 
 from pathlib import Path
 import tempfile
@@ -6,21 +6,29 @@ import tomllib
 from unittest.mock import Mock
 from unittest.mock import patch
 
-from pflow import get_project_info
+from pydantic_flow import ProjectInfo
+from pydantic_flow import get_project_info
 
 
 def test_get_project_info_success():
     """Test get_project_info returns correct values from pyproject.toml."""
-    description, version = get_project_info()
+    info = get_project_info()
+
+    # Verify we get a ProjectInfo model
+    assert isinstance(info, ProjectInfo)
 
     # Verify we get the expected values from the actual pyproject.toml
-    assert version == "0.3.0"
-    assert description == "A pydantic-ai based framework with batteries included."
+    project_root_path = Path(__file__).parent.parent
+    with (project_root_path / "pyproject.toml").open("rb") as f:
+        toml_content = tomllib.load(f)
+        project_info = toml_content.get("project", {})
+        assert info.version == project_info.get("version", None)
+        assert info.description == project_info.get("description", None)
 
 
 def test_get_project_info_missing_file():
     """Test get_project_info when pyproject.toml doesn't exist."""
-    with patch("pflow.Path") as mock_path:
+    with patch("pydantic_flow.project_info.Path") as mock_path:
         # Mock the path to return a non-existent file
         mock_current_file = mock_path.return_value
         mock_pyproject_path = (
@@ -28,15 +36,16 @@ def test_get_project_info_missing_file():
         )
         mock_pyproject_path.exists.return_value = False
 
-        description, version = get_project_info()
+        info = get_project_info()
 
-        assert description == "Project description not available"
-        assert version == "Version not available"
+        assert isinstance(info, ProjectInfo)
+        assert info.description == "Project description not available"
+        assert info.version == "Version not available"
 
 
 def test_get_project_info_invalid_toml():
     """Test get_project_info with invalid TOML content."""
-    with patch("pflow.Path") as mock_path:
+    with patch("pydantic_flow.project_info.Path") as mock_path:
         mock_current_file = mock_path.return_value
         mock_pyproject_path = Mock()
         mock_pyproject_path.exists.return_value = True
@@ -45,11 +54,12 @@ def test_get_project_info_invalid_toml():
             mock_pyproject_path
         )
 
-        description, version = get_project_info()
+        info = get_project_info()
 
         # Should return error message and default version
-        assert "Error reading project info:" in description
-        assert version == "Version not available"
+        assert isinstance(info, ProjectInfo)
+        assert "Error reading project info:" in info.description
+        assert info.version == "Version not available"
 
 
 def test_get_project_info_missing_project_fields():

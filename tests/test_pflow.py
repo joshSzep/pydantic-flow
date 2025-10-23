@@ -1,4 +1,4 @@
-"""Test suite for the pflow framework.
+"""Test suite for the pydantic-flow framework.
 
 This module contains comprehensive tests for all node types, Flow functionality,
 and edge cases to ensure the framework works as expected.
@@ -9,16 +9,16 @@ import builtins
 from pydantic import BaseModel
 import pytest
 
-from pflow import Flow
-from pflow import FlowNode
-from pflow import IfNode
-from pflow import ParserNode
-from pflow import PromptConfig
-from pflow import PromptNode
-from pflow import RetryNode
-from pflow import ToolNode
-from pflow.flow.exceptions import CyclicDependencyError
-from pflow.flow.exceptions import FlowError
+from pydantic_flow import Flow
+from pydantic_flow import FlowNode
+from pydantic_flow import IfNode
+from pydantic_flow import ParserNode
+from pydantic_flow import PromptConfig
+from pydantic_flow import PromptNode
+from pydantic_flow import RetryNode
+from pydantic_flow import ToolNode
+from pydantic_flow.flow.exceptions import CyclicDependencyError
+from pydantic_flow.flow.exceptions import FlowError
 
 # Test constants
 EXPECTED_TEMPERATURE = 22.5

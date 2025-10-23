@@ -1,4 +1,4 @@
-"""Core node abstractions for the pflow framework.
+"""Core node abstractions for the pydantic-flow framework.
 
 This module provides the foundational building blocks for creating type-safe,
 composable AI workflows using Pydantic models.

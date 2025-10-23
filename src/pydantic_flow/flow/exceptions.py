@@ -1,4 +1,4 @@
-"""Flow-related exceptions for the pflow framework."""
+"""Flow-related exceptions for the pydantic-flow framework."""
 
 
 class FlowError(Exception):

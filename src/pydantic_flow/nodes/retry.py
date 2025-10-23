@@ -1,10 +1,10 @@
-"""RetryNode implementation for resilient operations."""
+"""RetryNode implementation for automatic retry logic."""
 
 from typing import Any
 
 from pydantic import BaseModel
 
-from pflow.nodes.base import NodeWithInput
+from pydantic_flow.nodes.base import NodeWithInput
 
 
 class RetryNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):

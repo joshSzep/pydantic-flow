@@ -1,16 +1,15 @@
-"""Type Safety Demonstration for pflow.
+"""Type Safety Demonstration for pydantic-flow.
 
-This module demonstrates the improved type safety in the Flow class,
-showing how generic type parameters provide better IDE support and
-catch type errors at compile time.
+This script demonstrates the comprehensive type safety features built into
+the pydantic-flow framework.
 """
 
 import asyncio
 
 from pydantic import BaseModel
 
-from pflow import Flow
-from pflow import ToolNode
+from pydantic_flow import Flow
+from pydantic_flow import ToolNode
 
 
 class WeatherQuery(BaseModel):
@@ -144,7 +143,7 @@ def demonstrate_type_annotations():
 
 
 if __name__ == "__main__":
-    print("=== pflow Type Safety Demonstration ===\n")
+    print("=== pydantic-flow Type Safety Demonstration ===\n")
 
     print("1. Demonstrating strongly typed Flow[WeatherQuery, WeatherFlowResults]")
     asyncio.run(demonstrate_typed_flow())

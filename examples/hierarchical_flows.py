@@ -18,9 +18,9 @@ from datetime import datetime
 from pydantic import BaseModel
 from pydantic import Field
 
-from pflow import Flow
-from pflow import FlowNode
-from pflow import ToolNode
+from pydantic_flow import Flow
+from pydantic_flow import FlowNode
+from pydantic_flow import ToolNode
 
 # ================================
 # Data Models for Content Pipeline

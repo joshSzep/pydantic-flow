@@ -1,4 +1,4 @@
-# Development automation for pflow
+# Development automation for pydantic-flow
 # https://github.com/casey/just
 
 # Load environment variables from .env file if it exists
@@ -84,7 +84,7 @@ update:
 
 # Show project information
 info:
-    @echo "📦 Project: pflow"
+    @echo "📦 Project: pydantic-flow"
     @echo "🐍 Python: $(python --version)"
     @echo "📋 Dependencies:"
     @uv tree

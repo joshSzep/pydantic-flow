@@ -1,4 +1,4 @@
-"""Flow orchestration for the pflow framework.
+"""Flow orchestration for the pydantic-flow framework.
 
 This module provides the Flow class that manages workflow execution,
 dependency resolution, and DAG validation.
@@ -10,9 +10,9 @@ from typing import TypeVar
 
 from pydantic import BaseModel
 
-from pflow.flow.exceptions import CyclicDependencyError
-from pflow.flow.exceptions import FlowError
-from pflow.nodes import BaseNode
+from pydantic_flow.flow.exceptions import CyclicDependencyError
+from pydantic_flow.flow.exceptions import FlowError
+from pydantic_flow.nodes import BaseNode
 
 InputT = TypeVar("InputT", bound=BaseModel)
 OutputT = TypeVar("OutputT", bound=BaseModel)

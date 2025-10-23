@@ -1,17 +1,16 @@
-"""Sub-flow composition example using FlowNode.
+"""FlowNode example with sub-flows.
 
-This example demonstrates how to build hierarchical workflows by composing
-smaller flows into larger ones using FlowNode. This enables building complex
-workflows from simpler, reusable sub-flows.
+This example demonstrates how to create reusable sub-flows using FlowNode
+in the pydantic-flow framework.
 """
 
 import asyncio
 
 from pydantic import BaseModel
 
-from pflow import Flow
-from pflow import FlowNode
-from pflow import ToolNode
+from pydantic_flow import Flow
+from pydantic_flow import FlowNode
+from pydantic_flow import ToolNode
 
 
 # Input/Output Models
@@ -267,7 +266,7 @@ async def demonstrate_reusable_sub_flows():
 
 async def main():
     """Run all sub-flow composition examples."""
-    print("🔄 pflow Sub-flow Composition Examples\n")
+    print("🔄 pydantic-flow Sub-flow Composition Examples\n")
 
     await demonstrate_simple_sub_flow()
     await demonstrate_nested_sub_flows()

@@ -1,13 +1,13 @@
-# pflow Examples
+# pydantic-flow Examples
 
-This directory contains example scripts demonstrating various features of the pflow framework.
+This directory contains example scripts demonstrating various features of the pydantic-flow framework.
 
 ## Available Examples
 
 ### 📝 `example.py`
 **Complete Weather Workflow Demo**
 
-A comprehensive demonstration of the pflow framework featuring:
+A comprehensive demonstration of the pydantic-flow framework featuring:
 - Type-safe node composition with generics
 - Multiple workflow patterns (API-based and LLM-based)
 - Automatic dependency resolution
@@ -121,13 +121,13 @@ uv run python sub_flow_example.py
    uv run python type_safety_demo.py
    ```
 
-3. Examine the source code to understand how pflow components work together
+3. Examine the source code to understand how pydantic-flow components work together
 
 ## Requirements
 
-All examples use the same dependencies as the main pflow project:
+All examples use the same dependencies as the main pydantic-flow project:
+
 - Python 3.14+
-- pydantic for data validation
-- The pflow framework itself
+- The pydantic-flow framework itself
 
 The examples are designed to work out of the box with the project's existing environment setup.

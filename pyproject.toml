@@ -1,7 +1,7 @@
 [project]
-name = "pflow"
-version = "0.3.0"
-description = "A pydantic-ai based framework with batteries included."
+name = "pydantic-flow"
+version = "0.4.0"
+description = "An opinionated pydantic-ai based framework with batteries included."
 readme = "README.md"
 authors = [
     { name = "Szepietowski, Joshua", email = "joshszep@gmail.com" }
@@ -30,10 +30,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/joshSzep/pflow"
-Repository = "https://github.com/joshSzep/pflow"
-Issues = "https://github.com/joshSzep/pflow/issues"
-Documentation = "https://github.com/joshSzep/pflow#readme"
+Homepage = "https://github.com/joshSzep/pydantic-flow"
+Repository = "https://github.com/joshSzep/pydantic-flow"
+Issues = "https://github.com/joshSzep/pydantic-flow/issues"
+Documentation = "https://github.com/joshSzep/pydantic-flow#readme"
 
 [tool.uv]
 
@@ -60,10 +60,10 @@ ban-relative-imports = "all"
 
 [tool.pytest.ini_options]
 addopts = [
-    "--cov=src/pflow",  # Coverage for pflow package
+    "--cov=src/pydantic_flow",  # Coverage for pydantic_flow package
     "--cov-report=term-missing",  # Show missing lines in coverage
     "--cov-report=html",  # Generate HTML coverage report
-    "--cov-fail-under=80",  # Fail if coverage is below 80%
+    "--cov-fail-under=98",  # Fail if coverage is below 98%
 ]
 asyncio_mode = "auto"
 testpaths = ["tests"]
@@ -76,7 +76,7 @@ filterwarnings = [
 
 [tool.coverage.run]
 branch = true
-source = ["src/pflow"]
+source = ["src/pydantic_flow"]
 
 [build-system]
 requires = ["uv_build>=0.9.4,<0.10.0"]

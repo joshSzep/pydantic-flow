@@ -2,7 +2,7 @@
 
 ## Vision
 
-**pflow** is a type-safe, batteries-included AI agent framework built on [pydantic-ai](https://ai.pydantic.dev/) and designed to rival LangChain while maintaining the developer experience and type safety that the Pydantic ecosystem is known for.
+**pydantic-flow** is a type-safe, batteries-included AI agent framework built on [pydantic-ai](https://ai.pydantic.dev/) and designed to rival LangChain while maintaining the developer experience and type safety that the Pydantic ecosystem is known for.
 
 The framework follows pydantic-ai's lead in being developer-experience focused, leveraging open source and open standards to create a comprehensive toolkit for building complex AI agents from 0 to 100.
 
@@ -47,10 +47,10 @@ Agents are designed as long-lived objects that maintain state and context across
 The framework uses entry points for auto-discovery, designed for seamless external library integration:
 
 - **External Plugin Ecosystem**: Architected like pytest's ecosystem (pytest-cov, pytest-asyncio) for easy third-party plugin creation
-- **Tool Providers**: `pflow.plugins` entry point for automatic plugin discovery and integration
+- **Tool Providers**: `pydantic_flow.plugins` entry point for automatic plugin discovery and integration
 - **Type Safety**: Protocol-based tool interfaces with full type hints
 - **Dependency Injection**: Automatic wiring of dependencies and configurations
-- **Opinionated Monolith**: Core pflow includes comprehensive batteries while supporting external extensions
+- **Opinionated Monolith**: Core pydantic-flow includes comprehensive batteries while supporting external extensions
 
 ### Key Technologies
 
@@ -67,7 +67,7 @@ The framework uses entry points for auto-discovery, designed for seamless extern
 ### API Design
 
 - **Direct Instantiation**: `Agent(...)` over builder patterns
-- **Dual Import Paths**: Support both `from pflow import Agent` and `from pflow.agents import Agent`
+- **Dual Import Paths**: Support both `from pydantic_flow import Agent` and `from pydantic_flow.agents import Agent`
 - **Functional + Class-Based**: Solid class foundation with functional helpers
 - **Method Clarity**: Explicit operations over implicit state changes
 
@@ -114,6 +114,6 @@ Built on open source foundations:
 
 ## Framework Scope
 
-This document defines the WHY and HOW of pflow agents, not the WHAT. Implementation details and specific code blueprints are intentionally omitted to allow for organic evolution while maintaining architectural coherence.
+This document defines the WHY and HOW of pydantic-flow agents, not the WHAT. Implementation details and specific code blueprints are intentionally omitted to allow for organic evolution while maintaining architectural coherence.
 
 The framework aims to provide the missing batteries for pydantic-ai users who want to build production-ready AI agents without sacrificing type safety or developer experience.

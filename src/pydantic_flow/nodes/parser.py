@@ -1,11 +1,11 @@
-"""ParserNode implementation for data transformation."""
+"""ParserNode implementation for custom output transformation."""
 
 from collections.abc import Callable
 
 from pydantic import BaseModel
 
-from pflow.nodes.base import NodeOutput
-from pflow.nodes.base import NodeWithInput
+from pydantic_flow.nodes.base import NodeOutput
+from pydantic_flow.nodes.base import NodeWithInput
 
 
 class ParserNode[InputT, OutputModel: BaseModel](NodeWithInput[InputT, OutputModel]):

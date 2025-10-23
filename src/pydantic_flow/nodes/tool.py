@@ -1,11 +1,11 @@
-"""ToolNode implementation for external tool integration."""
+"""ToolNode implementation for custom function execution."""
 
 from collections.abc import Callable
 
 from pydantic import BaseModel
 
-from pflow.nodes.base import NodeOutput
-from pflow.nodes.base import NodeWithInput
+from pydantic_flow.nodes.base import NodeOutput
+from pydantic_flow.nodes.base import NodeWithInput
 
 
 class ToolNode[InputModel: BaseModel, OutputModel: BaseModel](

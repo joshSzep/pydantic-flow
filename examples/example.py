@@ -1,6 +1,6 @@
-"""Example demonstrating the pflow framework capabilities.
+"""Example demonstrating the pydantic-flow framework capabilities.
 
-This example shows how to build a type-safe AI workflow using pflow,
+This example shows how to build a type-safe AI workflow using pydantic-flow,
 including prompt nodes, parser nodes, tool nodes, and flow orchestration.
 """
 
@@ -8,10 +8,10 @@ import asyncio
 
 from pydantic import BaseModel
 
-from pflow import Flow
-from pflow import ParserNode
-from pflow import PromptNode
-from pflow import ToolNode
+from pydantic_flow import Flow
+from pydantic_flow import ParserNode
+from pydantic_flow import PromptNode
+from pydantic_flow import ToolNode
 
 # Temperature thresholds for weather recommendations
 WARM_THRESHOLD = 25
@@ -146,8 +146,8 @@ def generate_summary(weather: WeatherInfo) -> WeatherSummary:
 
 
 async def main():
-    """Demonstrate the pflow framework with a weather workflow."""
-    print("🌟 pflow Framework Demo - Weather Workflow")
+    """Demonstrate the pydantic-flow framework with a weather workflow."""
+    print("🌟 pydantic-flow Framework Demo - Weather Workflow")
     print("=" * 50)
 
     # Create workflow nodes

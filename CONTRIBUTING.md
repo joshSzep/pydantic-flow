@@ -1,6 +1,6 @@
-# Contributing to pflow
+# Contributing to pydantic-flow
 
-Thank you for your interest in contributing to pflow! We welcome contributions from the community and are grateful for any help you can provide.
+Thank you for your interest in contributing to pydantic-flow! We welcome contributions from the community and are grateful for any help you can provide.
 
 ## Table of Contents
 
@@ -31,8 +31,8 @@ This project adheres to a code of conduct that we expect all contributors to fol
 
 1. **Fork and clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/pflow.git
-   cd pflow
+   git clone https://github.com/yourusername/pydantic-flow.git
+   cd pydantic-flow
    ```
 
 2. **Install dependencies:**
@@ -82,7 +82,7 @@ Examples:
 
 ## Code Style
 
-pflow follows strict code style guidelines for consistency and type safety:
+pydantic-flow follows strict code style guidelines for consistency and type safety:
 
 ### Type Annotations
 
@@ -139,12 +139,15 @@ async def run_agent() -> tuple[str, str, dict]:
 
 ```python
 # ✅ Good
-from pflow.agents.base import Agent
-from pflow.tools.http import HttpTool
-from pflow.types import AgentConfig
+from pydantic_flow.agents.base import Agent
+from pydantic_flow.tools.http import HttpTool
+from pydantic_flow.types import AgentConfig
 
-# ❌ Bad
-from pflow.agents.base import Agent, BaseAgent
+# NOT this
+from pydantic_flow.agents.base import Agent, BaseAgent
+
+# ❌ Bad - Don't do this
+from pydantic_flow.agents.base import Agent, BaseAgent
 from .tools import HttpTool
 ```
 
@@ -184,7 +187,7 @@ if not config:
 uv run pytest
 
 # Run with coverage
-uv run pytest --cov=pflow --cov-report=term-missing
+uv run pytest --cov=pydantic_flow --cov-report=term-missing
 
 # Run specific test
 uv run pytest tests/test_agents.py::test_agent_creation
@@ -301,4 +304,4 @@ EXCEPTION: While MAJOR is version 0, any change can be breaking.
 - **Discussions**: Use GitHub Discussions for questions
 - **Security**: Email security issues privately
 
-Thank you for contributing to pflow! 🚀
+Thank you for contributing to pydantic-flow! 🚀

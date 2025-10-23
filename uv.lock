@@ -1116,55 +1116,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pflow"
-version = "0.3.0"
-source = { editable = "." }
-dependencies = [
-    { name = "anyio" },
-    { name = "numpy" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-exporter-otlp" },
-    { name = "opentelemetry-sdk" },
-    { name = "pydantic-ai" },
-    { name = "rich" },
-    { name = "sqlite-utils" },
-    { name = "typer" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-    { name = "ty" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "anyio", specifier = ">=4.11.0" },
-    { name = "numpy", specifier = ">=2.3.4" },
-    { name = "opentelemetry-api", specifier = ">=1.38.0" },
-    { name = "opentelemetry-exporter-otlp", specifier = ">=1.38.0" },
-    { name = "opentelemetry-sdk", specifier = ">=1.38.0" },
-    { name = "pydantic-ai", specifier = ">=1.2.1" },
-    { name = "rich", specifier = ">=14.2.0" },
-    { name = "sqlite-utils", specifier = ">=3.38" },
-    { name = "typer", specifier = ">=0.20.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pre-commit", specifier = ">=4.3.0" },
-    { name = "pytest", specifier = ">=8.4.2" },
-    { name = "pytest-asyncio", specifier = ">=1.2.0" },
-    { name = "pytest-cov", specifier = ">=7.0.0" },
-    { name = "ruff", specifier = ">=0.14.1" },
-    { name = "ty", specifier = ">=0.0.1a23" },
-]
-
-[[package]]
 name = "platformdirs"
 version = "4.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1430,6 +1381,55 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/20/1c/5d69f802273766fcfb52178ef48d962eeee1d82c572bb30c6dd22f54862f/pydantic_evals-1.2.1.tar.gz", hash = "sha256:cb5a925b54ee60dfce586711ac43fd9d14d0b566171265002192d815e57f6645", size = 46080, upload-time = "2025-10-20T17:45:50.462Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/6d/22/39903faf7320557b9792bc879387e5d54f1b2ab3033c738429b3b6aa1d9b/pydantic_evals-1.2.1-py3-none-any.whl", hash = "sha256:da7ae12922b68437129542745b1bfd1af7887b0efd10b3d5ac8dca7b9f4b4e54", size = 55169, upload-time = "2025-10-20T17:45:37.195Z" },
+]
+
+[[package]]
+name = "pydantic-flow"
+version = "0.4.0"
+source = { editable = "." }
+dependencies = [
+    { name = "anyio" },
+    { name = "numpy" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp" },
+    { name = "opentelemetry-sdk" },
+    { name = "pydantic-ai" },
+    { name = "rich" },
+    { name = "sqlite-utils" },
+    { name = "typer" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "ty" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anyio", specifier = ">=4.11.0" },
+    { name = "numpy", specifier = ">=2.3.4" },
+    { name = "opentelemetry-api", specifier = ">=1.38.0" },
+    { name = "opentelemetry-exporter-otlp", specifier = ">=1.38.0" },
+    { name = "opentelemetry-sdk", specifier = ">=1.38.0" },
+    { name = "pydantic-ai", specifier = ">=1.2.1" },
+    { name = "rich", specifier = ">=14.2.0" },
+    { name = "sqlite-utils", specifier = ">=3.38" },
+    { name = "typer", specifier = ">=0.20.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pre-commit", specifier = ">=4.3.0" },
+    { name = "pytest", specifier = ">=8.4.2" },
+    { name = "pytest-asyncio", specifier = ">=1.2.0" },
+    { name = "pytest-cov", specifier = ">=7.0.0" },
+    { name = "ruff", specifier = ">=0.14.1" },
+    { name = "ty", specifier = ">=0.0.1a23" },
 ]
 
 [[package]]
