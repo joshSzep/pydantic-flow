@@ -13,6 +13,10 @@ from pydantic_flow.flow import FlowError
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import FlowNode
 from pydantic_flow.nodes import IfNode
+from pydantic_flow.nodes import MergeNode
+from pydantic_flow.nodes import MergeParserNode
+from pydantic_flow.nodes import MergePromptNode
+from pydantic_flow.nodes import MergeToolNode
 from pydantic_flow.nodes import NodeOutput
 from pydantic_flow.nodes import NodeWithInput
 from pydantic_flow.nodes import ParserNode
@@ -42,6 +46,10 @@ __all__ = [
     "FlowNode",
     "IfNode",
     "JoinStrategy",
+    "MergeNode",
+    "MergeParserNode",
+    "MergePromptNode",
+    "MergeToolNode",
     "NodeOutput",
     "NodeWithInput",
     "ParserNode",

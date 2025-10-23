@@ -1,6 +1,6 @@
 [project]
 name = "pydantic-flow"
-version = "0.5.0"
+version = "0.6.0"
 description = "An opinionated pydantic-ai based framework with batteries included."
 readme = "README.md"
 authors = [
@@ -47,6 +47,9 @@ target-version = "py314"
 select = ["E","F","W","I","UP","NPY","PTH","B","C4","SIM","PL","RUF","D"]
 ignore = ["D203","D213"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["PLR2004"]  # Allow magic values in tests
+
 [tool.ruff.format]
 preview = true
 
@@ -59,6 +62,8 @@ force-sort-within-sections = true
 ban-relative-imports = "all"
 
 [tool.ty.rules]
+# Disable too-many-positional-arguments due to TypeVarTuple (*InputTs) not being understood
+too-many-positional-arguments = "ignore"
 
 [tool.pytest.ini_options]
 addopts = [

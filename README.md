@@ -13,8 +13,9 @@ A modern, type-safe, composable Python framework for building AI workflows using
 - **Type-Safe by Design**: Full Python 3.14+ generics support with comprehensive IDE integration
 - **Pydantic-Powered**: Built around `BaseModel` for schema definition and validation
 - **Reference-Based Wiring**: Connect nodes using `.output` references, not magic strings
-- **Automatic DAG Resolution**: Intelligent dependency tracking and execution ordering
-- **Serializable & Inspectable**: Full observability and debugging support
+- **Automatic DAG Resolution**: Intelligent dependency tracking and execution ordering using topological sorting ([learn more](docs/dag_resolution.md))
+- **Production-Ready Prompt Library**: Standalone templating system with multiple engines (f-string, Jinja2, Mustache), structured I/O, and observability
+- **Serializable & Inspectable**: Full observability and debugging support with OpenTelemetry integration
 - **Built-in Node Types**: Comprehensive set of workflow building blocks
 
 ## 🚀 Quick Start
@@ -155,6 +156,59 @@ weather_branch = IfNode(
 )
 ```
 
+#### MergeToolNode & MergeParserNode
+Enable fan-in patterns where multiple node outputs combine into one:
+
+```python
+# Multiple nodes producing different data
+analysis_node = ToolNode[Input, Analysis](
+    tool_func=analyze_data,
+    name="analysis"
+)
+
+facts_node = ToolNode[Input, Facts](
+    tool_func=gather_facts,
+    name="facts"
+)
+
+metadata_node = ToolNode[Input, Metadata](
+    tool_func=get_metadata,
+    name="metadata"
+)
+
+# Merge multiple inputs into single output
+def combine_all(analysis: Analysis, facts: Facts, metadata: Metadata) -> Report:
+    return Report(
+        analysis=analysis,
+        facts=facts,
+        metadata=metadata
+    )
+
+merge_node = MergeToolNode[Analysis, Facts, Metadata, Report](
+    inputs=(analysis_node.output, facts_node.output, metadata_node.output),
+    tool_func=combine_all,
+    name="merge"
+)
+
+# MergePromptNode for combining inputs into LLM prompts
+merge_prompt = MergePromptNode[Analysis, Facts, str](
+    inputs=(analysis_node.output, facts_node.output),
+    prompt="Analyze: {analysis}\nFacts: {facts}\nProvide summary:",
+    model="openai:gpt-4",
+    name="llm_merge"
+)
+
+# Continue processing merged result
+final_node = ToolNode[Report, FinalOutput](
+    tool_func=finalize_report,
+    input=merge_node.output,
+    name="final"
+)
+
+# Pattern: A -> B,C,D -> E -> F
+flow.add_nodes(analysis_node, facts_node, metadata_node, merge_node, final_node)
+```
+
 ### Flow Orchestration
 
 The `Flow` class manages execution with automatic dependency resolution:
@@ -255,6 +309,66 @@ node = ToolNode[MyInput, MyOutput](...)
 ```
 
 ## 🔧 Advanced Features
+
+### Prompt Library
+
+pydantic-flow includes a production-ready prompt templating system that can be used standalone or integrated with workflows:
+
+```python
+from pydantic import BaseModel
+from pydantic_flow.prompt import (
+    PromptTemplate,
+    ChatPromptTemplate,
+    TemplateFormat,
+    ChatMessage,
+    ChatRole,
+    JsonModelParser
+)
+
+# Define typed models
+class WeatherQuery(BaseModel):
+    location: str
+    unit: str = "celsius"
+
+class WeatherResponse(BaseModel):
+    temperature: float
+    condition: str
+
+# Create type-safe template with parser
+template = PromptTemplate[WeatherQuery, WeatherResponse](
+    template="What's the weather in {location} ({unit})?",
+    format=TemplateFormat.F_STRING,
+    input_model=WeatherQuery,
+    output_parser=JsonModelParser(WeatherResponse)
+)
+
+# Render with validation
+query = WeatherQuery(location="Paris")
+prompt_text = template.render(query)
+
+# Or render and parse in one step
+result: WeatherResponse = await template.render_and_parse(query)
+
+# Chat templates with multiple messages
+chat_template = ChatPromptTemplate[WeatherQuery, str](
+    messages=[
+        ChatMessage(role=ChatRole.SYSTEM, content="You are a weather assistant."),
+        ChatMessage(role=ChatRole.USER, content="Weather in {location}?")
+    ],
+    format=TemplateFormat.JINJA2,
+    input_model=WeatherQuery
+)
+
+messages = chat_template.render_messages(query)
+```
+
+**Key Features:**
+- Multiple template engines: f-string, Jinja2, Mustache
+- Type-safe input/output with Pydantic models
+- Built-in output parsers (JSON, delimited, custom)
+- OpenTelemetry observability integration
+- Chat message support with role-based formatting
+- Variable validation and extraction
 
 ### Complex Workflows
 ```python

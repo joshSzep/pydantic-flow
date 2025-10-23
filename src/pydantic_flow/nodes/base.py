@@ -100,6 +100,42 @@ class NodeWithInput[InputT, OutputT](BaseNode[InputT, OutputT]):
         return [self.input.node]
 
 
+class MergeNode[*InputTs, OutputT](BaseNode[tuple[*InputTs], OutputT]):
+    """Base class for nodes that merge multiple inputs.
+
+    This class enables fan-in patterns where a node needs to combine
+    outputs from multiple upstream nodes.
+
+    Uses PEP 646 TypeVarTuple for arbitrary input types, allowing
+    full type safety across multiple inputs.
+
+    Example:
+        MergeNode[DataA, DataB, DataC, Result] represents a node that
+        takes three inputs (DataA, DataB, DataC) and produces Result.
+
+    """
+
+    def __init__(
+        self,
+        inputs: tuple[NodeOutput[Any], ...],
+        name: str | None = None,
+    ) -> None:
+        """Initialize a merge node with multiple input dependencies.
+
+        Args:
+            inputs: Tuple of NodeOutput references from upstream nodes
+            name: Optional unique identifier for this node
+
+        """
+        super().__init__(name)
+        self.inputs = inputs
+
+    @property
+    def dependencies(self) -> list[BaseNode[Any, Any]]:
+        """Get all dependency nodes from multiple inputs."""
+        return [node_output.node for node_output in self.inputs]
+
+
 # Protocol classes for type safety
 class NodeProtocol[InputT, OutputT](Protocol):
     """Protocol defining the interface all nodes must implement."""

@@ -120,18 +120,26 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
         try:
             for node in self._execution_order:
-                # Get input for this node
-                node_input = getattr(node, "input", None)
-                if node_input is not None:
-                    # Node takes input from another node
-                    input_node = node_input.node
-                    if input_node.name not in self._results:
-                        msg = f"Input node {input_node.name} has not been executed"
-                        raise FlowError(msg)
-                    input_data = self._results[input_node.name]
+                # Check if multi-input node (MergeNode pattern)
+                node_inputs = getattr(node, "inputs", None)
+                if node_inputs is not None and isinstance(node_inputs, tuple):
+                    # Multi-input node: gather all dependency results as tuple
+                    input_data = tuple(
+                        self._results[dep.node.name] for dep in node_inputs
+                    )
                 else:
-                    # Node takes input from flow inputs
-                    input_data = inputs
+                    # Single-input or no-input node (existing behavior)
+                    node_input = getattr(node, "input", None)
+                    if node_input is not None:
+                        # Node takes input from another node
+                        input_node = node_input.node
+                        if input_node.name not in self._results:
+                            msg = f"Input node {input_node.name} has not been executed"
+                            raise FlowError(msg)
+                        input_data = self._results[input_node.name]
+                    else:
+                        # Node takes input from flow inputs
+                        input_data = inputs
 
                 # Execute the node
                 result = await node.run(input_data)
