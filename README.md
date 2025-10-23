@@ -224,6 +224,342 @@ execution_order = flow.get_execution_order()
 results = await flow.run(input_data)
 ```
 
+### Loops and Conditional Routing
+
+pydantic-flow supports cycles and conditional control flow using a stepper-based execution engine. This enables patterns like while-loops, retry logic, and dynamic routing based on state.
+
+#### Self-Loop Counter Example
+
+A node that loops back to itself until a condition is met:
+
+```python
+from pydantic import BaseModel
+from pydantic_flow import Flow, Route, RunConfig
+from pydantic_flow.core.routing import T_Route
+from pydantic_flow.nodes import BaseNode
+
+class CounterState(BaseModel):
+    n: int
+
+class OutputState(BaseModel):
+    tick: CounterState
+
+class TickNode(BaseNode[CounterState, CounterState]):
+    async def run(self, input_data: CounterState) -> CounterState:
+        return CounterState(n=input_data.n + 1)
+
+# Create flow with loop
+flow = Flow(input_type=CounterState, output_type=OutputState)
+tick_node = TickNode(name="tick")
+flow.add_nodes(tick_node)
+flow.set_entry_nodes("tick")
+
+# Add conditional routing
+def router(state: BaseModel) -> T_Route:
+    tick_state = getattr(state, "tick", None)
+    if tick_state and tick_state.n >= 5:
+        return Route.END  # Terminate
+    return "tick"  # Loop back
+
+flow.add_conditional_edges("tick", router)
+
+# Compile and execute
+compiled = flow.compile()
+config = RunConfig(max_steps=50)
+result = await compiled.invoke(CounterState(n=0), config)
+# result.tick.n == 5
+```
+
+#### Two-Node While-Loop Example
+
+Plan-execute pattern with conditional routing:
+
+```python
+from pydantic import BaseModel
+from pydantic_flow import Flow, Route, RunConfig
+from pydantic_flow.nodes import BaseNode
+
+class WorkState(BaseModel):
+    iterations: int
+    total: int
+
+class FullOutput(BaseModel):
+    plan: WorkState
+    execute: WorkState
+
+class PlanNode(BaseNode[WorkState, WorkState]):
+    async def run(self, input_data: WorkState) -> WorkState:
+        return WorkState(
+            iterations=input_data.iterations + 1,
+            total=input_data.total
+        )
+
+class ExecuteNode(BaseNode[WorkState, WorkState]):
+    async def run(self, input_data: WorkState) -> WorkState:
+        new_total = input_data.total + (input_data.iterations * 10)
+        return WorkState(iterations=input_data.iterations, total=new_total)
+
+# Create flow with two-node loop
+flow = Flow(input_type=WorkState, output_type=FullOutput)
+plan_node = PlanNode(name="plan")
+execute_node = ExecuteNode(name="execute")
+
+flow.add_nodes(plan_node, execute_node)
+flow.set_entry_nodes("plan")
+flow.add_edge("plan", "execute")
+
+# Router decides: loop back to plan or END
+def router(state: BaseModel) -> T_Route:
+    execute_state = getattr(state, "execute", None)
+    if execute_state and execute_state.iterations >= 5:
+        return Route.END
+    return "plan"
+
+flow.add_conditional_edges("execute", router)
+
+# Execute with safety limits
+compiled = flow.compile()
+config = RunConfig(max_steps=50, trace_iterations=True)
+result = await compiled.invoke(WorkState(iterations=0, total=0), config)
+```
+
+#### Routing with Mapping Dictionaries
+
+Map router outcomes to target nodes:
+
+```python
+def boolean_router(state: BaseModel) -> str:
+    # Return a key that maps to a target node
+    should_proceed = getattr(state, "ready", False)
+    return "proceed" if should_proceed else "retry"
+
+flow.add_conditional_edges(
+    "checker",
+    boolean_router,
+    mapping={"proceed": "next_step", "retry": "checker"}
+)
+```
+
+#### Error Handling
+
+Production flows should handle potential errors gracefully. Here's a comprehensive error handling pattern:
+
+```python
+from pydantic_flow import (
+    Flow, Route, RunConfig, 
+    RecursionLimitError, RoutingError, FlowTimeoutError, FlowError
+)
+import logging
+
+logger = logging.getLogger(__name__)
+
+async def run_with_error_handling():
+    """Example of proper error handling for loop-capable flows."""
+    flow = create_my_flow()
+    compiled = flow.compile()
+    
+    config = RunConfig(
+        max_steps=100,
+        timeout_seconds=60,
+        trace_iterations=True
+    )
+    
+    try:
+        result = await compiled.invoke(initial_state, config)
+        logger.info(f"Flow completed successfully: {result}")
+        return result
+        
+    except RecursionLimitError as e:
+        # Flow exceeded max_steps - likely an infinite loop
+        logger.error(f"Flow hit iteration limit: {e}")
+        # Consider: save partial state, alert monitoring, etc.
+        raise
+        
+    except FlowTimeoutError as e:
+        # Flow took too long - may need more time or optimization
+        logger.error(f"Flow execution timed out: {e}")
+        # Consider: increase timeout, optimize nodes, add caching
+        raise
+        
+    except RoutingError as e:
+        # Invalid router configuration - this is a programming error
+        logger.error(f"Router configuration error: {e}")
+        # This should be caught in testing - fix your routers!
+        raise
+        
+    except FlowError as e:
+        # Other flow execution errors
+        logger.error(f"Flow execution failed: {e}")
+        raise
+        
+    except Exception as e:
+        # Unexpected errors (should be rare)
+        logger.exception(f"Unexpected error in flow execution: {e}")
+        raise
+```
+
+**Common Error Scenarios:**
+
+- **RecursionLimitError**: Usually indicates a router that never returns `Route.END`. Check your termination conditions.
+- **FlowTimeoutError**: Either increase `timeout_seconds` or optimize slow nodes. Check node execution times.
+- **RoutingError**: Programming error - router returned invalid node name. Validate router logic and use mapping dicts for type safety.
+
+**Quick Examples:**
+
+```python
+# RecursionLimitError: Raised when max_steps is exceeded
+config = RunConfig(max_steps=25)  # Default limit
+try:
+    result = await compiled.invoke(input_data, config)
+except RecursionLimitError as e:
+    print(f"Loop exceeded limit: {e}")
+    # e includes recent iteration trace
+
+# RoutingError: Raised when router returns an invalid target
+def bad_router(state: BaseModel) -> str:
+    return "nonexistent_node"  # RoutingError!
+
+flow.add_conditional_edges("start", bad_router)
+
+# FlowTimeoutError: Raised when execution exceeds time limit
+config = RunConfig(timeout_seconds=30)
+try:
+    result = await compiled.invoke(input_data, config)
+except FlowTimeoutError:
+    print("Flow execution timed out")
+```
+
+#### Key Concepts
+
+- **Route.END**: Special sentinel to terminate flow execution
+- **Conditional Edges**: Dynamic routing based on current state
+- **RunConfig**: Control `max_steps`, `timeout_seconds`, and `trace_iterations`
+- **Stepper Engine**: Automatically selected for flows with cycles or conditional edges
+- **Type Safety**: Router functions receive and return typed values
+
+See `examples/loops/` for complete runnable examples.
+
+### Flow Construction Patterns
+
+pydantic-flow supports two patterns for building flows, each suited to different use cases:
+
+#### Pattern 1: Implicit DAG (Node Dependencies)
+
+Best for **acyclic workflows** where dependencies are clear and linear:
+
+```python
+from pydantic_flow.nodes import NodeWithInput
+
+class ProcessNode(NodeWithInput[DataType, ResultType]):
+    """Node with explicit input dependency."""
+    
+    def __init__(self, input_node: BaseNode[Any, DataType]):
+        self.input = input_node.output
+        super().__init__(name="process")
+    
+    async def run(self, input_data: DataType) -> ResultType:
+        # Process the data from input_node
+        return process(input_data)
+
+# Build flow - execution order determined automatically
+flow = Flow(input_type=InputType, output_type=OutputType)
+fetch = FetchNode(name="fetch")
+process = ProcessNode(input_node=fetch)  # Dependency declared in constructor
+transform = TransformNode(input_node=process)
+
+flow.add_nodes(fetch, process, transform)
+# No need to call set_entry_nodes() - inferred from dependencies
+# No explicit edges needed - determined via topological sort
+result = await flow.run(input_data)
+```
+
+**When to use:**
+- Linear or tree-like data pipelines
+- No loops or conditional routing needed
+- Dependencies naturally expressed through node constructors
+
+#### Pattern 2: Explicit Edges (Stepper Engine)
+
+Required for **loops, conditional routing, or complex control flow**:
+
+```python
+flow = Flow(input_type=StateType, output_type=StateType)
+
+# Add all nodes first
+plan = PlanNode(name="plan")
+execute = ExecuteNode(name="execute")
+flow.add_nodes(plan, execute)
+
+# Explicitly define entry point (required for stepper engine)
+flow.set_entry_nodes("plan")
+
+# Add static edges
+flow.add_edge("plan", "execute")
+
+# Add conditional routing
+def should_continue(state: BaseModel) -> T_Route:
+    execute_state = getattr(state, "execute")
+    if execute_state.iterations >= 5:
+        return Route.END
+    return "plan"  # Loop back to start
+
+flow.add_conditional_edges("execute", should_continue)
+
+# Compile (automatically uses stepper engine due to conditional edges)
+compiled = flow.compile()
+result = await compiled.invoke(initial_state, config)
+```
+
+**When to use:**
+- Loops or cycles in the workflow
+- Conditional routing based on state
+- Complex control flow patterns
+- Multiple entry points
+
+#### Choosing the Right Mode
+
+You can also explicitly control which engine to use:
+
+```python
+from pydantic_flow import ExecutionMode
+
+# Force DAG mode (will error if cycles/conditional edges exist)
+compiled = flow.compile(mode=ExecutionMode.DAG)
+
+# Force stepper engine (works with any flow structure)
+compiled = flow.compile(mode=ExecutionMode.STEPPER)
+
+# Auto-detect (default) - uses stepper if needed, otherwise DAG
+compiled = flow.compile(mode=ExecutionMode.AUTO)
+```
+
+#### ⚠️ Avoid Mixing Patterns
+
+**Don't mix implicit and explicit construction in the same flow:**
+
+```python
+# ❌ BAD: Mixing patterns causes confusion
+flow = Flow(...)
+node_a = NodeWithInput(input_node=start)  # Implicit dependency
+flow.add_nodes(start, node_a)
+flow.add_edge("start", "node_b")  # Explicit edge
+flow.set_entry_nodes("start")  # Explicit entry
+# Result: Unclear execution order, potential conflicts
+```
+
+**Instead, choose one pattern consistently:**
+
+```python
+# ✅ GOOD: Pure explicit pattern
+flow = Flow(...)
+flow.add_nodes(start, node_a, node_b)
+flow.set_entry_nodes("start")
+flow.add_edge("start", "node_a")
+flow.add_edge("node_a", "node_b")
+```
+
+If you need both patterns, use **sub-flows** (FlowNode) to compose them separately.
+
 ### Sub-flow Composition with FlowNode
 
 The `FlowNode` enables hierarchical composition by wrapping complete flows as nodes:

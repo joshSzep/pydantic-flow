@@ -7,7 +7,15 @@ The framework enables type-safe, composable AI workflows using Pydantic models
 as inputs and outputs for each processing node.
 """
 
+from pydantic_flow.core import FlowTimeoutError
+from pydantic_flow.core import RecursionLimitError
+from pydantic_flow.core import Route
+from pydantic_flow.core import RouterFunction
+from pydantic_flow.core import RoutingError
+from pydantic_flow.core import RunConfig
+from pydantic_flow.flow import CompiledFlow
 from pydantic_flow.flow import CyclicDependencyError
+from pydantic_flow.flow import ExecutionMode
 from pydantic_flow.flow import Flow
 from pydantic_flow.flow import FlowError
 from pydantic_flow.nodes import BaseNode
@@ -40,10 +48,13 @@ __all__ = [
     "ChatMessage",
     "ChatPromptTemplate",
     "ChatRole",
+    "CompiledFlow",
     "CyclicDependencyError",
+    "ExecutionMode",
     "Flow",
     "FlowError",
     "FlowNode",
+    "FlowTimeoutError",
     "IfNode",
     "JoinStrategy",
     "MergeNode",
@@ -57,7 +68,12 @@ __all__ = [
     "PromptConfig",
     "PromptNode",
     "PromptTemplate",
+    "RecursionLimitError",
     "RetryNode",
+    "Route",
+    "RouterFunction",
+    "RoutingError",
+    "RunConfig",
     "TemplateFormat",
     "ToolNode",
     "from_template",

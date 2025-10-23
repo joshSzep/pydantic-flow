@@ -1,8 +1,6 @@
 """Flow-related exceptions for the pydantic-flow framework."""
 
-
-class FlowError(Exception):
-    """Base exception for flow-related errors."""
+from pydantic_flow.core.errors import FlowError
 
 
 class CyclicDependencyError(FlowError):

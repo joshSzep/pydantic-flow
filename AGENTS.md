@@ -83,6 +83,53 @@ The framework uses entry points for auto-discovery, designed for seamless extern
 - **Environment Integration**: Environment variables with Pydantic backing
 - **Type Validation**: Runtime validation with IDE support
 
+### Flow Construction
+
+The framework supports two distinct patterns for building workflows, each optimized for different use cases:
+
+#### Implicit DAG Pattern
+
+Node dependencies are expressed through constructor parameters, with execution order determined automatically via topological sort. Best for linear, acyclic workflows where dependencies flow naturally from data transformations.
+
+**Characteristics:**
+- Entry nodes inferred from nodes with no dependencies
+- Execution order calculated from node dependency graph
+- Uses efficient topological sort algorithm
+- Minimal API surface - just add nodes, system handles the rest
+
+**Trade-offs:**
+- Cannot express cycles or loops
+- No conditional routing
+- Simpler mental model for straightforward pipelines
+
+#### Explicit Edge Pattern
+
+Edges and entry points are declared explicitly, with execution managed by the stepper engine. Required for flows with loops, conditional routing, or complex control flow.
+
+**Characteristics:**
+- Entry nodes must be explicitly declared via `set_entry_nodes()`
+- Edges defined via `add_edge()` and `add_conditional_edges()`
+- Stepper engine executes nodes in frontier-based waves
+- Supports cycles and dynamic routing via `Route.END` sentinel
+
+**Trade-offs:**
+- More verbose API (entry points, explicit edges)
+- Slightly higher execution overhead (stepper vs direct DAG execution)
+- Enables complex control flow patterns impossible in DAG mode
+
+#### Engine Selection
+
+The framework automatically selects the appropriate execution engine:
+- **Auto mode** (default): Detects cycles or conditional edges, uses stepper if needed
+- **DAG mode**: Forces topological sort, errors if cycles/routing detected
+- **Stepper mode**: Forces stepper engine for all flows
+
+Users can override via `flow.compile(mode=ExecutionMode.DAG|STEPPER|AUTO)`.
+
+#### Pattern Purity
+
+**Mixing patterns within a single flow is discouraged** as it creates ambiguity about execution order and control flow. When both patterns are needed, use sub-flows (FlowNode) to compose them as separate, encapsulated units.
+
 ## Goals
 
 ### Batteries Included
