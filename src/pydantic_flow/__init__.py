@@ -22,23 +22,37 @@ from pydantic_flow.nodes import RetryNode
 from pydantic_flow.nodes import ToolNode
 from pydantic_flow.project_info import ProjectInfo
 from pydantic_flow.project_info import get_project_info
+from pydantic_flow.prompt import ChatMessage
+from pydantic_flow.prompt import ChatPromptTemplate
+from pydantic_flow.prompt import ChatRole
+from pydantic_flow.prompt import JoinStrategy
+from pydantic_flow.prompt import PromptTemplate
+from pydantic_flow.prompt import TemplateFormat
+from pydantic_flow.prompt import from_template
 
 # Public API - supports both direct and module imports
 __all__ = [
     "BaseNode",
+    "ChatMessage",
+    "ChatPromptTemplate",
+    "ChatRole",
     "CyclicDependencyError",
     "Flow",
     "FlowError",
     "FlowNode",
     "IfNode",
+    "JoinStrategy",
     "NodeOutput",
     "NodeWithInput",
     "ParserNode",
     "ProjectInfo",
     "PromptConfig",
     "PromptNode",
+    "PromptTemplate",
     "RetryNode",
+    "TemplateFormat",
     "ToolNode",
+    "from_template",
     "get_project_info",
 ]
 __version__ = get_project_info().version
