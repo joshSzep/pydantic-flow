@@ -107,6 +107,33 @@ uv run python sub_flow_example.py
 - Nested flow composition
 - Sub-flow reuse across contexts
 
+### 📋 `prompt_library_demo.py`
+**Comprehensive Prompt Library Showcase**
+
+A thorough demonstration of the prompt library capabilities:
+- Multiple template formats (f-string, Jinja2, Mustache)
+- Chat message templates with role-based formatting
+- Output parsers for structured data extraction
+- Template validation and variable collection
+- Message join strategies for different LLM providers
+
+**Run with:**
+```bash
+cd examples
+python prompt_library_demo.py
+```
+
+**Features demonstrated:**
+- `PromptTemplate` with f-string, Jinja2, and Mustache formats
+- `ChatPromptTemplate` for multi-turn conversations
+- `JsonModelParser` for validating JSON outputs against Pydantic models
+- `DelimitedParser` for pipe-delimited text parsing
+- `AsIsParser` for pass-through text handling
+- Template variable collection and validation utilities
+- `JoinStrategy` options (OpenAI, Anthropic, Simple)
+- Type-safe input/output with Pydantic models
+- Extra variable support beyond model definitions
+
 ## Getting Started
 
 1. Navigate to the examples directory:
