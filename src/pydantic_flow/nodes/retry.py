@@ -1,10 +1,15 @@
 """RetryNode implementation for automatic retry logic."""
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 from pydantic import BaseModel
 
 from pydantic_flow.nodes.base import NodeWithInput
+from pydantic_flow.streaming.events import NonFatalError
+from pydantic_flow.streaming.events import ProgressItem
+from pydantic_flow.streaming.events import StreamEnd
+from pydantic_flow.streaming.events import StreamStart
 
 
 class RetryNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
@@ -37,30 +42,57 @@ class RetryNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
         """Get the list of nodes this node depends on."""
         return self.wrapped_node.dependencies
 
-    async def run(self, input_data: Any) -> OutputModel:
-        """Execute the wrapped node with retry logic.
+    async def astream(self, input_data: Any) -> AsyncIterator[ProgressItem]:
+        """Stream progress items while executing with retry logic.
 
-        Args:
-            input_data: The input data for this node
-
-        Returns:
-            The output from the wrapped node
-
-        Raises:
-            Exception: If all retry attempts fail
+        Yields:
+            StreamStart, progress from wrapped node (with retries on failure),
+            and StreamEnd.
 
         """
-        last_exception = None
+        run_id = self.run_id or ""
+        node_id = self.name
+
+        yield StreamStart(run_id=run_id, node_id=node_id)
+
+        result_preview = None
 
         for attempt in range(self.max_retries + 1):
             try:
-                return await self.wrapped_node.run(input_data)
-            except Exception as e:
-                last_exception = e
-                if attempt < self.max_retries:
-                    continue
+                # Stream from the wrapped node
+                async for item in self.wrapped_node.astream(input_data):
+                    # Don't forward StreamStart/StreamEnd from wrapped node
+                    if isinstance(item, StreamStart):
+                        continue
+                    elif isinstance(item, StreamEnd):
+                        # Capture result on success
+                        result_preview = item.result_preview
+                    else:
+                        # Forward other progress items
+                        yield item
+
+                # If we get here, wrapped node succeeded
                 break
 
-        # If we get here, all retries failed
-        msg = "Retry node failed with unknown error"
-        raise last_exception or Exception(msg)
+            except Exception as e:
+                if attempt < self.max_retries:
+                    # Emit retry warning
+                    yield NonFatalError(
+                        run_id=run_id,
+                        node_id=node_id,
+                        message=f"Attempt {attempt + 1} failed, retrying: {e}",
+                        recoverable=True,
+                    )
+                    continue
+                else:
+                    # Final attempt failed
+                    yield NonFatalError(
+                        run_id=run_id,
+                        node_id=node_id,
+                        message=f"All {self.max_retries + 1} attempts failed: {e}",
+                        recoverable=False,
+                    )
+                    raise
+
+        # Emit our own StreamEnd with the result
+        yield StreamEnd(run_id=run_id, node_id=node_id, result_preview=result_preview)

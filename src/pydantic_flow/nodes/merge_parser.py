@@ -1,5 +1,6 @@
 """MergeParserNode implementation for multi-input parsing."""
 
+from collections.abc import AsyncIterator
 from collections.abc import Callable
 from typing import Any
 
@@ -7,6 +8,9 @@ from pydantic import BaseModel
 
 from pydantic_flow.nodes.base import MergeNode
 from pydantic_flow.nodes.base import NodeOutput
+from pydantic_flow.streaming.events import ProgressItem
+from pydantic_flow.streaming.events import StreamEnd
+from pydantic_flow.streaming.events import StreamStart
 
 
 class MergeParserNode[*InputTs, OutputModel: BaseModel](
@@ -51,14 +55,26 @@ class MergeParserNode[*InputTs, OutputModel: BaseModel](
         super().__init__(inputs, name)
         self.parser_func = parser_func
 
-    async def run(self, input_data: tuple[Any, ...]) -> OutputModel:
-        """Execute the parser function with merged inputs.
+    async def astream(self, input_data: tuple[Any, ...]) -> AsyncIterator[ProgressItem]:
+        """Stream progress items while executing the merge parser.
 
-        Args:
-            input_data: Tuple of data from all dependency nodes
-
-        Returns:
-            The parsed output data
+        Yields:
+            StreamStart, and StreamEnd with the parsed result.
 
         """
-        return self.parser_func(*input_data)
+        run_id = self.run_id or ""
+        node_id = self.name
+
+        yield StreamStart(run_id=run_id, node_id=node_id)
+
+        # Execute the parser function with unpacked inputs
+        result = self.parser_func(*input_data)
+
+        # Prepare result preview
+        result_preview = None
+        if hasattr(result, "model_dump"):
+            result_preview = result.model_dump()
+        elif result is not None:
+            result_preview = {"value": str(result)}
+
+        yield StreamEnd(run_id=run_id, node_id=node_id, result_preview=result_preview)

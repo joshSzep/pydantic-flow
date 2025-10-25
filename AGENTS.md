@@ -11,17 +11,19 @@ The framework follows pydantic-ai's lead in being developer-experience focused, 
 ### Core Principles
 
 - **Type Safety First**: Full type annotations everywhere with comprehensive IDE support
+- **Streaming-Native**: Primary APIs expose async streams of progress; non-streaming via convenience wrappers
 - **Async-First Design**: Primary APIs are async with sync wrappers where appropriate
 - **Dependency Injection**: Auto-discovery of plugins and tools with explicit configuration
 - **Fail Fast**: Rich exception context with custom exceptions for clear error handling
 - **Immutable State**: Prefer idempotent APIs over stateful ones where possible
 - **Long-Lived Agents**: Agents as persistent objects with integrated memory, tools, and durability
+- **Small Progress Vocabulary**: Focused set of progress items (tokens, tools, retrievals, fields, errors)
 
 ### Technical Standards
 
 - **Python 3.14+**: Leveraging modern Python features
 - **Modern Type Syntax**: `dict`/`list`/`tuple` over `Dict`/`List`/`Tuple`, `A | B` over `Union[A,B]`, `A | None` over `Optional[A]`
-- **Structured Data**: Pydantic models and dataclasses for all public interfaces - no bare tuples/dicts
+- **Structured Data**: Pydantic models for all public interfaces - no bare tuples/dicts
 - **Enumerations**: Type-safe enums over hard-coded strings wherever possible
 - **Absolute Imports**: One symbol per line, no relative imports
 - **Pydantic Configuration**: All config backed by Pydantic models with environment variable support
@@ -41,6 +43,7 @@ Agents are designed as long-lived objects that maintain state and context across
 - **Idempotent Operations**: State changes through explicit operations, not side effects
 - **Tool Integration**: Auto-discovered plugins with type-safe interfaces
 - **Memory Management**: Built-in support for conversation history and context
+- **Streaming Execution**: Progress visibility through async streams of events
 
 ### Plugin System
 
@@ -66,10 +69,12 @@ The framework uses entry points for auto-discovery, designed for seamless extern
 
 ### API Design
 
+- **Streaming First**: `astream()` as primary interface with `run()` convenience wrapper
 - **Direct Instantiation**: `Agent(...)` over builder patterns
 - **Dual Import Paths**: Support both `from pydantic_flow import Agent` and `from pydantic_flow.agents import Agent`
 - **Functional + Class-Based**: Solid class foundation with functional helpers
 - **Method Clarity**: Explicit operations over implicit state changes
+- **Progress Visibility**: Small vocabulary of progress items for observability
 
 ### Error Handling
 

@@ -1,5 +1,7 @@
 """Tests for ExecutionMode and flow compilation options."""
 
+from collections.abc import AsyncIterator
+
 from pydantic import BaseModel
 import pytest
 
@@ -10,6 +12,9 @@ from pydantic_flow.core.errors import FlowError
 from pydantic_flow.core.routing import T_Route
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import MergeToolNode
+from pydantic_flow.streaming.events import ProgressItem
+from pydantic_flow.streaming.events import StreamEnd
+from pydantic_flow.streaming.events import StreamStart
 
 
 class SimpleState(BaseModel):
@@ -41,9 +46,14 @@ class MergeOutput(BaseModel):
 class SimpleNode(BaseNode[SimpleState, SimpleState]):
     """Simple node for testing."""
 
-    async def run(self, input_data: SimpleState) -> SimpleState:
-        """Pass through."""
-        return input_data
+    async def astream(self, input_data: SimpleState) -> AsyncIterator[ProgressItem]:
+        """Stream while passing through."""
+        yield StreamStart(run_id=self.run_id or "", node_id=self.name)
+        yield StreamEnd(
+            run_id=self.run_id or "",
+            node_id=self.name,
+            result_preview=input_data.model_dump(),
+        )
 
 
 class TestExecutionMode:

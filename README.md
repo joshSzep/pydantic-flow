@@ -1,6 +1,6 @@
-# pydantic-flow: A Type-Safe Pydantic-AI Workflow Framework
+# pydantic-flow: A Streaming-Native Type-Safe AI Workflow Framework
 
-A modern, type-safe, composable Python framework for building AI workflows using Pydantic models as inputs and outputs for each processing node.
+A modern, type-safe, composable Python framework for building AI workflows with streaming as the primary interface. Built on Pydantic and pydantic-ai, every node exposes an async stream of progress, with non-streaming results produced by consuming the stream internally.
 
 [![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -10,13 +10,16 @@ A modern, type-safe, composable Python framework for building AI workflows using
 
 ## 🌟 Features
 
+- **Streaming-Native**: Every node streams progress items as its primary interface (`astream()`), with `run()` as a convenience wrapper
 - **Type-Safe by Design**: Full Python 3.14+ generics support with comprehensive IDE integration
 - **Pydantic-Powered**: Built around `BaseModel` for schema definition and validation
 - **Reference-Based Wiring**: Connect nodes using `.output` references, not magic strings
-- **Automatic DAG Resolution**: Intelligent dependency tracking and execution ordering using topological sorting ([learn more](docs/dag_resolution.md))
-- **Production-Ready Prompt Library**: Standalone templating system with multiple engines (f-string, Jinja2, Mustache), structured I/O, and observability
+- **pydantic-ai Integration**: Use user-supplied pydantic-ai agents directly - no wrapping or renaming
+- **Progress Vocabulary**: Small, focused set of progress items (tokens, tool calls, retrievals, partial fields, errors, heartbeats)
+- **Streaming Parser**: Tolerant incremental JSON parsing with partial field extraction
+- **Automatic DAG Resolution**: Intelligent dependency tracking and execution ordering ([learn more](docs/dag_resolution.md))
+- **Production-Ready Prompt Library**: Standalone templating system with multiple engines ([learn more](docs/prompt_library.md))
 - **Serializable & Inspectable**: Full observability and debugging support with OpenTelemetry integration
-- **Built-in Node Types**: Comprehensive set of workflow building blocks
 
 ## 🚀 Quick Start
 
@@ -26,75 +29,86 @@ A modern, type-safe, composable Python framework for building AI workflows using
 pip install pydantic-flow
 ```
 
-### Basic Example
+### Streaming Example with pydantic-ai
 
 ```python
 import asyncio
 from pydantic import BaseModel
-from pydantic_flow import Flow, PromptNode, ParserNode, ToolNode
+from pydantic_ai import Agent
+from pydantic_flow import AgentNode, iter_tokens
 
-# Define your data models
-class WeatherQuery(BaseModel):
-    location: str
-    temperature_unit: str = "celsius"
+class Query(BaseModel):
+    question: str
 
-class WeatherInfo(BaseModel):
-    temperature: float
-    condition: str
-    location: str
-
-# Define transformation functions
-def call_weather_api(query: WeatherQuery) -> WeatherInfo:
-    # Your weather API integration
-    return WeatherInfo(
-        temperature=22.5,
-        condition="sunny", 
-        location=query.location
-    )
-
-def parse_weather_response(response: str) -> WeatherInfo:
-    # Parse LLM response into structured data
-    parts = response.split("|")
-    return WeatherInfo(
-        temperature=float(parts[0]),
-        condition=parts[1].strip(),
-        location=parts[2].strip()
-    )
+# Create a user-supplied pydantic-ai agent
+agent = Agent(
+    "openai:gpt-4",
+    instructions="Be concise and helpful."
+)
 
 async def main():
-    # Create workflow nodes
-    api_node = ToolNode[WeatherQuery, WeatherInfo](
-        tool_func=call_weather_api,
-        name="weather_api"
+    # Create a streaming agent node
+    node = AgentNode[Query, str](
+        agent=agent,
+        prompt_template="{question}",
+        name="answer_node"
     )
     
-    llm_node = PromptNode[WeatherQuery, str](
-        prompt="What's the weather like in {location}?",
-        name="weather_llm"
-    )
+    query = Query(question="What is the capital of France?")
     
-    parser_node = ParserNode[str, WeatherInfo](
-        parser_func=parse_weather_response,
-        input=llm_node.output,  # Type-safe wiring!
-        name="weather_parser"
-    )
+    # Stream tokens as they arrive
+    print("Streaming response:")
+    async for token in iter_tokens(node.astream(query)):
+        print(token, end="", flush=True)
     
-    # Create and run workflow
-    flow = Flow()
-    flow.add_nodes(api_node)  # Simple API-based flow
-    
-    # Execute with type safety
-    query = WeatherQuery(location="Paris")
-    results = await flow.run(query)
-    
-    weather = results["weather_api"]  # Fully typed!
-    print(f"Temperature: {weather.temperature}°C")
+    # Or get the final result (consumes stream internally)
+    result = await node.run(query)
+    print(f"\n\nFinal result: {result}")
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+### Non-Streaming Convenience
+
+```python
+# The run() method consumes the stream and returns the final validated result
+result = await node.run(query)
+print(result)  # Fully typed and validated
+```
+
 ## 🧩 Core Concepts
+
+### Streaming-First Nodes
+
+Every node in pydantic-flow implements `astream()` as its primary interface:
+
+```python
+async def astream(self, input_data: InputT) -> AsyncIterator[ProgressItem]:
+    """Stream progress items: start, tokens, tools, fields, end."""
+```
+
+The `run()` method is a convenience wrapper that consumes the stream:
+
+```python
+async def run(self, input_data: InputT) -> OutputT:
+    """Consume the stream and return the final validated result."""
+```
+
+### Progress Items
+
+Nodes yield a small vocabulary of progress items during execution:
+
+- **StreamStart**: Execution begins
+- **TokenChunk**: Text token from LLM
+- **PartialFields**: Incremental structured field updates  
+- **ToolCall**: Tool invocation declared
+- **ToolArgProgress**: Tool arguments forming
+- **ToolResult**: Tool execution completed
+- **RetrievalItem**: Search/retrieval result
+- **NonFatalError**: Recoverable error or warning
+- **StreamEnd**: Execution completes
+- **Heartbeat**: Liveness signal during long operations
 
 ### Nodes
 

@@ -1,6 +1,6 @@
 [project]
 name = "pydantic-flow"
-version = "0.7.0"
+version = "0.8.0"
 description = "An opinionated pydantic-ai based framework with batteries included."
 readme = "README.md"
 authors = [
@@ -71,7 +71,7 @@ addopts = [
     "--cov=src/pydantic_flow",  # Coverage for pydantic_flow package
     "--cov-report=term-missing",  # Show missing lines in coverage
     "--cov-report=html",  # Generate HTML coverage report
-    "--cov-fail-under=87",  # Fail if coverage is below 87%
+    "--cov-fail-under=89",  # Fail if coverage is below 89%
 ]
 asyncio_mode = "auto"
 testpaths = ["tests"]

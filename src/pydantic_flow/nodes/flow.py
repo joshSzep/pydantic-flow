@@ -1,5 +1,6 @@
 """FlowNode implementation for composable sub-flows."""
 
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 from typing import Any
 
@@ -8,6 +9,10 @@ from pydantic import BaseModel
 from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.base import NodeWithInput
+from pydantic_flow.streaming.events import ProgressItem
+from pydantic_flow.streaming.events import StreamEnd
+from pydantic_flow.streaming.events import StreamStart
+from pydantic_flow.streaming.events import ToolResult
 
 if TYPE_CHECKING:
     from pydantic_flow.flow.flow import Flow
@@ -48,21 +53,75 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
         super().__init__(input, name)
         self.flow = flow
 
-    async def run(self, input_data: InputModel) -> OutputModel:
-        """Execute the wrapped flow with the given input.
+    async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:
+        """Stream progress items while executing the wrapped flow.
 
-        Args:
-            input_data: The input data for the wrapped flow
-
-        Returns:
-            The output from the wrapped flow execution
-
-        Raises:
-            FlowError: If the wrapped flow execution fails
-            TypeError: If input_data doesn't match the flow's expected input type
+        Yields:
+            StreamStart, progress from the wrapped flow, and StreamEnd.
 
         """
-        return await self.flow.run(input_data)
+        run_id = self.run_id or ""
+        node_id = self.name
+
+        yield StreamStart(run_id=run_id, node_id=node_id)
+
+        # Check if the flow has an astream method (future enhancement)
+        if hasattr(self.flow, "astream"):
+            # Stream from the flow
+            result = None
+            result_preview = None
+            async for item in self.flow.astream(input_data):  # type: ignore
+                # Don't forward StreamStart/StreamEnd from wrapped flow
+                if isinstance(item, StreamStart):
+                    continue
+                elif isinstance(item, StreamEnd):
+                    # Capture result
+                    result_preview = item.result_preview
+                elif isinstance(item, ToolResult) and item.result:
+                    # Capture actual result if available
+                    result = item.result
+                else:
+                    # Forward other progress items
+                    yield item
+
+            # Emit ToolResult with actual result if we have it
+            if result is not None:
+                yield ToolResult(
+                    run_id=run_id,
+                    node_id=node_id,
+                    tool_name="flow",
+                    call_id="",
+                    result=result,
+                    error=None,
+                )
+
+            # Emit our own StreamEnd with the result
+            yield StreamEnd(
+                run_id=run_id, node_id=node_id, result_preview=result_preview
+            )
+        else:
+            # Fall back to run() and wrap result
+            result = await self.flow.run(input_data)
+
+            # Emit ToolResult with the actual result
+            yield ToolResult(
+                run_id=run_id,
+                node_id=node_id,
+                tool_name="flow",
+                call_id="",
+                result=result,
+                error=None,
+            )
+
+            result_preview = None
+            if hasattr(result, "model_dump"):
+                result_preview = result.model_dump()
+            elif result is not None:
+                result_preview = {"value": str(result)}
+
+            yield StreamEnd(
+                run_id=run_id, node_id=node_id, result_preview=result_preview
+            )
 
     @property
     def dependencies(self) -> list[BaseNode[Any, Any]]:

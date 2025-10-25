@@ -1,10 +1,13 @@
 """MergePromptNode implementation for multi-input prompt generation."""
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 from pydantic_flow.nodes.base import MergeNode
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.prompt import PromptConfig
+from pydantic_flow.streaming.events import ProgressItem
+from pydantic_flow.streaming.events import StreamStart
 
 
 class MergePromptNode[*InputTs, OutputT](MergeNode[*InputTs, OutputT]):
@@ -51,19 +54,18 @@ class MergePromptNode[*InputTs, OutputT](MergeNode[*InputTs, OutputT]):
         self.model = model
         self.config = config or PromptConfig()
 
-    async def run(self, input_data: tuple[Any, ...]) -> OutputT:
-        """Execute the prompt with merged inputs.
+    async def astream(self, input_data: tuple[Any, ...]) -> AsyncIterator[ProgressItem]:
+        """Stream progress items while executing the merge prompt.
 
-        Args:
-            input_data: Tuple of data from all dependency nodes
-
-        Returns:
-            The LLM's response
-
-        Raises:
-            NotImplementedError: LLM integration not yet implemented
+        Yields:
+            StreamStart and raises NotImplementedError.
 
         """
+        run_id = self.run_id or ""
+        node_id = self.name
+
+        yield StreamStart(run_id=run_id, node_id=node_id)
+
         msg = (
             "MergePromptNode LLM integration not yet implemented. "
             "Use MergeToolNode with a custom LLM wrapper function instead."

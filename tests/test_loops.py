@@ -1,6 +1,7 @@
 """Tests for loop support with conditional routing."""
 
 import asyncio
+from collections.abc import AsyncIterator
 
 from pydantic import BaseModel
 import pytest
@@ -16,6 +17,9 @@ from pydantic_flow.core.routing import T_Route
 from pydantic_flow.engine.stepper import EngineConfig
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import NodeWithInput
+from pydantic_flow.streaming.events import ProgressItem
+from pydantic_flow.streaming.events import StreamEnd
+from pydantic_flow.streaming.events import StreamStart
 
 
 class CounterState(BaseModel):
@@ -27,25 +31,42 @@ class CounterState(BaseModel):
 class IncrementNode(BaseNode[CounterState, CounterState]):
     """Node that increments a counter."""
 
-    async def run(self, input_data: CounterState) -> CounterState:
-        """Increment the counter."""
-        return CounterState(n=input_data.n + 1)
+    async def astream(self, input_data: CounterState) -> AsyncIterator[ProgressItem]:
+        """Stream while incrementing the counter."""
+        yield StreamStart(run_id=self.run_id or "", node_id=self.name)
+        result = CounterState(n=input_data.n + 1)
+        yield StreamEnd(
+            run_id=self.run_id or "",
+            node_id=self.name,
+            result_preview=result.model_dump(),
+        )
 
 
 class StartNode(BaseNode[CounterState, CounterState]):
     """Start node that passes through input."""
 
-    async def run(self, input_data: CounterState) -> CounterState:
-        """Pass through the input."""
-        return input_data
+    async def astream(self, input_data: CounterState) -> AsyncIterator[ProgressItem]:
+        """Stream while passing through the input."""
+        yield StreamStart(run_id=self.run_id or "", node_id=self.name)
+        yield StreamEnd(
+            run_id=self.run_id or "",
+            node_id=self.name,
+            result_preview=input_data.model_dump(),
+        )
 
 
 class ExecuteNode(BaseNode[CounterState, CounterState]):
     """Execute node for two-node loop."""
 
-    async def run(self, input_data: CounterState) -> CounterState:
-        """Increment by 2."""
-        return CounterState(n=input_data.n + 2)
+    async def astream(self, input_data: CounterState) -> AsyncIterator[ProgressItem]:
+        """Stream while incrementing by 2."""
+        yield StreamStart(run_id=self.run_id or "", node_id=self.name)
+        result = CounterState(n=input_data.n + 2)
+        yield StreamEnd(
+            run_id=self.run_id or "",
+            node_id=self.name,
+            result_preview=result.model_dump(),
+        )
 
 
 class OutputState(BaseModel):
@@ -264,10 +285,18 @@ class TestLoops:
         class SlowNode(BaseNode[CounterState, CounterState]):
             """Node that sleeps to trigger timeout."""
 
-            async def run(self, input_data: CounterState) -> CounterState:
+            async def astream(
+                self, input_data: CounterState
+            ) -> AsyncIterator[ProgressItem]:
                 """Sleep to accumulate time over multiple iterations."""
+                yield StreamStart(run_id=self.run_id or "", node_id=self.name)
                 await asyncio.sleep(0.3)
-                return CounterState(n=input_data.n + 1)
+                result = CounterState(n=input_data.n + 1)
+                yield StreamEnd(
+                    run_id=self.run_id or "",
+                    node_id=self.name,
+                    result_preview=result.model_dump(),
+                )
 
         slow_node = SlowNode(name="tick")
         flow.add_nodes(slow_node)
@@ -322,8 +351,11 @@ class TestLoops:
         class BrokenNode(BaseNode[CounterState, CounterState]):
             """Node that raises an exception."""
 
-            async def run(self, input_data: CounterState) -> CounterState:
+            async def astream(
+                self, input_data: CounterState
+            ) -> AsyncIterator[ProgressItem]:
                 """Raise a generic exception."""
+                yield StreamStart(run_id=self.run_id or "", node_id=self.name)
                 raise RuntimeError("Node is broken!")
 
         broken_node = BrokenNode(name="tick")
@@ -383,9 +415,17 @@ class TestLoops:
         class DependentNode(NodeWithInput[CounterState, CounterState]):
             """Node with explicit input dependency."""
 
-            async def run(self, input_data: CounterState) -> CounterState:
+            async def astream(
+                self, input_data: CounterState
+            ) -> AsyncIterator[ProgressItem]:
                 """Pass through with increment."""
-                return CounterState(n=input_data.n + 10)
+                yield StreamStart(run_id=self.run_id or "", node_id=self.name)
+                result = CounterState(n=input_data.n + 10)
+                yield StreamEnd(
+                    run_id=self.run_id or "",
+                    node_id=self.name,
+                    result_preview=result.model_dump(),
+                )
 
         dependent_node = DependentNode(input=start_node.output, name="dependent")
         flow.add_nodes(start_node, dependent_node)

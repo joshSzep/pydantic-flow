@@ -146,8 +146,9 @@ class TestNodes:
         query = WeatherQuery(location="Paris")
         result = await node.run(query)
 
-        # Should return the formatted prompt for now
-        assert "Paris" in result
+        # Test model returns a success message
+        assert isinstance(result, str)
+        assert "success" in result
 
     def test_parser_node_initialization(self):
         """Test ParserNode initialization."""
@@ -316,15 +317,31 @@ class TestFlow:
             temperature_unit: str = "celsius"
             temperature: str = "25.0"
 
-        flow = Flow(input_type=QueryWithTemp, output_type=ComplexFlowResults)
+        # Output model for the formatter
+        class FormattedString(BaseModel):
+            value: str
 
-        # Create a workflow: prompt -> parser
-        node1 = PromptNode[QueryWithTemp, str](
-            prompt="{temperature}|sunny|{location}",
+        # Custom results model for this test
+        class TestFlowResults(BaseModel):
+            prompt: FormattedString
+            parser: WeatherInfo
+
+        flow = Flow(input_type=QueryWithTemp, output_type=TestFlowResults)
+
+        # Create a workflow: format -> parser
+        # Use ToolNode to format the string
+        def format_weather_string(query: QueryWithTemp) -> FormattedString:
+            return FormattedString(value=f"{query.temperature}|sunny|{query.location}")
+
+        def parse_formatted(formatted: FormattedString) -> WeatherInfo:
+            return parse_weather_string(formatted.value)
+
+        node1 = ToolNode[QueryWithTemp, FormattedString](
+            tool_func=format_weather_string,
             name="prompt",
         )
-        node2 = ParserNode[str, WeatherInfo](
-            parser_func=parse_weather_string,
+        node2 = ParserNode[FormattedString, WeatherInfo](
+            parser_func=parse_formatted,
             input=node1.output,
             name="parser",
         )
@@ -556,14 +573,14 @@ class TestAdvancedNodes:
     def test_prompt_config(self):
         """Test PromptConfig functionality."""
         config = PromptConfig(
-            model="custom-model", system_prompt="You are helpful", result_type=str
+            model="test", system_prompt="You are helpful", result_type=str
         )
 
         node = PromptNode[WeatherQuery, str](
             prompt="Test prompt", config=config, name="test_node"
         )
 
-        assert node.config.model == "custom-model"
+        assert node.config.model == "test"
         assert node.config.system_prompt == "You are helpful"
         assert node.config.result_type is str
 
@@ -572,7 +589,7 @@ class TestAdvancedNodes:
         node = PromptNode[WeatherQuery, str](prompt="Test prompt", name="test_node")
 
         # Should use default config
-        assert node.config.model == "openai:gpt-4"
+        assert node.config.model == "test"
         assert node.config.system_prompt is None
         assert node.config.result_type is None
 

@@ -1,5 +1,6 @@
 """IfNode implementation for conditional branching."""
 
+from collections.abc import AsyncIterator
 from collections.abc import Callable
 from typing import Any
 
@@ -7,6 +8,9 @@ from pydantic import BaseModel
 
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.base import NodeWithInput
+from pydantic_flow.streaming.events import ProgressItem
+from pydantic_flow.streaming.events import StreamEnd
+from pydantic_flow.streaming.events import StreamStart
 
 
 class IfNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
@@ -49,17 +53,30 @@ class IfNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
         deps.extend(self.if_false.dependencies)
         return deps
 
-    async def run(self, input_data: Any) -> OutputModel:
-        """Execute the appropriate branch based on the predicate.
+    async def astream(self, input_data: Any) -> AsyncIterator[ProgressItem]:
+        """Stream progress items while executing the conditional branch.
 
-        Args:
-            input_data: The input data for this node
-
-        Returns:
-            The output from the chosen branch
+        Yields:
+            StreamStart, progress from the chosen branch, and StreamEnd.
 
         """
-        if self.predicate(input_data):
-            return await self.if_true.run(input_data)
-        else:
-            return await self.if_false.run(input_data)
+        run_id = self.run_id or ""
+        node_id = self.name
+
+        yield StreamStart(run_id=run_id, node_id=node_id)
+
+        # Evaluate predicate and choose branch
+        chosen_branch = self.if_true if self.predicate(input_data) else self.if_false
+
+        # Stream from the chosen branch
+        result_preview = None
+        async for item in chosen_branch.astream(input_data):
+            # Forward all items from the branch, but don't forward its StreamEnd
+            if not isinstance(item, StreamEnd):
+                yield item
+            else:
+                # Save the result from the branch's StreamEnd
+                result_preview = item.result_preview
+
+        # Emit our own StreamEnd with the branch's result
+        yield StreamEnd(run_id=run_id, node_id=node_id, result_preview=result_preview)

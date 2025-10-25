@@ -1,11 +1,16 @@
 """ParserNode implementation for custom output transformation."""
 
+from collections.abc import AsyncIterator
 from collections.abc import Callable
 
 from pydantic import BaseModel
 
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.base import NodeWithInput
+from pydantic_flow.streaming.events import ProgressItem
+from pydantic_flow.streaming.events import StreamEnd
+from pydantic_flow.streaming.events import StreamStart
+from pydantic_flow.streaming.events import ToolResult
 
 
 class ParserNode[InputT, OutputModel: BaseModel](NodeWithInput[InputT, OutputModel]):
@@ -32,14 +37,36 @@ class ParserNode[InputT, OutputModel: BaseModel](NodeWithInput[InputT, OutputMod
         super().__init__(input, name)
         self.parser_func = parser_func
 
-    async def run(self, input_data: InputT) -> OutputModel:
-        """Execute the parser function with the given input.
+    async def astream(self, input_data: InputT) -> AsyncIterator[ProgressItem]:
+        """Stream progress items while executing the parser.
 
-        Args:
-            input_data: The input data for this node
-
-        Returns:
-            The transformed output data
+        Yields:
+            StreamStart, and StreamEnd with the transformed result.
 
         """
-        return self.parser_func(input_data)
+        run_id = self.run_id or ""
+        node_id = self.name
+
+        yield StreamStart(run_id=run_id, node_id=node_id)
+
+        # Execute the parser function
+        result = self.parser_func(input_data)
+
+        # Emit result (actual object for run() to extract)
+        yield ToolResult(
+            run_id=run_id,
+            node_id=node_id,
+            tool_name="parser",
+            call_id="",
+            result=result,
+            error=None,
+        )
+
+        # Prepare result preview for StreamEnd
+        result_preview = None
+        if hasattr(result, "model_dump"):
+            result_preview = result.model_dump()
+        elif result is not None:
+            result_preview = {"value": str(result)}
+
+        yield StreamEnd(run_id=run_id, node_id=node_id, result_preview=result_preview)

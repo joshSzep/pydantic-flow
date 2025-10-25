@@ -1,12 +1,19 @@
 """MergeToolNode implementation for multi-input tool execution."""
 
+from collections.abc import AsyncIterator
 from collections.abc import Callable
 from typing import Any
+import uuid
 
 from pydantic import BaseModel
 
 from pydantic_flow.nodes.base import MergeNode
 from pydantic_flow.nodes.base import NodeOutput
+from pydantic_flow.streaming.events import ProgressItem
+from pydantic_flow.streaming.events import StreamEnd
+from pydantic_flow.streaming.events import StreamStart
+from pydantic_flow.streaming.events import ToolCall
+from pydantic_flow.streaming.events import ToolResult
 
 
 class MergeToolNode[*InputTs, OutputModel: BaseModel](MergeNode[*InputTs, OutputModel]):
@@ -49,14 +56,54 @@ class MergeToolNode[*InputTs, OutputModel: BaseModel](MergeNode[*InputTs, Output
         super().__init__(inputs, name)
         self.tool_func = tool_func
 
-    async def run(self, input_data: tuple[Any, ...]) -> OutputModel:
-        """Execute the tool function with merged inputs.
+    async def astream(self, input_data: tuple[Any, ...]) -> AsyncIterator[ProgressItem]:
+        """Stream progress items while executing the merge tool.
 
-        Args:
-            input_data: Tuple of data from all dependency nodes
-
-        Returns:
-            The tool's output data
+        Yields:
+            StreamStart, ToolCall, ToolResult, and StreamEnd.
 
         """
-        return self.tool_func(*input_data)
+        call_id = str(uuid.uuid4())
+        run_id = self.run_id or ""
+        node_id = self.name
+
+        yield StreamStart(run_id=run_id, node_id=node_id)
+
+        # Emit tool call intent
+        yield ToolCall(
+            run_id=run_id,
+            node_id=node_id,
+            tool_name=self.tool_func.__name__,
+            call_id=call_id,
+        )
+
+        # Execute the tool with unpacked inputs
+        try:
+            result = self.tool_func(*input_data)
+            yield ToolResult(
+                run_id=run_id,
+                node_id=node_id,
+                tool_name=self.tool_func.__name__,
+                call_id=call_id,
+                result=result,
+            )
+
+            # Prepare result preview
+            result_preview = None
+            if hasattr(result, "model_dump"):
+                result_preview = result.model_dump()
+            elif result is not None:
+                result_preview = {"value": str(result)}
+
+            yield StreamEnd(
+                run_id=run_id, node_id=node_id, result_preview=result_preview
+            )
+        except Exception as e:
+            yield ToolResult(
+                run_id=run_id,
+                node_id=node_id,
+                tool_name=self.tool_func.__name__,
+                call_id=call_id,
+                error=str(e),
+            )
+            raise
