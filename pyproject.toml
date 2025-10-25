@@ -1,6 +1,6 @@
 [project]
 name = "pydantic-flow"
-version = "0.8.0"
+version = "0.9.0"
 description = "An opinionated pydantic-ai based framework with batteries included."
 readme = "README.md"
 authors = [

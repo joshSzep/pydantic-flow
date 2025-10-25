@@ -38,10 +38,14 @@ from pydantic_flow.nodes.agent import LLMNode
 from pydantic_flow.nodes.retriever import RetrieverNode
 from pydantic_flow.project_info import ProjectInfo
 from pydantic_flow.project_info import get_project_info
+from pydantic_flow.prompt import AsIsParser
 from pydantic_flow.prompt import ChatMessage
 from pydantic_flow.prompt import ChatPromptTemplate
 from pydantic_flow.prompt import ChatRole
+from pydantic_flow.prompt import DelimitedParser
 from pydantic_flow.prompt import JoinStrategy
+from pydantic_flow.prompt import JsonModelParser
+from pydantic_flow.prompt import OutputParser
 from pydantic_flow.prompt import PromptTemplate
 from pydantic_flow.prompt import TemplateFormat
 from pydantic_flow.prompt import from_template
@@ -67,12 +71,14 @@ from pydantic_flow.streaming.parser import parse_json_stream
 # Public API - supports both direct and module imports
 __all__ = [
     "AgentNode",
+    "AsIsParser",
     "BaseNode",
     "ChatMessage",
     "ChatPromptTemplate",
     "ChatRole",
     "CompiledFlow",
     "CyclicDependencyError",
+    "DelimitedParser",
     "ExecutionMode",
     "Flow",
     "FlowError",
@@ -81,6 +87,7 @@ __all__ = [
     "Heartbeat",
     "IfNode",
     "JoinStrategy",
+    "JsonModelParser",
     "LLMNode",
     "MergeNode",
     "MergeParserNode",
@@ -89,6 +96,7 @@ __all__ = [
     "NodeOutput",
     "NodeWithInput",
     "NonFatalError",
+    "OutputParser",
     "ParserNode",
     "PartialFields",
     "ProgressItem",

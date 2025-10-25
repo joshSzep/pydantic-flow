@@ -115,13 +115,42 @@ Nodes yield a small vocabulary of progress items during execution:
 Nodes are the building blocks of your workflow. Each node is typed with input and output models:
 
 #### PromptNode[InputModel, OutputType]
-Calls an LLM using a templated prompt:
+Calls an LLM using a templated prompt. Supports simple string templates or full `PromptTemplate`/`ChatPromptTemplate` objects with multiple formats (f-string, Jinja2, Mustache):
 
 ```python
+# Simple string template (backward compatible)
 weather_prompt = PromptNode[WeatherQuery, str](
     prompt="Get weather for {location} in {temperature_unit}",
-    model="openai:gpt-4",
+    config=PromptConfig(model="openai:gpt-4"),
     name="weather_prompt"
+)
+
+# Advanced: Full PromptTemplate with Jinja2
+from pydantic_flow import PromptTemplate, TemplateFormat
+
+template = PromptTemplate[WeatherQuery, str](
+    template="""Get weather for {{ location }}.
+{% if temperature_unit %}
+Use {{ temperature_unit }} for temperature.
+{% endif %}""",
+    format=TemplateFormat.JINJA2,
+    input_model=WeatherQuery,
+)
+
+weather_prompt = PromptNode[WeatherQuery, str](
+    prompt=template,
+    config=PromptConfig(model="openai:gpt-4"),
+    name="weather_prompt"
+)
+
+# With structured output parser
+from pydantic_flow import JsonModelParser
+
+structured_prompt = PromptNode[WeatherQuery, WeatherInfo](
+    prompt=template,
+    config=PromptConfig(model="openai:gpt-4"),
+    output_parser=JsonModelParser(model=WeatherInfo),
+    name="structured_weather"
 )
 ```
 

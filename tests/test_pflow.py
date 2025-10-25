@@ -134,7 +134,7 @@ class TestNodes:
             name="weather_prompt",
         )
         assert node.name == "weather_prompt"
-        assert node.prompt == "What's the weather in {location}?"
+        assert node._raw_prompt == "What's the weather in {location}?"
 
     @pytest.mark.asyncio
     async def test_prompt_node_execution(self):
