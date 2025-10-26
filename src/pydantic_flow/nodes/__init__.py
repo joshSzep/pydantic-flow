@@ -13,6 +13,10 @@ from pydantic_flow.nodes.base import RunnableNode as RunnableNode
 # Concrete node implementations
 from pydantic_flow.nodes.conditional import IfNode as IfNode
 from pydantic_flow.nodes.flow import FlowNode as FlowNode
+from pydantic_flow.nodes.human import ApprovalNode as ApprovalNode
+from pydantic_flow.nodes.human import HumanInputRequest as HumanInputRequest
+from pydantic_flow.nodes.human import HumanNode as HumanNode
+from pydantic_flow.nodes.human import HumanResponse as HumanResponse
 from pydantic_flow.nodes.merge_parser import MergeParserNode as MergeParserNode
 from pydantic_flow.nodes.merge_prompt import MergePromptNode as MergePromptNode
 from pydantic_flow.nodes.merge_tool import MergeToolNode as MergeToolNode

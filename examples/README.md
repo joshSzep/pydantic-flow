@@ -4,7 +4,19 @@ This directory contains example scripts demonstrating various features of the py
 
 ## Available Examples
 
-### 📝 `example.py`
+### � Human-in-the-Loop (HITL)
+
+**Directory:** `HITL.md` | **Files:** `hitl_simple.py`, `hitl_complex.py`
+
+Comprehensive examples of interrupt handlers, approval workflows, and priority-based execution:
+- Conditional interruption based on progress events
+- Multi-stage approval with priority handlers
+- Security checks, risk analysis, compliance validation
+- Checkpoint creation and metadata tracking
+
+**See:** [HITL.md](HITL.md) for detailed documentation
+
+### �📝 `example.py`
 **Complete Weather Workflow Demo**
 
 A comprehensive demonstration of the pydantic-flow framework featuring:

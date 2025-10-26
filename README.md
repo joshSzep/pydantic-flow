@@ -18,6 +18,7 @@ A modern, type-safe, composable Python framework for building AI workflows with 
 - **Progress Vocabulary**: Small, focused set of progress items (tokens, tool calls, retrievals, partial fields, errors, heartbeats)
 - **Streaming Parser**: Tolerant incremental JSON parsing with partial field extraction
 - **Automatic DAG Resolution**: Intelligent dependency tracking and execution ordering ([learn more](docs/dag_resolution.md))
+- **Human-in-the-Loop (HITL)**: Comprehensive interruption, approval, and resumption support ([learn more](docs/hitl.md))
 - **Production-Ready Prompt Library**: Standalone templating system with multiple engines ([learn more](docs/prompt_library.md))
 - **Serializable & Inspectable**: Full observability and debugging support with OpenTelemetry integration
 
@@ -644,6 +645,52 @@ Key benefits of sub-flow composition:
 - **Reusability**: Same sub-flow can be used in multiple parent flows
 - **Type Safety**: Full type checking across sub-flow boundaries
 - **Testing**: Sub-flows can be tested in isolation
+
+### Human-in-the-Loop (HITL)
+
+pydantic-flow provides comprehensive support for workflows that require human intervention, review, or approval:
+
+```python
+from pydantic_flow.nodes.human import HumanNode, ApprovalNode, HumanResponse
+from pydantic_flow.core.errors import InterruptionRequested
+
+# Create nodes that require human input
+review_node = HumanNode[ContentInput, HumanResponse](
+    prompt="Please review this content"
+)
+
+approval_node = ApprovalNode[ProcessedData](
+    prompt="Approve for publication?"
+)
+
+# Build flow with human checkpoints
+flow = Flow(input_type=ContentInput, output_type=HumanResponse)
+processor = PromptNode[ContentInput, str](prompt="Process content...")
+flow.add_node(processor)
+flow.add_node(review_node, dependencies=[processor])
+
+# Execute - will interrupt when human input needed
+try:
+    result = await flow.run(input_data)
+except InterruptionRequested as exc:
+    checkpoint = exc.checkpoint
+    
+    # Present to human, get response
+    response = get_human_input(checkpoint.interrupt_reason)
+    
+    # Resume execution
+    result = await flow.resume(checkpoint, inputs=input_data)
+```
+
+**Key Features:**
+- **Three-layer interruption**: Event-level, node-level, and flow-level handlers
+- **Priority-based handlers**: Control execution order (0-100, lower executes first)
+- **Checkpoints**: Serialize workflow state for resumption
+- **HumanNode**: Always interrupts for human input with dynamic prompts and options
+- **ApprovalNode**: Specialized node for yes/no decisions
+- **Conditional interruption**: Only interrupt when specific criteria are met
+
+**See [docs/hitl.md](docs/hitl.md) for complete HITL documentation.**
 
 ## 🎯 Design Philosophy
 

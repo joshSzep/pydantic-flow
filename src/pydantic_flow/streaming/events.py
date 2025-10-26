@@ -2,15 +2,78 @@
 
 This module defines a small, focused vocabulary of progress items
 that nodes emit during streaming execution.
+
+BREAKING CHANGE: Added HITL support with interrupt callbacks.
 """
 
+from collections.abc import Awaitable
+from collections.abc import Callable
 from datetime import UTC
 from datetime import datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
 from typing import Any
 
 from pydantic import BaseModel
 from pydantic import Field
+
+if TYPE_CHECKING:
+    pass
+
+
+# Forward declaration for type hints
+class InterruptDecision(BaseModel):
+    """Decision returned by interrupt callback handlers.
+
+    Attributes:
+        should_interrupt: Whether to interrupt execution.
+        reason: Human-readable explanation for the interruption decision.
+        replacement_value: Optional replacement value to inject into the stream.
+        metadata: Additional context about the decision.
+
+    """
+
+    should_interrupt: bool
+    reason: str | None = None
+    replacement_value: Any = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @staticmethod
+    def proceed(reason: str | None = None) -> InterruptDecision:
+        """Create a decision to continue execution.
+
+        Args:
+            reason: Optional explanation for continuing.
+
+        Returns:
+            InterruptDecision with should_interrupt=False.
+
+        """
+        return InterruptDecision(should_interrupt=False, reason=reason)
+
+    @staticmethod
+    def interrupt(
+        reason: str,
+        replacement_value: Any = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> InterruptDecision:
+        """Create a decision to interrupt execution.
+
+        Args:
+            reason: Explanation for interruption.
+            replacement_value: Optional value to inject into the stream.
+            metadata: Additional context about the interruption.
+
+        Returns:
+            InterruptDecision with should_interrupt=True.
+
+        """
+        return InterruptDecision(
+            should_interrupt=True,
+            reason=reason,
+            replacement_value=replacement_value,
+            metadata=metadata or {},
+        )
 
 
 class ProgressType(StrEnum):
@@ -47,20 +110,52 @@ class ProgressType(StrEnum):
 class ProgressItem(BaseModel):
     """Base class for all streaming progress events.
 
+    BREAKING CHANGE: Added interrupt_callback field to support HITL (Human-in-the-Loop).
+
     Attributes:
         type: Discriminator for the progress item type.
         timestamp: When the event occurred.
         run_id: Unique identifier for this execution run.
         node_id: Identifier of the node emitting this event.
+        interrupt_callback: Optional callback to determine if execution should be
+            interrupted.
 
     """
 
-    model_config = {"frozen": True}
+    model_config = {"frozen": False, "arbitrary_types_allowed": True}
 
     type: ProgressType
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     run_id: str = ""
     node_id: str = ""
+    interrupt_callback: (
+        Callable[[ProgressItem], Awaitable[InterruptDecision]] | None
+    ) = None
+
+    def set_interrupt_callback(
+        self, callback: Callable[[ProgressItem], Awaitable[InterruptDecision]]
+    ) -> None:
+        """Set the interrupt callback for this progress item.
+
+        Args:
+            callback: Async function that determines if execution should interrupt.
+
+        """
+        self.interrupt_callback = callback
+
+    async def check_interrupt(self) -> InterruptDecision:
+        """Check if this progress item should trigger an interrupt.
+
+        Returns:
+            InterruptDecision indicating whether to interrupt.
+
+        """
+        if self.interrupt_callback is None:
+            return InterruptDecision.proceed()
+        return await self.interrupt_callback(self)
+
+
+InterruptCallback = Callable[[ProgressItem], Awaitable[InterruptDecision]]
 
 
 class StreamStart(ProgressItem):

@@ -1,4 +1,7 @@
-"""PromptNode implementation for LLM-based processing."""
+"""PromptNode implementation for LLM-based processing.
+
+BREAKING CHANGE: Added HITL interrupt checks to PromptNode.
+"""
 
 from collections.abc import AsyncIterator
 from typing import Any
@@ -7,6 +10,8 @@ import uuid
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
+from pydantic_flow.core.errors import FlowCheckpoint
+from pydantic_flow.core.errors import InterruptionRequested
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.prompt.engines import get_renderer
@@ -96,7 +101,25 @@ class PromptNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Outpu
                 instructions=instructions,
             )  # type: ignore[assignment]
 
-    async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:
+    def _create_checkpoint(self, run_id: str) -> FlowCheckpoint:
+        """Create a minimal checkpoint for interruption.
+
+        Args:
+            run_id: The current run ID.
+
+        Returns:
+            FlowCheckpoint instance.
+
+        """
+        return FlowCheckpoint(
+            flow_id="",  # Will be set by Flow in Phase 3
+            run_id=run_id,
+            interrupted_node_id=self.name,
+            node_states={},
+            edge_history=[],
+        )
+
+    async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:  # noqa: PLR0912
         """Stream progress items while executing the LLM call.
 
         Yields:
@@ -125,23 +148,37 @@ class PromptNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Outpu
 
         actual_run_id = self.run_id or str(uuid.uuid4())
 
-        yield StreamStart(
+        start_item = StreamStart(
             run_id=actual_run_id,
             node_id=self.name,
             input_preview={"prompt": formatted_prompt[:100]},
         )
+        decision = await self._check_interrupt_handlers(start_item)
+        if decision.should_interrupt:
+            raise InterruptionRequested(
+                checkpoint=self._create_checkpoint(actual_run_id),
+                decision=decision,
+            )
+        yield start_item
 
         try:
             # Stream from agent
             async with self._agent.run_stream(formatted_prompt) as stream:
                 token_index = 0
                 async for chunk in stream.stream_text():
-                    yield TokenChunk(
+                    token_item = TokenChunk(
                         text=chunk,
                         token_index=token_index,
                         run_id=actual_run_id,
                         node_id=self.name,
                     )
+                    decision = await self._check_interrupt_handlers(token_item)
+                    if decision.should_interrupt:
+                        raise InterruptionRequested(
+                            checkpoint=self._create_checkpoint(actual_run_id),
+                            decision=decision,
+                        )
+                    yield token_item
                     token_index += 1
 
                 # Get final result
@@ -154,7 +191,7 @@ class PromptNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Outpu
                 result = await self.output_parser.parse(result_str)
 
             # Emit ToolResult with the actual result
-            yield ToolResult(
+            tool_item = ToolResult(
                 run_id=actual_run_id,
                 node_id=self.name,
                 tool_name="llm",
@@ -162,6 +199,13 @@ class PromptNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Outpu
                 result=result,
                 error=None,
             )
+            decision = await self._check_interrupt_handlers(tool_item)
+            if decision.should_interrupt:
+                raise InterruptionRequested(
+                    checkpoint=self._create_checkpoint(actual_run_id),
+                    decision=decision,
+                )
+            yield tool_item
 
             # Emit end with result preview
             result_preview = None
@@ -170,12 +214,22 @@ class PromptNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Outpu
             elif result is not None:
                 result_preview = {"value": str(result)}
 
-            yield StreamEnd(
+            end_item = StreamEnd(
                 run_id=actual_run_id,
                 node_id=self.name,
                 result_preview=result_preview,
             )
+            decision = await self._check_interrupt_handlers(end_item)
+            if decision.should_interrupt:
+                raise InterruptionRequested(
+                    checkpoint=self._create_checkpoint(actual_run_id),
+                    decision=decision,
+                )
+            yield end_item
 
+        except InterruptionRequested:
+            # Re-raise interruption requests
+            raise
         except Exception as e:
             yield NonFatalError(
                 message=f"LLM execution failed: {e}",

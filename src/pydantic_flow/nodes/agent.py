@@ -1,4 +1,7 @@
-"""Streaming-native PromptNode for LLM operations."""
+"""Streaming-native PromptNode for LLM operations.
+
+BREAKING CHANGE: Added HITL interrupt checks to AgentNode and LLMNode.
+"""
 
 from collections.abc import AsyncIterator
 from typing import Any
@@ -7,6 +10,7 @@ import uuid
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
+from pydantic_flow.core.errors import InterruptionRequested
 from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.streaming.events import NonFatalError
 from pydantic_flow.streaming.events import ProgressItem
@@ -65,7 +69,35 @@ class AgentNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Output
             run_id=self.run_id or str(uuid.uuid4()),
             node_id=self.name,
         ):
+            # Attach interrupt handlers and check
+            decision = await self._check_interrupt_handlers(item)
+            if decision.should_interrupt:
+                raise InterruptionRequested(
+                    checkpoint=self._create_checkpoint(input_data, item),
+                    decision=decision,
+                )
             yield item
+
+    def _create_checkpoint(self, input_data: InputModel, item: ProgressItem) -> Any:
+        """Create a checkpoint for resumption (placeholder).
+
+        This will be fully implemented when Flow-level checkpointing is added.
+
+        Args:
+            input_data: Current input data.
+            item: Progress item at interruption point.
+
+        Returns:
+            Placeholder checkpoint data.
+
+        """
+        # For now, return minimal checkpoint info
+        # Full implementation will happen in Phase 3
+        return {
+            "node_id": self.name,
+            "run_id": self.run_id,
+            "item_type": item.type,
+        }
 
     def _format_prompt(self, input_data: InputModel) -> str:
         """Format the prompt template with input data.
@@ -130,23 +162,37 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
         prompt = self.prompt_template.format(**input_data.model_dump())
         actual_run_id = self.run_id or str(uuid.uuid4())
 
-        yield StreamStart(
+        start_item = StreamStart(
             run_id=actual_run_id,
             node_id=self.name,
             input_preview={"prompt": prompt[:100]},
         )
+        decision = await self._check_interrupt_handlers(start_item)
+        if decision.should_interrupt:
+            raise InterruptionRequested(
+                checkpoint=self._create_checkpoint(input_data, start_item),
+                decision=decision,
+            )
+        yield start_item
 
         try:
             # Stream from agent
             async with self.agent.run_stream(prompt) as stream:
                 token_index = 0
                 async for chunk in stream.stream_text():
-                    yield TokenChunk(
+                    token_item = TokenChunk(
                         text=chunk,
                         token_index=token_index,
                         run_id=actual_run_id,
                         node_id=self.name,
                     )
+                    decision = await self._check_interrupt_handlers(token_item)
+                    if decision.should_interrupt:
+                        raise InterruptionRequested(
+                            checkpoint=self._create_checkpoint(input_data, token_item),
+                            decision=decision,
+                        )
+                    yield token_item
                     token_index += 1
 
                 # Get final structured result
@@ -157,12 +203,22 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
             if hasattr(result, "model_dump"):
                 result_preview = result.model_dump()
 
-            yield StreamEnd(
+            end_item = StreamEnd(
                 run_id=actual_run_id,
                 node_id=self.name,
                 result_preview=result_preview,
             )
+            decision = await self._check_interrupt_handlers(end_item)
+            if decision.should_interrupt:
+                raise InterruptionRequested(
+                    checkpoint=self._create_checkpoint(input_data, end_item),
+                    decision=decision,
+                )
+            yield end_item
 
+        except InterruptionRequested:
+            # Re-raise interruption requests
+            raise
         except Exception as e:
             yield NonFatalError(
                 message=f"LLM execution failed: {e}",
@@ -171,3 +227,24 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
                 node_id=self.name,
             )
             raise
+
+    def _create_checkpoint(self, input_data: InputModel, item: ProgressItem) -> Any:
+        """Create a checkpoint for resumption (placeholder).
+
+        This will be fully implemented when Flow-level checkpointing is added.
+
+        Args:
+            input_data: Current input data.
+            item: Progress item at interruption point.
+
+        Returns:
+            Placeholder checkpoint data.
+
+        """
+        # For now, return minimal checkpoint info
+        # Full implementation will happen in Phase 3
+        return {
+            "node_id": self.name,
+            "run_id": self.run_id,
+            "item_type": item.type,
+        }

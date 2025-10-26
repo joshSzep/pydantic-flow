@@ -9,6 +9,9 @@ consuming the stream internally.
 """
 
 from pydantic_flow.core import FlowTimeoutError
+from pydantic_flow.core import HandlerPriority
+from pydantic_flow.core import InterruptHandlerRegistration
+from pydantic_flow.core import InterruptionRequested
 from pydantic_flow.core import RecursionLimitError
 from pydantic_flow.core import Route
 from pydantic_flow.core import RouterFunction
@@ -19,8 +22,12 @@ from pydantic_flow.flow import CyclicDependencyError
 from pydantic_flow.flow import ExecutionMode
 from pydantic_flow.flow import Flow
 from pydantic_flow.flow import FlowError
+from pydantic_flow.nodes import ApprovalNode
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import FlowNode
+from pydantic_flow.nodes import HumanInputRequest
+from pydantic_flow.nodes import HumanNode
+from pydantic_flow.nodes import HumanResponse
 from pydantic_flow.nodes import IfNode
 from pydantic_flow.nodes import MergeNode
 from pydantic_flow.nodes import MergeParserNode
@@ -50,6 +57,8 @@ from pydantic_flow.prompt import PromptTemplate
 from pydantic_flow.prompt import TemplateFormat
 from pydantic_flow.prompt import from_template
 from pydantic_flow.streaming import Heartbeat
+from pydantic_flow.streaming import InterruptCallback
+from pydantic_flow.streaming import InterruptDecision
 from pydantic_flow.streaming import NonFatalError
 from pydantic_flow.streaming import PartialFields
 from pydantic_flow.streaming import ProgressItem
@@ -71,6 +80,7 @@ from pydantic_flow.streaming.parser import parse_json_stream
 # Public API - supports both direct and module imports
 __all__ = [
     "AgentNode",
+    "ApprovalNode",
     "AsIsParser",
     "BaseNode",
     "ChatMessage",
@@ -84,8 +94,16 @@ __all__ = [
     "FlowError",
     "FlowNode",
     "FlowTimeoutError",
+    "HandlerPriority",
     "Heartbeat",
+    "HumanInputRequest",
+    "HumanNode",
+    "HumanResponse",
     "IfNode",
+    "InterruptCallback",
+    "InterruptDecision",
+    "InterruptHandlerRegistration",
+    "InterruptionRequested",
     "JoinStrategy",
     "JsonModelParser",
     "LLMNode",

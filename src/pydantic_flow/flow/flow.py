@@ -2,6 +2,9 @@
 
 This module provides the Flow class that manages workflow execution,
 dependency resolution, and DAG validation.
+
+BREAKING CHANGE: Added HITL (Human-in-the-Loop) support with flow_id,
+interrupt handlers, checkpoints, and resumption.
 """
 
 from collections import deque
@@ -9,10 +12,15 @@ from collections.abc import Callable
 from enum import StrEnum
 from typing import Any
 from typing import TypeVar
+import uuid
 
 from pydantic import BaseModel
 
+from pydantic_flow.core.errors import FlowCheckpoint
 from pydantic_flow.core.errors import FlowError
+from pydantic_flow.core.errors import HandlerPriority
+from pydantic_flow.core.errors import InterruptHandlerRegistration
+from pydantic_flow.core.errors import InterruptionRequested
 from pydantic_flow.core.routing import T_Route
 from pydantic_flow.core.run_config import RunConfig
 from pydantic_flow.engine.stepper import ConditionalEdge
@@ -22,6 +30,9 @@ from pydantic_flow.flow.exceptions import CyclicDependencyError
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes.protocols import has_input_dependency
 from pydantic_flow.nodes.protocols import has_multiple_inputs
+from pydantic_flow.streaming.events import InterruptCallback
+from pydantic_flow.streaming.events import InterruptDecision
+from pydantic_flow.streaming.events import ProgressItem
 
 InputT = TypeVar("InputT", bound=BaseModel)
 OutputT = TypeVar("OutputT", bound=BaseModel)
@@ -69,6 +80,149 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         self._edges: dict[str, list[str]] = {}
         self._conditional_edges: list[ConditionalEdge[Any]] = []
         self._entry_nodes: list[str] | None = None
+        self.flow_id: str = str(uuid.uuid4())
+        self._interrupt_handlers: list[InterruptHandlerRegistration] = []
+        self._edge_history: list[tuple[str, str]] = []
+
+    def register_interrupt_handler(
+        self,
+        callback: InterruptCallback,
+        priority: int = HandlerPriority.NORMAL,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Register a flow-level interrupt callback handler.
+
+        Flow-level handlers execute for all progress items across all nodes.
+        They run after node-level handlers.
+
+        Args:
+            callback: Async function that receives ProgressItem and returns
+                InterruptDecision.
+            priority: Priority level (0-100, lower executes first).
+            metadata: Optional metadata about the handler.
+
+        """
+        registration = InterruptHandlerRegistration(
+            callback=callback,
+            priority=priority,
+            metadata=metadata or {},
+        )
+        self._interrupt_handlers.append(registration)
+        # Keep handlers sorted by priority
+        self._interrupt_handlers.sort(key=lambda h: h.priority)
+
+    def clear_interrupt_handlers(self) -> None:
+        """Remove all registered flow-level interrupt handlers."""
+        self._interrupt_handlers.clear()
+
+    async def _check_interrupt_handlers(self, item: ProgressItem) -> InterruptDecision:
+        """Check all registered flow-level interrupt handlers.
+
+        Executes handlers in priority order. If any handler requests
+        interruption, returns immediately with that decision.
+
+        Args:
+            item: The progress item to check.
+
+        Returns:
+            InterruptDecision indicating whether to interrupt.
+
+        """
+        for handler in self._interrupt_handlers:
+            decision = await handler.callback(item)
+            if decision.should_interrupt:
+                return decision
+        return InterruptDecision.proceed()
+
+    def _create_checkpoint(
+        self, interrupted_node_id: str, run_id: str
+    ) -> FlowCheckpoint:
+        """Create a checkpoint for flow resumption.
+
+        Args:
+            interrupted_node_id: ID of the node where interruption occurred.
+            run_id: Current run identifier.
+
+        Returns:
+            FlowCheckpoint with captured state.
+
+        """
+        return FlowCheckpoint(
+            flow_id=self.flow_id,
+            run_id=run_id,
+            interrupted_node_id=interrupted_node_id,
+            node_states=self._results.copy(),
+            edge_history=self._edge_history.copy(),
+        )
+
+    async def resume(self, checkpoint: FlowCheckpoint, inputs: InputT) -> OutputT:
+        """Resume flow execution from a checkpoint.
+
+        Args:
+            checkpoint: The checkpoint to resume from.
+            inputs: Original input data.
+
+        Returns:
+            Flow output.
+
+        Raises:
+            FlowError: If checkpoint is invalid or execution fails.
+
+        """
+        # Validate checkpoint belongs to this flow
+        if checkpoint.flow_id != self.flow_id:
+            msg = (
+                f"Checkpoint flow_id mismatch: expected {self.flow_id}, "
+                f"got {checkpoint.flow_id}"
+            )
+            raise FlowError(msg)
+
+        # Restore state from checkpoint
+        self._results = checkpoint.node_states.copy()
+        self._edge_history = checkpoint.edge_history.copy()
+
+        # Find the interrupted node
+        interrupted_node = None
+        for node in self.nodes:
+            if node.name == checkpoint.interrupted_node_id:
+                interrupted_node = node
+                break
+
+        if interrupted_node is None:
+            msg = f"Interrupted node {checkpoint.interrupted_node_id} not found in flow"
+            raise FlowError(msg)
+
+        # Resume from the node after the interrupted one
+        resume_from_index = self._execution_order.index(interrupted_node) + 1
+
+        try:
+            for node in self._execution_order[resume_from_index:]:
+                # Determine input data for the node
+                if has_multiple_inputs(node):
+                    input_data: Any = tuple(
+                        self._results[dep.node.name] for dep in node.inputs
+                    )
+                elif has_input_dependency(node):
+                    input_node = node.input.node
+                    if input_node.name not in self._results:
+                        msg = f"Input node {input_node.name} has not been executed"
+                        raise FlowError(msg)
+                    input_data = self._results[input_node.name]
+                else:
+                    input_data = inputs
+
+                # Execute the node
+                result = await node.run(input_data)  # type: ignore[union-attr]
+                self._results[node.name] = result
+
+            # Construct the output BaseModel from the results
+            return self._output_type(**self._results)
+
+        except Exception as e:
+            if isinstance(e, FlowError):
+                raise
+            msg = f"Flow resumption failed: {e}"
+            raise FlowError(msg) from e
 
     def add_nodes(self, *nodes: BaseNode[InputT | Any, Any]) -> None:
         """Add one or more nodes to the flow.
@@ -134,6 +288,7 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         Raises:
             FlowError: If the flow execution fails
             TypeError: If the input type doesn't match the expected input_type
+            InterruptionRequested: If a HITL interrupt handler requests stopping
 
         """
         # Runtime validation of input type
@@ -144,6 +299,7 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             raise TypeError(msg)
 
         self._results = {}
+        self._edge_history = []
 
         try:
             for node in self._execution_order:
@@ -160,6 +316,8 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                         msg = f"Input node {input_node.name} has not been executed"
                         raise FlowError(msg)
                     input_data = self._results[input_node.name]
+                    # Track edge
+                    self._edge_history.append((input_node.name, node.name))
                 else:
                     # No-input node: takes input from flow inputs
                     input_data = inputs
@@ -170,6 +328,13 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
             # Construct the output BaseModel from the results
             return self._output_type(**self._results)
+
+        except InterruptionRequested as e:
+            # Enhance checkpoint with flow-level information
+            e.checkpoint.flow_id = self.flow_id
+            e.checkpoint.node_states = self._results.copy()
+            e.checkpoint.edge_history = self._edge_history.copy()
+            raise
 
         except Exception as e:
             # Wrap any other exception in a FlowError for consistency
@@ -451,10 +616,32 @@ class CompiledFlow[InputT: BaseModel, OutputT: BaseModel]:
         Returns:
             Flow output.
 
+        Raises:
+            InterruptionRequested: If a HITL interrupt occurs.
+
         """
         if self.use_stepper and self.engine is not None:
             return await self.engine.invoke(inputs, config)
         if self.flow is not None:
             return await self.flow.run(inputs)
         msg = "CompiledFlow has neither flow nor engine configured"
+        raise FlowError(msg)
+
+    async def resume(self, checkpoint: FlowCheckpoint, inputs: InputT) -> OutputT:
+        """Resume flow execution from a checkpoint.
+
+        Args:
+            checkpoint: The checkpoint to resume from.
+            inputs: Original input data.
+
+        Returns:
+            Flow output.
+
+        Raises:
+            FlowError: If checkpoint is invalid or engine doesn't support resumption.
+
+        """
+        if self.flow is not None:
+            return await self.flow.resume(checkpoint, inputs)
+        msg = "Resumption not yet supported for stepper engine"
         raise FlowError(msg)
