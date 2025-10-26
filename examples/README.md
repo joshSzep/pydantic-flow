@@ -4,7 +4,43 @@ This directory contains example scripts demonstrating various features of the py
 
 ## Available Examples
 
-### � Human-in-the-Loop (HITL)
+### 🧠 Memory Modes
+
+**Files:** `memory_modes_simple.py`, `memory_modes_advanced.py`
+
+Examples demonstrating FlowNode memory modes for controlling conversation history in hierarchical flows:
+
+#### Simple Examples (`memory_modes_simple.py`)
+Basic demonstrations of all three memory modes:
+- **SHARED**: Sub-flow uses parent's memory directly (default)
+- **ISOLATED**: Sub-flow gets separate memory (optionally seeded with parent's history)
+- **READONLY**: Sub-flow can read but not modify parent's memory
+
+**Run with:**
+```bash
+cd examples
+uv run python memory_modes_simple.py
+```
+
+#### Advanced Examples (`memory_modes_advanced.py`)
+Real-world use cases for each memory mode:
+1. **Parallel Research** (ISOLATED): Multiple independent tasks without cross-contamination
+2. **Background Enrichment** (READONLY): Enrich context without polluting main conversation
+3. **Sequential Conversation** (SHARED): Multi-step workflows with full context sharing
+
+**Run with:**
+```bash
+cd examples
+uv run python memory_modes_advanced.py
+```
+
+**Key concepts:**
+- Context variable propagation through async flows
+- Memory isolation for parallel sub-flows
+- Read-only access for background operations
+- Seeding isolated memory with parent context
+
+### 🔄 Human-in-the-Loop (HITL)
 
 **Directory:** `HITL.md` | **Files:** `hitl_simple.py`, `hitl_complex.py`
 

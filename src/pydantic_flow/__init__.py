@@ -22,6 +22,8 @@ from pydantic_flow.flow import CyclicDependencyError
 from pydantic_flow.flow import ExecutionMode
 from pydantic_flow.flow import Flow
 from pydantic_flow.flow import FlowError
+from pydantic_flow.memory import ConversationMemory
+from pydantic_flow.memory import MemoryConfig
 from pydantic_flow.nodes import ApprovalNode
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import FlowNode
@@ -87,6 +89,7 @@ __all__ = [
     "ChatPromptTemplate",
     "ChatRole",
     "CompiledFlow",
+    "ConversationMemory",
     "CyclicDependencyError",
     "DelimitedParser",
     "ExecutionMode",
@@ -107,6 +110,7 @@ __all__ = [
     "JoinStrategy",
     "JsonModelParser",
     "LLMNode",
+    "MemoryConfig",
     "MergeNode",
     "MergeParserNode",
     "MergePromptNode",

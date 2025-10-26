@@ -281,7 +281,7 @@ async def test_llm_node_formats_prompt():
 
     # Verify agent was called with formatted prompt
     mock_agent.run_stream.assert_called_once_with(
-        "Query: AI question, Context: deep learning"
+        "Query: AI question, Context: deep learning", message_history=None
     )
 
 

@@ -7,6 +7,8 @@ BREAKING CHANGE: Added HITL (Human-in-the-Loop) support with flow_id,
 interrupt handlers, checkpoints, and resumption.
 """
 
+from __future__ import annotations
+
 from collections import deque
 from collections.abc import Callable
 from enum import StrEnum
@@ -27,12 +29,16 @@ from pydantic_flow.engine.stepper import ConditionalEdge
 from pydantic_flow.engine.stepper import EngineConfig
 from pydantic_flow.engine.stepper import StepperEngine
 from pydantic_flow.flow.exceptions import CyclicDependencyError
+from pydantic_flow.memory import ConversationMemory
+from pydantic_flow.memory import MemoryConfig
+from pydantic_flow.memory import _active_flow_memory
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes.protocols import has_input_dependency
 from pydantic_flow.nodes.protocols import has_multiple_inputs
 from pydantic_flow.streaming.events import InterruptCallback
 from pydantic_flow.streaming.events import InterruptDecision
 from pydantic_flow.streaming.events import ProgressItem
+from pydantic_flow.streaming.events import ToolResult
 
 InputT = TypeVar("InputT", bound=BaseModel)
 OutputT = TypeVar("OutputT", bound=BaseModel)
@@ -64,12 +70,20 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         OutputT: The output type for the flow, must be a BaseModel subclass
     """
 
-    def __init__(self, *, input_type: type[InputT], output_type: type[OutputT]) -> None:
+    def __init__(
+        self,
+        *,
+        input_type: type[InputT],
+        output_type: type[OutputT],
+        memory_config: MemoryConfig | None = None,
+    ) -> None:
         """Initialize a flow with the required input and output types.
 
         Args:
             input_type: The BaseModel class that this flow accepts as input.
             output_type: The BaseModel class to construct from flow results.
+            memory_config: Optional configuration for conversation memory.
+                         If None, uses default MemoryConfig().
 
         """
         self.nodes: list[BaseNode[Any, Any]] = []
@@ -83,6 +97,10 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         self.flow_id: str = str(uuid.uuid4())
         self._interrupt_handlers: list[InterruptHandlerRegistration] = []
         self._edge_history: list[tuple[str, str]] = []
+        self.memory_config = memory_config or MemoryConfig()
+        self._conversation_memory: ConversationMemory | None = None
+        if self.memory_config.enable_conversation_memory:
+            self._conversation_memory = ConversationMemory()
 
     def register_interrupt_handler(
         self,
@@ -147,12 +165,18 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             FlowCheckpoint with captured state.
 
         """
+        # Capture conversation memory if it exists
+        conversation_memory = None
+        if self._conversation_memory is not None:
+            conversation_memory = self._conversation_memory.get()
+
         return FlowCheckpoint(
             flow_id=self.flow_id,
             run_id=run_id,
             interrupted_node_id=interrupted_node_id,
             node_states=self._results.copy(),
             edge_history=self._edge_history.copy(),
+            conversation_memory=conversation_memory,
         )
 
     async def resume(self, checkpoint: FlowCheckpoint, inputs: InputT) -> OutputT:
@@ -181,6 +205,17 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         self._results = checkpoint.node_states.copy()
         self._edge_history = checkpoint.edge_history.copy()
 
+        # Restore conversation memory from checkpoint
+        if checkpoint.conversation_memory is not None:
+            if self._conversation_memory is not None:
+                self._conversation_memory.clear()
+                self._conversation_memory.extend(checkpoint.conversation_memory)
+            else:
+                # If memory wasn't enabled but checkpoint has it, create it
+                self._conversation_memory = ConversationMemory(
+                    initial_messages=checkpoint.conversation_memory
+                )
+
         # Find the interrupted node
         interrupted_node = None
         for node in self.nodes:
@@ -194,6 +229,11 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
         # Resume from the node after the interrupted one
         resume_from_index = self._execution_order.index(interrupted_node) + 1
+
+        # Set conversation memory in context if enabled
+        token = None
+        if self._conversation_memory is not None:
+            token = _active_flow_memory.set(self._conversation_memory)
 
         try:
             for node in self._execution_order[resume_from_index:]:
@@ -223,6 +263,11 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 raise
             msg = f"Flow resumption failed: {e}"
             raise FlowError(msg) from e
+
+        finally:
+            # Reset context variable if it was set
+            if token is not None:
+                _active_flow_memory.reset(token)
 
     def add_nodes(self, *nodes: BaseNode[InputT | Any, Any]) -> None:
         """Add one or more nodes to the flow.
@@ -301,6 +346,11 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         self._results = {}
         self._edge_history = []
 
+        # Set conversation memory in context if enabled
+        token = None
+        if self._conversation_memory is not None:
+            token = _active_flow_memory.set(self._conversation_memory)
+
         try:
             for node in self._execution_order:
                 # Determine input data for the node
@@ -322,9 +372,44 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                     # No-input node: takes input from flow inputs
                     input_data = inputs
 
-                # Execute the node (node is still BaseNode regardless of type guard)
-                result = await node.run(input_data)  # type: ignore[union-attr]
+                # Execute node with interrupt checking
+                # Consume stream to check interrupts, get result via node.run()
+                result: Any = None
+                tool_result: Any = None
+                stream_items: list[ProgressItem] = []
+
+                async for item in node.astream(input_data):  # type: ignore[union-attr]
+                    stream_items.append(item)
+                    # Check interrupt handlers on each progress item
+                    decision = await self._check_interrupt_handlers(item)
+                    if decision.should_interrupt:
+                        checkpoint = self._create_checkpoint(
+                            node.name, decision.metadata.get("run_id", "")
+                        )
+                        raise InterruptionRequested(
+                            checkpoint=checkpoint,
+                            decision=decision,
+                        )
+
+                    # Extract result using same logic as BaseNode.run()
+                    if isinstance(item, ToolResult) and item.result is not None:
+                        tool_result = item.result
+
+                # Prefer ToolResult if available, otherwise run full reconstruction
+                if tool_result is not None:
+                    result = tool_result
+                else:
+                    # Need to reconstruct from stream - just call node.run()
+                    result = await node.run(input_data)  # type: ignore[union-attr]
+
                 self._results[node.name] = result
+
+            # Smart detection: If we have a single result that's already
+            # the output type, return it directly instead of trying to reconstruct
+            if len(self._results) == 1:
+                single_result = next(iter(self._results.values()))
+                if isinstance(single_result, self._output_type):
+                    return single_result  # type: ignore
 
             # Construct the output BaseModel from the results
             return self._output_type(**self._results)
@@ -334,6 +419,9 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             e.checkpoint.flow_id = self.flow_id
             e.checkpoint.node_states = self._results.copy()
             e.checkpoint.edge_history = self._edge_history.copy()
+            # Capture conversation memory
+            if self._conversation_memory is not None:
+                e.checkpoint.conversation_memory = self._conversation_memory.get()
             raise
 
         except Exception as e:
@@ -342,6 +430,11 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 raise
             msg = f"Flow execution failed: {e}"
             raise FlowError(msg) from e
+
+        finally:
+            # Reset context variable if it was set
+            if token is not None:
+                _active_flow_memory.reset(token)
 
     def get_execution_order(self) -> list[str]:
         """Get the names of nodes in execution order.
@@ -475,7 +568,7 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 output_type=self._output_type,
             )
             engine = StepperEngine(engine_config)
-            return CompiledFlow(engine=engine, use_stepper=True)
+            return CompiledFlow(flow=self, engine=engine, use_stepper=True)
 
         self._calculate_execution_order()
         return CompiledFlow(flow=self, use_stepper=False)
@@ -621,7 +714,15 @@ class CompiledFlow[InputT: BaseModel, OutputT: BaseModel]:
 
         """
         if self.use_stepper and self.engine is not None:
-            return await self.engine.invoke(inputs, config)
+            # Set memory context for stepper engine execution
+            token = None
+            if self.flow is not None and self.flow._conversation_memory is not None:
+                token = _active_flow_memory.set(self.flow._conversation_memory)
+            try:
+                return await self.engine.invoke(inputs, config)
+            finally:
+                if token is not None:
+                    _active_flow_memory.reset(token)
         if self.flow is not None:
             return await self.flow.run(inputs)
         msg = "CompiledFlow has neither flow nor engine configured"

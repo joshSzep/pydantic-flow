@@ -11,10 +11,14 @@ from __future__ import annotations
 from collections.abc import Awaitable
 from collections.abc import Callable
 from enum import IntEnum
+from typing import TYPE_CHECKING
 from typing import Any
 
 from pydantic import BaseModel
 from pydantic import Field
+
+if TYPE_CHECKING:
+    pass
 
 
 class HandlerPriority(IntEnum):
@@ -63,6 +67,7 @@ class FlowCheckpoint(BaseModel):
         interrupted_node_id: ID of the node where interruption occurred.
         node_states: Captured state of all nodes at interruption time.
         edge_history: Sequence of edges traversed before interruption.
+        conversation_memory: Optional serialized conversation memory state.
         metadata: Additional context about the checkpoint.
 
     """
@@ -72,6 +77,7 @@ class FlowCheckpoint(BaseModel):
     interrupted_node_id: str
     node_states: dict[str, Any]
     edge_history: list[tuple[str, str]]
+    conversation_memory: Any = None  # TYPE: list[ModelMessage] | None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

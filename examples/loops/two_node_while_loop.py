@@ -1,6 +1,7 @@
 """Two-node while-loop example with plan and execute nodes."""
 
 import asyncio
+from collections.abc import AsyncIterator
 
 from pydantic import BaseModel
 
@@ -10,6 +11,9 @@ from pydantic_flow import RunConfig
 from pydantic_flow.core.routing import T_Route
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import NodeWithInput
+from pydantic_flow.streaming import ProgressItem
+from pydantic_flow.streaming import StreamEnd
+from pydantic_flow.streaming import StreamStart
 
 
 class WorkState(BaseModel):
@@ -35,6 +39,15 @@ class FullOutput(BaseModel):
 class PlanNode(BaseNode[WorkState, WorkState]):
     """Planning node that prepares work."""
 
+    async def astream(self, input_data: WorkState) -> AsyncIterator[ProgressItem]:
+        """Plan the next iteration."""
+        yield StreamStart()
+        new_state = WorkState(
+            iterations=input_data.iterations + 1, total=input_data.total
+        )
+        print(f"Planning iteration {new_state.iterations}")
+        yield StreamEnd(result_preview=new_state.model_dump())
+
     async def run(self, input_data: WorkState) -> WorkState:
         """Plan the next iteration."""
         new_state = WorkState(
@@ -46,6 +59,14 @@ class PlanNode(BaseNode[WorkState, WorkState]):
 
 class ExecuteNode(NodeWithInput[WorkState, WorkState]):
     """Execution node that performs work."""
+
+    async def astream(self, input_data: WorkState) -> AsyncIterator[ProgressItem]:
+        """Execute work and accumulate results."""
+        yield StreamStart()
+        new_total = input_data.total + (input_data.iterations * 10)
+        new_state = WorkState(iterations=input_data.iterations, total=new_total)
+        print(f"Executing: iteration={new_state.iterations}, total={new_total}")
+        yield StreamEnd(result_preview=new_state.model_dump())
 
     async def run(self, input_data: WorkState) -> WorkState:
         """Execute work and accumulate results."""

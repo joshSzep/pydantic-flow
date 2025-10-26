@@ -1,6 +1,7 @@
 """Self-loop counter example demonstrating loop termination with Route.END."""
 
 import asyncio
+from collections.abc import AsyncIterator
 
 from pydantic import BaseModel
 
@@ -9,6 +10,9 @@ from pydantic_flow import Route
 from pydantic_flow import RunConfig
 from pydantic_flow.core.routing import T_Route
 from pydantic_flow.nodes import BaseNode
+from pydantic_flow.streaming import ProgressItem
+from pydantic_flow.streaming import StreamEnd
+from pydantic_flow.streaming import StreamStart
 
 
 class CounterState(BaseModel):
@@ -25,6 +29,14 @@ class OutputState(BaseModel):
 
 class TickNode(BaseNode[CounterState, CounterState]):
     """Node that increments the counter."""
+
+    async def astream(self, input_data: CounterState) -> AsyncIterator[ProgressItem]:
+        """Increment the counter by 1."""
+        yield StreamStart()
+        new_n = input_data.n + 1
+        print(f"Tick: n = {new_n}")
+        result = CounterState(n=new_n)
+        yield StreamEnd(result_preview=result.model_dump())
 
     async def run(self, input_data: CounterState) -> CounterState:
         """Increment the counter by 1."""

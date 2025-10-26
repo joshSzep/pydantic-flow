@@ -10,6 +10,7 @@ import uuid
 
 from pydantic_ai import Agent
 
+from pydantic_flow.memory import _active_flow_memory
 from pydantic_flow.streaming.events import NonFatalError
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import StreamEnd
@@ -66,6 +67,19 @@ async def observe_agent_stream(
 
             # Get the final result
             result = await stream.get_output()
+
+        # Auto-capture: Append messages to active conversation memory if present
+        # Only capture if message_history was provided (indicating memory is enabled)
+        active_memory = _active_flow_memory.get()
+        if active_memory is not None and message_history is not None:
+            try:
+                # Extract messages from this run via new_messages()
+                new_msgs = stream.new_messages()
+                if new_msgs:
+                    active_memory.extend(new_msgs)
+            except Exception:
+                # Silently ignore memory capture errors to avoid breaking flows
+                pass
 
         # Emit successful end with result preview
         result_preview = None

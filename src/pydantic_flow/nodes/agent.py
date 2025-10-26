@@ -3,6 +3,8 @@
 BREAKING CHANGE: Added HITL interrupt checks to AgentNode and LLMNode.
 """
 
+from __future__ import annotations
+
 from collections.abc import AsyncIterator
 from typing import Any
 import uuid
@@ -11,6 +13,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from pydantic_flow.core.errors import InterruptionRequested
+from pydantic_flow.memory import _active_flow_memory
 from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.streaming.events import NonFatalError
 from pydantic_flow.streaming.events import ProgressItem
@@ -35,6 +38,7 @@ class AgentNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Output
         input: Any = None,
         name: str | None = None,
         run_id: str | None = None,
+        use_conversation_memory: bool = True,
     ) -> None:
         """Initialize an AgentNode.
 
@@ -45,11 +49,14 @@ class AgentNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Output
             input: Optional input from another node's output.
             name: Optional unique identifier for this node.
             run_id: Optional run identifier for tracking execution.
+            use_conversation_memory: Whether to use conversation memory from
+                                   the active flow context. Default True.
 
         """
         super().__init__(input, name, run_id)
         self.agent = agent
         self.prompt_template = prompt_template or ""
+        self.use_conversation_memory = use_conversation_memory
 
     async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:
         """Stream progress items while executing the LLM call.
@@ -62,10 +69,18 @@ class AgentNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Output
         # Format prompt from input data
         prompt = self._format_prompt(input_data)
 
+        # Get conversation memory from context if enabled
+        message_history = None
+        if self.use_conversation_memory:
+            memory = _active_flow_memory.get()
+            if memory is not None:
+                message_history = memory.get()
+
         # Use observer to translate agent stream to our progress items
         async for item in observe_agent_stream(
             self.agent,
             prompt,
+            message_history=message_history,
             run_id=self.run_id or str(uuid.uuid4()),
             node_id=self.name,
         ):
@@ -136,6 +151,7 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
         input: Any = None,
         name: str | None = None,
         run_id: str | None = None,
+        use_conversation_memory: bool = True,
     ) -> None:
         """Initialize an LLMNode.
 
@@ -145,11 +161,14 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
             input: Optional input from another node's output.
             name: Optional unique identifier for this node.
             run_id: Optional run identifier for tracking execution.
+            use_conversation_memory: Whether to use conversation memory from
+                                   the active flow context. Default True.
 
         """
         super().__init__(input, name, run_id)
         self.agent = agent
         self.prompt_template = prompt_template
+        self.use_conversation_memory = use_conversation_memory
 
     async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:
         """Stream progress items including tokens and partial fields.
@@ -161,6 +180,13 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
         """
         prompt = self.prompt_template.format(**input_data.model_dump())
         actual_run_id = self.run_id or str(uuid.uuid4())
+
+        # Get conversation memory from context if enabled
+        message_history = None
+        if self.use_conversation_memory:
+            memory = _active_flow_memory.get()
+            if memory is not None:
+                message_history = memory.get()
 
         start_item = StreamStart(
             run_id=actual_run_id,
@@ -176,8 +202,10 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
         yield start_item
 
         try:
-            # Stream from agent
-            async with self.agent.run_stream(prompt) as stream:
+            # Stream from agent with message history
+            async with self.agent.run_stream(
+                prompt, message_history=message_history
+            ) as stream:
                 token_index = 0
                 async for chunk in stream.stream_text():
                     token_item = TokenChunk(

@@ -6,6 +6,11 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from pydantic_flow.memory import ConversationMemory
+from pydantic_flow.memory import MemoryMode
+from pydantic_flow.memory import MemoryProtocol
+from pydantic_flow.memory import ReadOnlyConversationMemory
+from pydantic_flow.memory import _active_flow_memory
 from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.base import NodeWithInput
@@ -34,6 +39,8 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
         *,
         input: NodeOutput[InputModel] | None = None,
         name: str | None = None,
+        memory_mode: MemoryMode = MemoryMode.SHARED,
+        seed_isolated_memory: bool = False,
     ) -> None:
         """Initialize a FlowNode with a wrapped Flow.
 
@@ -43,6 +50,13 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
             input: Optional input from another node's output
             name: Optional unique identifier for this node. If not provided,
                  will use the format "FlowNode_{flow_repr}"
+            memory_mode: How to handle conversation memory for the sub-flow.
+                - SHARED (default): Sub-flow uses parent's memory directly
+                - ISOLATED: Sub-flow gets separate memory
+                - READONLY: Sub-flow has read-only access to parent memory
+            seed_isolated_memory: If True and mode is ISOLATED, seed the
+                sub-flow's memory with parent's message history for context.
+                Default False.
 
         """
         # Generate a meaningful default name that includes the wrapped flow info
@@ -52,9 +66,16 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
 
         super().__init__(input, name)
         self.flow = flow
+        self.memory_mode = memory_mode
+        self.seed_isolated_memory = seed_isolated_memory
 
     async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:
         """Stream progress items while executing the wrapped flow.
+
+        Handles memory propagation based on memory_mode:
+        - SHARED: Sub-flow uses parent's memory directly
+        - ISOLATED: Sub-flow gets new memory (optionally seeded)
+        - READONLY: Sub-flow gets read-only wrapper of parent memory
 
         Yields:
             StreamStart, progress from the wrapped flow, and StreamEnd.
@@ -65,27 +86,79 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
 
         yield StreamStart(run_id=run_id, node_id=node_id)
 
-        # Check if the flow has an astream method (future enhancement)
-        if hasattr(self.flow, "astream"):
-            # Stream from the flow
-            result = None
-            result_preview = None
-            async for item in self.flow.astream(input_data):  # type: ignore
-                # Don't forward StreamStart/StreamEnd from wrapped flow
-                if isinstance(item, StreamStart):
-                    continue
-                elif isinstance(item, StreamEnd):
-                    # Capture result
-                    result_preview = item.result_preview
-                elif isinstance(item, ToolResult) and item.result:
-                    # Capture actual result if available
-                    result = item.result
-                else:
-                    # Forward other progress items
-                    yield item
+        # Get parent memory from context
+        parent_memory = _active_flow_memory.get()
 
-            # Emit ToolResult with actual result if we have it
-            if result is not None:
+        # Setup memory for sub-flow based on mode
+        sub_flow_memory: MemoryProtocol | None = None
+        memory_token = None
+
+        if parent_memory is not None:
+            if self.memory_mode == MemoryMode.SHARED:
+                # SHARED: Use parent memory directly
+                sub_flow_memory = parent_memory
+            elif self.memory_mode == MemoryMode.ISOLATED:
+                # ISOLATED: Create new memory, optionally seeded
+                if self.seed_isolated_memory:
+                    # Seed with parent's message history
+                    sub_flow_memory = parent_memory.copy()
+                else:
+                    # Start with empty memory
+                    sub_flow_memory = ConversationMemory()
+            elif self.memory_mode == MemoryMode.READONLY:
+                # READONLY: Wrap parent memory for read-only access
+                if isinstance(parent_memory, ConversationMemory):
+                    sub_flow_memory = ReadOnlyConversationMemory(parent_memory)
+                else:
+                    # If parent is already ReadOnly, use its underlying memory
+                    sub_flow_memory = ReadOnlyConversationMemory(
+                        parent_memory._memory  # type: ignore[attr-defined]
+                    )
+
+            # Set sub-flow memory in context
+            if sub_flow_memory is not None:
+                memory_token = _active_flow_memory.set(sub_flow_memory)
+
+        try:
+            # Check if the flow has an astream method (future enhancement)
+            if hasattr(self.flow, "astream"):
+                # Stream from the flow
+                result = None
+                result_preview = None
+                async for item in self.flow.astream(input_data):  # type: ignore
+                    # Don't forward StreamStart/StreamEnd from wrapped flow
+                    if isinstance(item, StreamStart):
+                        continue
+                    elif isinstance(item, StreamEnd):
+                        # Capture result
+                        result_preview = item.result_preview
+                    elif isinstance(item, ToolResult) and item.result:
+                        # Capture actual result if available
+                        result = item.result
+                    else:
+                        # Forward other progress items
+                        yield item
+
+                # Emit ToolResult with actual result if we have it
+                if result is not None:
+                    yield ToolResult(
+                        run_id=run_id,
+                        node_id=node_id,
+                        tool_name="flow",
+                        call_id="",
+                        result=result,
+                        error=None,
+                    )
+
+                # Emit our own StreamEnd with the result
+                yield StreamEnd(
+                    run_id=run_id, node_id=node_id, result_preview=result_preview
+                )
+            else:
+                # Fall back to run() and wrap result
+                result = await self.flow.run(input_data)
+
+                # Emit ToolResult with the actual result
                 yield ToolResult(
                     run_id=run_id,
                     node_id=node_id,
@@ -95,33 +168,19 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
                     error=None,
                 )
 
-            # Emit our own StreamEnd with the result
-            yield StreamEnd(
-                run_id=run_id, node_id=node_id, result_preview=result_preview
-            )
-        else:
-            # Fall back to run() and wrap result
-            result = await self.flow.run(input_data)
+                result_preview = None
+                if hasattr(result, "model_dump"):
+                    result_preview = result.model_dump()
+                elif result is not None:
+                    result_preview = {"value": str(result)}
 
-            # Emit ToolResult with the actual result
-            yield ToolResult(
-                run_id=run_id,
-                node_id=node_id,
-                tool_name="flow",
-                call_id="",
-                result=result,
-                error=None,
-            )
-
-            result_preview = None
-            if hasattr(result, "model_dump"):
-                result_preview = result.model_dump()
-            elif result is not None:
-                result_preview = {"value": str(result)}
-
-            yield StreamEnd(
-                run_id=run_id, node_id=node_id, result_preview=result_preview
-            )
+                yield StreamEnd(
+                    run_id=run_id, node_id=node_id, result_preview=result_preview
+                )
+        finally:
+            # Restore parent memory context
+            if memory_token is not None:
+                _active_flow_memory.reset(memory_token)
 
     @property
     def dependencies(self) -> list[BaseNode[Any, Any]]:

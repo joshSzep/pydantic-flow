@@ -646,6 +646,49 @@ Key benefits of sub-flow composition:
 - **Type Safety**: Full type checking across sub-flow boundaries
 - **Testing**: Sub-flows can be tested in isolation
 
+#### Memory Modes for FlowNode
+
+FlowNode supports three memory modes to control how conversation history is shared between parent and sub-flows:
+
+```python
+from pydantic_flow.memory import MemoryMode
+
+# SHARED: Sub-flow uses parent's memory directly (default)
+shared_node = FlowNode[Query, Result](
+    flow=sub_flow,
+    name="shared_sub_flow",
+    memory_mode=MemoryMode.SHARED
+)
+
+# ISOLATED: Sub-flow gets separate memory
+isolated_node = FlowNode[Query, Result](
+    flow=sub_flow,
+    name="isolated_sub_flow",
+    memory_mode=MemoryMode.ISOLATED,
+    seed_isolated_memory=True  # Optional: copy parent's messages for context
+)
+
+# READONLY: Sub-flow has read-only access to parent memory
+readonly_node = FlowNode[Query, Result](
+    flow=sub_flow,
+    name="readonly_sub_flow",
+    memory_mode=MemoryMode.READONLY
+)
+```
+
+**Memory Mode Behaviors:**
+- **SHARED** (default): Changes to memory in sub-flow propagate to parent flow
+- **ISOLATED**: Sub-flow gets a separate memory; changes don't affect parent
+  - `seed_isolated_memory=False`: Sub-flow starts with empty memory
+  - `seed_isolated_memory=True`: Sub-flow gets copy of parent's message history
+- **READONLY**: Sub-flow can read parent memory but cannot modify it
+  - Attempts to append/extend/clear memory raise `ReadOnlyMemoryError`
+
+Use cases:
+- **SHARED**: Default behavior for most scenarios where full context is needed
+- **ISOLATED**: Parallel sub-flows that shouldn't see each other's messages
+- **READONLY**: Sub-flows that need context but shouldn't pollute parent memory
+
 ### Human-in-the-Loop (HITL)
 
 pydantic-flow provides comprehensive support for workflows that require human intervention, review, or approval:
