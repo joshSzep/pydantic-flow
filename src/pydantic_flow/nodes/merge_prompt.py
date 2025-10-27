@@ -2,12 +2,19 @@
 
 from collections.abc import AsyncIterator
 from typing import Any
+import uuid
 
+from pydantic_ai import Agent
+
+from pydantic_flow.core.errors import FlowCheckpoint
+from pydantic_flow.core.errors import InterruptionRequested
 from pydantic_flow.nodes.base import MergeNode
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.prompt import PromptConfig
+from pydantic_flow.streaming.events import NonFatalError
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import StreamStart
+from pydantic_flow.streaming.observers import observe_agent_stream
 
 
 class MergePromptNode[*InputTs, OutputT](MergeNode[*InputTs, OutputT]):
@@ -23,7 +30,7 @@ class MergePromptNode[*InputTs, OutputT](MergeNode[*InputTs, OutputT]):
         # Combine both into a single prompt
         merge_prompt = MergePromptNode[Research, Analysis, str](
             inputs=(research_node.output, analysis_node.output),
-            prompt="Summarize research: {research}\nWith analysis: {analysis}",
+            prompt="Summarize research: {0}\nWith analysis: {1}",
             name="summary_prompt"
         )
 
@@ -42,7 +49,7 @@ class MergePromptNode[*InputTs, OutputT](MergeNode[*InputTs, OutputT]):
 
         Args:
             prompt: Prompt template string. Can reference inputs by index
-                   (e.g., {0}, {1}) or by providing a custom format function.
+                   (e.g., {0}, {1}) or by custom field names in the template.
             inputs: Tuple of NodeOutput references from upstream nodes
             model: Optional model identifier (e.g., "openai:gpt-4")
             config: Optional prompt configuration
@@ -51,23 +58,132 @@ class MergePromptNode[*InputTs, OutputT](MergeNode[*InputTs, OutputT]):
         """
         super().__init__(inputs, name)
         self.prompt = prompt
-        self.model = model
+        self.model = model or (config.model if config else "test")
         self.config = config or PromptConfig()
+
+        # Create internal pydantic-ai agent
+        instructions = self.config.system_prompt or "Be helpful and concise."
+        if self.config.result_type:
+            self._agent = Agent(
+                self.model,
+                instructions=instructions,
+                output_type=self.config.result_type,
+            )
+        else:
+            self._agent = Agent(
+                self.model,
+                instructions=instructions,
+            )  # type: ignore[assignment]
+
+    def _format_prompt(self, input_data: tuple[Any, ...]) -> str:
+        """Format the prompt template with the merged input data.
+
+        Args:
+            input_data: Tuple of inputs from upstream nodes
+
+        Returns:
+            Formatted prompt string
+
+        """
+        # Try formatting with positional arguments first
+        try:
+            return self.prompt.format(*input_data)
+        except IndexError, KeyError:
+            pass
+
+        # Try formatting with indices as keyword arguments
+        try:
+            kwargs = {str(i): val for i, val in enumerate(input_data)}
+            return self.prompt.format(**kwargs)
+        except IndexError, KeyError:
+            pass
+
+        # Try extracting model_dump() if available and formatting with that
+        try:
+            merged_dict = {}
+            for i, val in enumerate(input_data):
+                if hasattr(val, "model_dump"):
+                    merged_dict.update(val.model_dump())
+                else:
+                    merged_dict[str(i)] = val
+            return self.prompt.format(**merged_dict)
+        except Exception:
+            pass
+
+        # Fallback: concatenate inputs as strings, return raw
+        return "\n\n".join(str(val) for val in input_data)
+
+    def _create_checkpoint(self, item: ProgressItem) -> FlowCheckpoint:
+        """Create a checkpoint for resumption.
+
+        Args:
+            item: Progress item at interruption point.
+
+        Returns:
+            FlowCheckpoint for resuming execution.
+
+        """
+        return FlowCheckpoint(
+            flow_id="",  # Will be set by flow orchestrator
+            run_id=self.run_id or "",
+            interrupted_node_id=self.name,
+            node_states={},
+            edge_history=[],
+        )
 
     async def astream(self, input_data: tuple[Any, ...]) -> AsyncIterator[ProgressItem]:
         """Stream progress items while executing the merge prompt.
 
         Yields:
-            StreamStart and raises NotImplementedError.
+            StreamStart, TokenChunk items during generation, and StreamEnd
+            with the final result.
 
         """
-        run_id = self.run_id or ""
-        node_id = self.name
+        formatted_prompt = self._format_prompt(input_data)
+        actual_run_id = self.run_id or str(uuid.uuid4())
 
-        yield StreamStart(run_id=run_id, node_id=node_id)
-
-        msg = (
-            "MergePromptNode LLM integration not yet implemented. "
-            "Use MergeToolNode with a custom LLM wrapper function instead."
+        start_item = StreamStart(
+            run_id=actual_run_id,
+            node_id=self.name,
+            input_preview={
+                "prompt": formatted_prompt[:100],
+                "num_inputs": len(input_data),
+            },
         )
-        raise NotImplementedError(msg)
+        decision = await self._check_interrupt_handlers(start_item)
+        if decision.should_interrupt:
+            raise InterruptionRequested(
+                checkpoint=self._create_checkpoint(start_item),
+                decision=decision,
+            )
+        yield start_item
+
+        try:
+            # Use observer to translate agent stream to our progress items
+            async for item in observe_agent_stream(
+                self._agent,
+                formatted_prompt,
+                message_history=None,  # MergePromptNode doesn't use conversation memory
+                run_id=actual_run_id,
+                node_id=self.name,
+            ):
+                # Check interrupt handlers on each progress item
+                decision = await self._check_interrupt_handlers(item)
+                if decision.should_interrupt:
+                    raise InterruptionRequested(
+                        checkpoint=self._create_checkpoint(item),
+                        decision=decision,
+                    )
+                yield item
+
+        except InterruptionRequested:
+            raise
+        except Exception as e:
+            # Emit error and re-raise
+            yield NonFatalError(
+                message=f"MergePromptNode failed: {e}",
+                run_id=actual_run_id,
+                node_id=self.name,
+                recoverable=False,
+            )
+            raise

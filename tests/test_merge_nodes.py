@@ -429,13 +429,13 @@ class TestMergePromptNode:
         merge_prompt = MergePromptNode[DataA, DataB, str](
             inputs=(node_a.output, node_b.output),
             prompt="Combine {0} and {1}",
-            model="openai:gpt-4",
+            model="test",
             name="merge_prompt",
         )
 
         assert merge_prompt.name == "merge_prompt"
         assert merge_prompt.prompt == "Combine {0} and {1}"
-        assert merge_prompt.model == "openai:gpt-4"
+        assert merge_prompt.model == "test"
         assert len(merge_prompt.inputs) == 2
 
     def test_merge_prompt_node_dependencies(self):
@@ -455,21 +455,28 @@ class TestMergePromptNode:
         assert node_b in deps
 
     @pytest.mark.asyncio
-    async def test_merge_prompt_node_not_implemented(self):
-        """Test that MergePromptNode run raises NotImplementedError."""
+    async def test_merge_prompt_node_streams_properly(self):
+        """Test that MergePromptNode streams progress items."""
         node_a = ToolNode[Input, DataA](tool_func=get_data_a, name="node_a")
         node_b = ToolNode[Input, DataB](tool_func=get_data_b, name="node_b")
 
         merge_prompt = MergePromptNode[DataA, DataB, str](
             inputs=(node_a.output, node_b.output),
             prompt="Combine {0} and {1}",
+            model="test",
             name="merge_prompt",
         )
 
         data_a = DataA(value_a="test_a")
         data_b = DataB(value_b=42)
 
-        with pytest.raises(NotImplementedError) as exc_info:
-            await merge_prompt.run((data_a, data_b))
+        # Collect a few items from the stream
+        items = []
+        async for item in merge_prompt.astream((data_a, data_b)):
+            items.append(item)
+            if len(items) >= 2:
+                break
 
-        assert "LLM integration not yet implemented" in str(exc_info.value)
+        # Should have at least a StreamStart
+        assert len(items) >= 1
+        assert items[0].type == "start"
