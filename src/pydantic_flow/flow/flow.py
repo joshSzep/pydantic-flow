@@ -100,7 +100,9 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         self.memory_config = memory_config or MemoryConfig()
         self._conversation_memory: ConversationMemory | None = None
         if self.memory_config.enable_conversation_memory:
-            self._conversation_memory = ConversationMemory()
+            self._conversation_memory = ConversationMemory(
+                compressor=self.memory_config.compressor,
+            )
 
     def register_interrupt_handler(
         self,
@@ -213,7 +215,8 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             else:
                 # If memory wasn't enabled but checkpoint has it, create it
                 self._conversation_memory = ConversationMemory(
-                    initial_messages=checkpoint.conversation_memory
+                    initial_messages=checkpoint.conversation_memory,
+                    compressor=self.memory_config.compressor,
                 )
 
         # Find the interrupted node

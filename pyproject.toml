@@ -1,6 +1,6 @@
 [project]
 name = "pydantic-flow"
-version = "0.12.0"
+version = "0.13.0"
 description = "An opinionated pydantic-ai based framework with batteries included."
 readme = "README.md"
 authors = [
@@ -48,7 +48,8 @@ select = ["E","F","W","I","UP","NPY","PTH","B","C4","SIM","PL","RUF","D"]
 ignore = ["D203","D213"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["PLR2004"]  # Allow magic values in tests
+"tests/**/*.py" = ["PLR2004", "PLC0415", "SIM102"]  # Allow magic values, imports in functions, nested ifs in tests
+"examples/**/*.py" = ["D401", "PLR2004", "RUF001", "E501"]  # Allow imperative mood, magic numbers, unicode chars, long lines in examples
 "src/pydantic_flow/engine/stepper.py" = ["PLR0913"]  # EngineConfig init needs multiple params
 "src/pydantic_flow/flow/flow.py" = ["PLR0912", "PLR0915"]  # Complex flow execution logic
 "src/pydantic_flow/nodes/agent.py" = ["PLR0913"]  # AgentNode init needs multiple params

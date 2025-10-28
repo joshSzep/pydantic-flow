@@ -22,8 +22,14 @@ from pydantic_flow.flow import CyclicDependencyError
 from pydantic_flow.flow import ExecutionMode
 from pydantic_flow.flow import Flow
 from pydantic_flow.flow import FlowError
+from pydantic_flow.memory import BaseMemoryCompressor
+from pydantic_flow.memory import CompressionMetrics
 from pydantic_flow.memory import ConversationMemory
+from pydantic_flow.memory import HybridCompressor
+from pydantic_flow.memory import MemoryCompressor
 from pydantic_flow.memory import MemoryConfig
+from pydantic_flow.memory import SlidingWindowCompressor
+from pydantic_flow.memory import SummarizationCompressor
 from pydantic_flow.nodes import ApprovalNode
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import FlowNode
@@ -61,6 +67,8 @@ from pydantic_flow.prompt import from_template
 from pydantic_flow.streaming import Heartbeat
 from pydantic_flow.streaming import InterruptCallback
 from pydantic_flow.streaming import InterruptDecision
+from pydantic_flow.streaming import MemoryCompressionComplete
+from pydantic_flow.streaming import MemoryCompressionPending
 from pydantic_flow.streaming import NonFatalError
 from pydantic_flow.streaming import PartialFields
 from pydantic_flow.streaming import ProgressItem
@@ -84,11 +92,13 @@ __all__ = [
     "AgentNode",
     "ApprovalNode",
     "AsIsParser",
+    "BaseMemoryCompressor",
     "BaseNode",
     "ChatMessage",
     "ChatPromptTemplate",
     "ChatRole",
     "CompiledFlow",
+    "CompressionMetrics",
     "ConversationMemory",
     "CyclicDependencyError",
     "DelimitedParser",
@@ -102,6 +112,7 @@ __all__ = [
     "HumanInputRequest",
     "HumanNode",
     "HumanResponse",
+    "HybridCompressor",
     "IfNode",
     "InterruptCallback",
     "InterruptDecision",
@@ -110,6 +121,9 @@ __all__ = [
     "JoinStrategy",
     "JsonModelParser",
     "LLMNode",
+    "MemoryCompressionComplete",
+    "MemoryCompressionPending",
+    "MemoryCompressor",
     "MemoryConfig",
     "MergeNode",
     "MergeParserNode",
@@ -135,9 +149,11 @@ __all__ = [
     "RouterFunction",
     "RoutingError",
     "RunConfig",
+    "SlidingWindowCompressor",
     "StreamEnd",
     "StreamStart",
     "StreamingParser",
+    "SummarizationCompressor",
     "TemplateFormat",
     "TokenChunk",
     "ToolArgProgress",

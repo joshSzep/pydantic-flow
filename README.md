@@ -689,6 +689,111 @@ Use cases:
 - **ISOLATED**: Parallel sub-flows that shouldn't see each other's messages
 - **READONLY**: Sub-flows that need context but shouldn't pollute parent memory
 
+### Memory Compression
+
+**pydantic-flow** provides automatic memory compression to manage conversation context when approaching token limits. The compression system is pluggable, type-safe, and fully integrated with HITL capabilities.
+
+#### Quick Start
+
+```python
+from pydantic_flow import Flow, MemoryConfig, SlidingWindowCompressor
+
+# Enable automatic compression
+flow = Flow[InputType, OutputType](
+    memory_config=MemoryConfig(
+        enable_conversation_memory=True,
+        compressor=SlidingWindowCompressor(window_size=10),  # Keep last 10 messages
+        emit_compression_events=True,
+    )
+)
+```
+
+#### Built-in Strategies
+
+**Sliding Window**: Fast, simple - keeps N most recent messages
+```python
+from pydantic_flow import SlidingWindowCompressor
+
+compressor = SlidingWindowCompressor(
+    window_size=10,                    # Keep last 10 messages
+    preserve_system_messages=True,     # Preserve system prompts
+    max_tokens=4000,                   # Trigger at 4K tokens
+)
+```
+
+**LLM Summarization**: Intelligent semantic compression
+```python
+from pydantic_ai import Agent
+from pydantic_flow import SummarizationCompressor
+
+summarizer = Agent("openai:gpt-4o-mini")
+compressor = SummarizationCompressor(
+    agent=summarizer,
+    prompt_template="Summarize concisely: {messages}",
+)
+```
+
+**Hybrid**: Adaptive strategy selection
+```python
+from pydantic_flow import HybridCompressor
+
+compressor = HybridCompressor(
+    summarization_threshold=15,        # Use summarization for 15+ messages
+    window_size=10,                    # Otherwise use sliding window
+    agent=summarizer,
+)
+```
+
+#### HITL Approval
+
+Compression operations can be interrupted for human review:
+
+```python
+from pydantic_flow import MemoryCompressionPending, InterruptDecision
+
+async def approve_compression(event: MemoryCompressionPending) -> InterruptDecision:
+    """Review compression before it happens."""
+    print(f"About to compress {event.message_count} messages")
+    print(f"Estimated: {event.estimated_tokens} tokens")
+    
+    if input("Approve? (y/n): ") == 'y':
+        return InterruptDecision.proceed()
+    else:
+        return InterruptDecision.interrupt("User rejected")
+
+flow.register_interrupt_handler(
+    ProgressType.MEMORY_COMPRESSION_PENDING,
+    approve_compression,
+)
+```
+
+#### Custom Compressors
+
+Implement the `MemoryCompressor` protocol for custom strategies:
+
+```python
+from pydantic_flow import MemoryCompressor, BaseMemoryCompressor, CompressionMetrics
+
+class CustomCompressor(BaseMemoryCompressor):
+    """Your custom compression logic."""
+    
+    def name(self) -> str:
+        return "custom_compressor"
+    
+    def should_compress(self, messages) -> bool:
+        """Decide when to compress."""
+        return self.estimate_tokens(messages) > self.max_tokens
+    
+    async def compress(self, messages) -> tuple[list, CompressionMetrics]:
+        """Perform compression and return metrics."""
+        # Your compression logic here
+        compressed = your_compression_logic(messages)
+        metrics = create_metrics(messages, compressed)
+        return compressed, metrics
+```
+
+For comprehensive documentation, custom implementations, performance tuning, and troubleshooting, see the [Memory Compression Guide](docs/memory_compression.md).
+
 ### Human-in-the-Loop (HITL)
 
 pydantic-flow provides comprehensive support for workflows that require human intervention, review, or approval:

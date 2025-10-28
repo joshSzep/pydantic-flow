@@ -11,6 +11,9 @@ import uuid
 from pydantic_ai import Agent
 
 from pydantic_flow.memory import _active_flow_memory
+from pydantic_flow.memory import _memory_event_emitter
+from pydantic_flow.streaming.events import MemoryCompressionComplete
+from pydantic_flow.streaming.events import MemoryCompressionPending
 from pydantic_flow.streaming.events import NonFatalError
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import StreamEnd
@@ -44,6 +47,21 @@ async def observe_agent_stream(
     """
     actual_run_id = run_id or str(uuid.uuid4())
 
+    # Setup compression event capture
+    emitted_events: list[MemoryCompressionPending | MemoryCompressionComplete] = []
+
+    def emit_memory_event(
+        event: ProgressItem,
+    ) -> None:
+        """Capture compression events emitted during memory operations."""
+        if isinstance(event, (MemoryCompressionPending, MemoryCompressionComplete)):
+            event.run_id = actual_run_id
+            event.node_id = node_id
+            emitted_events.append(event)  # type: ignore[arg-type]
+
+    # Set emitter context
+    emitter_token = _memory_event_emitter.set(emit_memory_event)
+
     # Emit start
     yield StreamStart(
         run_id=actual_run_id,
@@ -76,7 +94,16 @@ async def observe_agent_stream(
                 # Extract messages from this run via new_messages()
                 new_msgs = stream.new_messages()
                 if new_msgs:
+                    # Extend may trigger compression and emit events
                     active_memory.extend(new_msgs)
+
+                    # Yield any compression events that were captured
+                    for event in emitted_events:
+                        yield event
+
+                    # Clear emitted events after yielding
+                    emitted_events.clear()
+
             except Exception:
                 # Silently ignore memory capture errors to avoid breaking flows
                 pass
@@ -103,6 +130,10 @@ async def observe_agent_stream(
             node_id=node_id,
         )
         raise
+
+    finally:
+        # Reset emitter context
+        _memory_event_emitter.reset(emitter_token)
 
 
 async def stream_agent_text(
