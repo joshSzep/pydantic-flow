@@ -797,11 +797,16 @@ For comprehensive documentation, custom implementations, performance tuning, and
 
 ### Human-in-the-Loop (HITL)
 
-pydantic-flow provides comprehensive support for workflows that require human intervention, review, or approval:
+pydantic-flow provides comprehensive support for workflows that require human intervention, review, or approval with automatic checkpoint persistence:
 
 ```python
 from pydantic_flow.nodes.human import HumanNode, ApprovalNode, HumanResponse
 from pydantic_flow.core.errors import InterruptionRequested
+from pydantic_flow.core.run_config import RunConfig
+from pydantic_flow.checkpoints.memory import InMemoryCheckpointStore
+
+# Create checkpoint store for persistence
+store = InMemoryCheckpointStore()
 
 # Create nodes that require human input
 review_node = HumanNode[ContentInput, HumanResponse](
@@ -818,23 +823,33 @@ processor = PromptNode[ContentInput, str](prompt="Process content...")
 flow.add_node(processor)
 flow.add_node(review_node, dependencies=[processor])
 
-# Execute - will interrupt when human input needed
+# Configure run with checkpoint store - interrupts are automatically persisted
+config = RunConfig(checkpoint_store=store, run_id="review_001")
+
+# Execute - will interrupt and save checkpoint when human input needed
 try:
-    result = await flow.run(input_data)
+    result = await flow.run(input_data, config=config)
 except InterruptionRequested as exc:
     checkpoint = exc.checkpoint
+    checkpoint_id = checkpoint.metadata["checkpoint_id"]
     
+    # Checkpoint is automatically saved to store with interrupt metadata
     # Present to human, get response
     response = get_human_input(checkpoint.interrupt_reason)
     
-    # Resume execution
-    result = await flow.resume(checkpoint, inputs=input_data)
+    # Resume from saved checkpoint
+    result = await flow.resume_from_store(
+        store, checkpoint_id, "review_001", input_data
+    )
 ```
 
 **Key Features:**
+- **Automatic checkpoint persistence**: Interrupted flows are saved to configured CheckpointStore
+- **Interrupt metadata**: Track reason, metadata, and node state at interruption
 - **Three-layer interruption**: Event-level, node-level, and flow-level handlers
 - **Priority-based handlers**: Control execution order (0-100, lower executes first)
-- **Checkpoints**: Serialize workflow state for resumption
+- **Multiple storage backends**: InMemory, SQLite, Redis, Postgres, S3, FlatFile
+- **Query interrupted checkpoints**: Filter and list checkpoints by interrupt status
 - **HumanNode**: Always interrupts for human input with dynamic prompts and options
 - **ApprovalNode**: Specialized node for yes/no decisions
 - **Conditional interruption**: Only interrupt when specific criteria are met

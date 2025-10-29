@@ -64,6 +64,9 @@ class CheckpointEnvelope(BaseModel):
         checkpoint: The actual checkpoint data from the flow.
         metadata: Additional context about the checkpoint.
         content_hash: SHA-256 hash of checkpoint and metadata for verification.
+        is_interrupted: Whether this checkpoint was created due to an interrupt.
+        interrupt_reason: Human-readable reason for the interruption.
+        interrupt_metadata: Additional metadata about the interrupt decision.
 
     """
 
@@ -75,6 +78,9 @@ class CheckpointEnvelope(BaseModel):
     checkpoint: FlowCheckpoint
     metadata: dict[str, Any] | None = None
     content_hash: str | None = None
+    is_interrupted: bool = False
+    interrupt_reason: str | None = None
+    interrupt_metadata: dict[str, Any] | None = None
 
 
 class CheckpointQuery(BaseModel):
@@ -263,3 +269,38 @@ def generate_checkpoint_id() -> CheckpointId:
     timestamp_us = int(time.time() * 1_000_000)
     random_suffix = secrets.token_hex(8)
     return CheckpointId(f"{timestamp_us:016x}{random_suffix}")
+
+
+def filter_interrupted(
+    envelopes: list[CheckpointEnvelope],
+) -> list[CheckpointEnvelope]:
+    """Filter a list of checkpoints to only include interrupted ones.
+
+    Args:
+        envelopes: List of checkpoint envelopes to filter.
+
+    Returns:
+        List of envelopes where is_interrupted is True.
+
+    """
+    return [env for env in envelopes if env.is_interrupted]
+
+
+async def list_interrupted(
+    store: CheckpointStore, query: CheckpointQuery
+) -> tuple[list[CheckpointEnvelope], str | None]:
+    """List interrupted checkpoints from a store.
+
+    Args:
+        store: The checkpoint store to query.
+        query: Query parameters for filtering and pagination.
+
+    Returns:
+        Tuple of (list of interrupted checkpoint envelopes, next cursor or None).
+
+    Raises:
+        CheckpointBackendError: If storage operation fails.
+
+    """
+    envelopes, cursor = await store.list(query)
+    return filter_interrupted(envelopes), cursor

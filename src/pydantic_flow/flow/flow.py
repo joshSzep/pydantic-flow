@@ -198,12 +198,18 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         self,
         checkpoint: FlowCheckpoint,
         store: CheckpointStore,
+        is_interrupted: bool = False,
+        interrupt_reason: str | None = None,
+        interrupt_metadata: dict[str, Any] | None = None,
     ) -> CheckpointEnvelope:
         """Persist a checkpoint to the configured store.
 
         Args:
             checkpoint: The checkpoint to persist.
             store: The checkpoint store to use.
+            is_interrupted: Whether this is an interrupt checkpoint.
+            interrupt_reason: Reason for the interruption if applicable.
+            interrupt_metadata: Additional interrupt metadata.
 
         Returns:
             The persisted checkpoint envelope with ID.
@@ -223,6 +229,9 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             run_id=RunId(checkpoint.run_id),
             node_id=checkpoint.interrupted_node_id,
             checkpoint=checkpoint,
+            is_interrupted=is_interrupted,
+            interrupt_reason=interrupt_reason,
+            interrupt_metadata=interrupt_metadata,
         )
 
         return await store.save(envelope, overwrite=False)
@@ -304,6 +313,13 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 result = await node.run(input_data)  # type: ignore[union-attr]
                 self._results[node.name] = result
 
+            # Smart detection: If we have a single result that's already
+            # the output type, return it directly instead of trying to reconstruct
+            if len(self._results) == 1:
+                single_result = next(iter(self._results.values()))
+                if isinstance(single_result, self._output_type):
+                    return single_result  # type: ignore
+
             # Construct the output BaseModel from the results
             return self._output_type(**self._results)
 
@@ -317,6 +333,57 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             # Reset context variable if it was set
             if token is not None:
                 _active_flow_memory.reset(token)
+
+    async def resume_from_envelope(
+        self, envelope: CheckpointEnvelope, inputs: InputT
+    ) -> OutputT:
+        """Resume flow execution from a checkpoint envelope.
+
+        Args:
+            envelope: The checkpoint envelope to resume from.
+            inputs: Original input data.
+
+        Returns:
+            Flow output.
+
+        Raises:
+            FlowError: If checkpoint is invalid or execution fails.
+
+        """
+        return await self.resume(envelope.checkpoint, inputs)
+
+    async def resume_from_store(
+        self,
+        store: CheckpointStore,
+        checkpoint_id: str,
+        run_id: str,
+        inputs: InputT,
+    ) -> OutputT:
+        """Resume flow execution from a checkpoint in a store.
+
+        Args:
+            store: The checkpoint store to load from.
+            checkpoint_id: The checkpoint ID to load.
+            run_id: The run ID for the checkpoint.
+            inputs: Original input data.
+
+        Returns:
+            Flow output.
+
+        Raises:
+            FlowError: If checkpoint not found, invalid, or execution fails.
+
+        """
+        # Local imports to avoid circular dependency
+        from pydantic_flow.checkpoints.interface import CheckpointId
+        from pydantic_flow.checkpoints.interface import RunId
+
+        envelope = await store.get(RunId(run_id), CheckpointId(checkpoint_id))
+        if envelope is None:
+            msg = f"Checkpoint {checkpoint_id} not found for run {run_id}"
+            raise FlowError(msg)
+
+        return await self.resume_from_envelope(envelope, inputs)
 
     def add_nodes(self, *nodes: BaseNode[InputT | Any, Any]) -> None:
         """Add one or more nodes to the flow.
@@ -432,18 +499,23 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
                 async for item in node.astream(input_data):  # type: ignore[union-attr]
                     stream_items.append(item)
+
+                    # Extract result using same logic as BaseNode.run()
+                    if isinstance(item, ToolResult) and item.result is not None:
+                        tool_result = item.result
+
                     # Check interrupt handlers on each progress item
                     decision = await self._check_interrupt_handlers(item)
                     if decision.should_interrupt:
+                        # Store result before interrupting if we have it
+                        if tool_result is not None:
+                            self._results[node.name] = tool_result
+
                         checkpoint = self._create_checkpoint(node.name, run_id)
                         raise InterruptionRequested(
                             checkpoint=checkpoint,
                             decision=decision,
                         )
-
-                    # Extract result using same logic as BaseNode.run()
-                    if isinstance(item, ToolResult) and item.result is not None:
-                        tool_result = item.result
 
                 # Prefer ToolResult if available, otherwise run full reconstruction
                 if tool_result is not None:
@@ -475,8 +547,19 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
             # Persist checkpoint if store configured
             if config.checkpoint_store is not None:
+                # Extract interrupt information from decision
+                interrupt_reason = getattr(e.decision, "reason", None)
+                interrupt_metadata = getattr(e.decision, "metadata", None)
+                # Convert empty dict to None
+                if interrupt_metadata is not None and not interrupt_metadata:
+                    interrupt_metadata = None
+
                 envelope = await self._persist_checkpoint(
-                    e.checkpoint, config.checkpoint_store
+                    checkpoint=e.checkpoint,
+                    store=config.checkpoint_store,
+                    is_interrupted=True,
+                    interrupt_reason=interrupt_reason,
+                    interrupt_metadata=interrupt_metadata,
                 )
 
                 # Attach checkpoint ID to exception metadata

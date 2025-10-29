@@ -208,6 +208,8 @@ __marimo__/
 
 # Personal Utilities
 git-push.sh
+pydantic-flow.tar.gz
+changes.diff
 
 # Cache Example Databases
 .example-cache.db
