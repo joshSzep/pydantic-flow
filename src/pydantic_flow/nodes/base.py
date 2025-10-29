@@ -176,37 +176,118 @@ class BaseNode[InputT, OutputT](ABC):
             The final validated output data
 
         """
-        final_result: OutputT | None = None
-        tool_result: Any = None
+        from contextlib import nullcontext
 
-        async for item in self.astream(input_data):
-            # Try to extract result from ToolResult first (has the actual object)
-            if isinstance(item, ToolResult) and item.result is not None:
-                tool_result = item.result
-            # StreamEnd carries the final result preview as fallback
-            elif isinstance(item, StreamEnd) and item.result_preview:
-                # Reconstruct the output from the preview
-                # Try Pydantic validation first
-                try:
-                    if hasattr(self._output_type, "model_validate"):
-                        final_result = self._output_type.model_validate(  # type: ignore
-                            item.result_preview
-                        )
-                    else:
+        from pydantic_flow.telemetry.setup import is_enabled
+
+        # Telemetry: check if enabled before importing/instrumenting
+        if is_enabled():
+            from pydantic_flow.telemetry.attributes import AttributeKey
+            from pydantic_flow.telemetry.attributes import MetricName
+            from pydantic_flow.telemetry.attributes import SpanKind
+            from pydantic_flow.telemetry.helpers import create_span_async
+            from pydantic_flow.telemetry.helpers import measure_duration_async
+            from pydantic_flow.telemetry.helpers import record_counter
+
+            node_attrs: dict[str, Any] = {
+                str(AttributeKey.NODE_ID): self.name,
+                str(AttributeKey.NODE_TYPE): self.__class__.__name__,
+            }
+            if self.run_id:
+                node_attrs[str(AttributeKey.RUN_ID)] = self.run_id
+
+            record_counter(MetricName.NODE_EXECUTIONS, attributes=node_attrs)
+
+            span_ctx = create_span_async(SpanKind.NODE_RUN, attributes=node_attrs)
+            duration_ctx = measure_duration_async(
+                MetricName.NODE_DURATION, attributes=node_attrs
+            )
+        else:
+            span_ctx = nullcontext()
+            duration_ctx = nullcontext()
+
+        async with span_ctx, duration_ctx:
+            final_result: OutputT | None = None
+            tool_result: Any = None
+
+            async for item in self.astream(input_data):
+                # Record stream events as span events
+                self._record_stream_event(item)
+
+                # Try to extract result from ToolResult first (has the actual object)
+                if isinstance(item, ToolResult) and item.result is not None:
+                    tool_result = item.result
+                # StreamEnd carries the final result preview as fallback
+                elif isinstance(item, StreamEnd) and item.result_preview:
+                    # Reconstruct the output from the preview
+                    # Try Pydantic validation first
+                    try:
+                        if hasattr(self._output_type, "model_validate"):
+                            final_result = self._output_type.model_validate(  # type: ignore
+                                item.result_preview
+                            )
+                        else:
+                            final_result = item.result_preview  # type: ignore
+                    except Exception:
+                        # Fall back to direct assignment
                         final_result = item.result_preview  # type: ignore
-                except Exception:
-                    # Fall back to direct assignment
-                    final_result = item.result_preview  # type: ignore
 
-        # Prefer the actual result from ToolResult if available
-        if tool_result is not None:
-            final_result = tool_result  # type: ignore
+            # Prefer the actual result from ToolResult if available
+            if tool_result is not None:
+                final_result = tool_result  # type: ignore
 
-        if final_result is None:
-            msg = f"Node {self.name} did not produce a result"
-            raise RuntimeError(msg)
+            if final_result is None:
+                msg = f"Node {self.name} did not produce a result"
+                raise RuntimeError(msg)
 
-        return final_result
+            return final_result
+
+    def _record_stream_event(self, item: ProgressItem) -> None:
+        """Record a streaming progress item as a span event.
+
+        Args:
+            item: The progress item to record.
+
+        """
+        from pydantic_flow.streaming.events import CacheHit
+        from pydantic_flow.streaming.events import CacheMiss
+        from pydantic_flow.streaming.events import CacheWrite
+        from pydantic_flow.streaming.events import StreamStart
+        from pydantic_flow.streaming.events import TokenChunk
+        from pydantic_flow.streaming.events import ToolCall
+        from pydantic_flow.streaming.events import ToolResult
+        from pydantic_flow.telemetry.attributes import EventName
+        from pydantic_flow.telemetry.helpers import record_span_event
+
+        # Map stream events to span events
+        event_name: str | None = None
+        event_attrs: dict[str, Any] = {}
+
+        if isinstance(item, StreamStart):
+            event_name = EventName.STREAM_START
+        elif isinstance(item, StreamEnd):
+            event_name = EventName.STREAM_END
+        elif isinstance(item, TokenChunk):
+            event_name = EventName.STREAM_CHUNK
+            event_attrs["token"] = item.text[:50]  # Truncate
+        elif isinstance(item, CacheHit):
+            event_name = EventName.CACHE_HIT
+            event_attrs["key"] = item.key[:32]  # Truncate
+        elif isinstance(item, CacheMiss):
+            event_name = EventName.CACHE_MISS
+            event_attrs["key"] = item.key[:32]
+        elif isinstance(item, CacheWrite):
+            event_name = EventName.CACHE_WRITE
+            event_attrs["key"] = item.key[:32] if item.key else ""
+        elif isinstance(item, ToolCall):
+            event_name = EventName.TOOL_CALL
+            event_attrs["tool"] = item.tool_name
+        elif isinstance(item, ToolResult):
+            event_name = EventName.TOOL_RESULT
+            event_attrs["tool"] = item.tool_name
+
+        if event_name:
+            record_span_event(event_name, event_attrs)
 
     def _preview_input(self, input_data: InputT) -> dict[str, Any] | None:
         """Create a preview dict of input data for progress events.

@@ -465,121 +465,150 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         self._results = {}
         self._edge_history = []
 
-        # Set conversation memory in context if enabled
-        token = None
-        if self._conversation_memory is not None:
-            token = _active_flow_memory.set(self._conversation_memory)
+        # Telemetry: check if enabled before importing/instrumenting
+        from contextlib import nullcontext
 
-        try:
-            for node in self._execution_order:
-                # Determine input data for the node
-                if has_multiple_inputs(node):
-                    # Multi-input node: gather all dependency results as tuple
-                    input_data: Any = tuple(
-                        self._results[dep.node.name] for dep in node.inputs
-                    )
-                elif has_input_dependency(node):
-                    # Single-input node: node takes input from another node
-                    input_node = node.input.node
-                    if input_node.name not in self._results:
-                        msg = f"Input node {input_node.name} has not been executed"
-                        raise FlowError(msg)
-                    input_data = self._results[input_node.name]
-                    # Track edge
-                    self._edge_history.append((input_node.name, node.name))
-                else:
-                    # No-input node: takes input from flow inputs
-                    input_data = inputs
+        from pydantic_flow.telemetry.setup import is_enabled
 
-                # Execute node with interrupt checking
-                # Consume stream to check interrupts, get result via node.run()
-                result: Any = None
-                tool_result: Any = None
-                stream_items: list[ProgressItem] = []
+        if is_enabled():
+            from pydantic_flow.telemetry.attributes import AttributeKey
+            from pydantic_flow.telemetry.attributes import MetricName
+            from pydantic_flow.telemetry.attributes import SpanKind
+            from pydantic_flow.telemetry.helpers import create_span_async
+            from pydantic_flow.telemetry.helpers import measure_duration_async
+            from pydantic_flow.telemetry.helpers import record_counter
 
-                async for item in node.astream(input_data):  # type: ignore[union-attr]
-                    stream_items.append(item)
+            flow_attrs: dict[str, Any] = {
+                str(AttributeKey.FLOW_ID): self.flow_id,
+                str(AttributeKey.RUN_ID): run_id,
+                str(AttributeKey.EXECUTION_MODE): "dag",
+            }
+            record_counter(MetricName.FLOW_RUNS, attributes=flow_attrs)
 
-                    # Extract result using same logic as BaseNode.run()
-                    if isinstance(item, ToolResult) and item.result is not None:
-                        tool_result = item.result
+            span_ctx = create_span_async(SpanKind.FLOW_RUN, attributes=flow_attrs)
+            duration_ctx = measure_duration_async(
+                MetricName.FLOW_DURATION, attributes=flow_attrs
+            )
+        else:
+            span_ctx = nullcontext()
+            duration_ctx = nullcontext()
 
-                    # Check interrupt handlers on each progress item
-                    decision = await self._check_interrupt_handlers(item)
-                    if decision.should_interrupt:
-                        # Store result before interrupting if we have it
-                        if tool_result is not None:
-                            self._results[node.name] = tool_result
-
-                        checkpoint = self._create_checkpoint(node.name, run_id)
-                        raise InterruptionRequested(
-                            checkpoint=checkpoint,
-                            decision=decision,
-                        )
-
-                # Prefer ToolResult if available, otherwise run full reconstruction
-                if tool_result is not None:
-                    result = tool_result
-                else:
-                    # Need to reconstruct from stream - just call node.run()
-                    result = await node.run(input_data)  # type: ignore[union-attr]
-
-                self._results[node.name] = result
-
-            # Smart detection: If we have a single result that's already
-            # the output type, return it directly instead of trying to reconstruct
-            if len(self._results) == 1:
-                single_result = next(iter(self._results.values()))
-                if isinstance(single_result, self._output_type):
-                    return single_result  # type: ignore
-
-            # Construct the output BaseModel from the results
-            return self._output_type(**self._results)
-
-        except InterruptionRequested as e:
-            # Enhance checkpoint with flow-level information
-            e.checkpoint.flow_id = self.flow_id
-            e.checkpoint.node_states = self._results.copy()
-            e.checkpoint.edge_history = self._edge_history.copy()
-            # Capture conversation memory
+        async with span_ctx, duration_ctx:
+            # Set conversation memory in context if enabled
+            token = None
             if self._conversation_memory is not None:
-                e.checkpoint.conversation_memory = self._conversation_memory.get()
+                token = _active_flow_memory.set(self._conversation_memory)
 
-            # Persist checkpoint if store configured
-            if config.checkpoint_store is not None:
-                # Extract interrupt information from decision
-                interrupt_reason = getattr(e.decision, "reason", None)
-                interrupt_metadata = getattr(e.decision, "metadata", None)
-                # Convert empty dict to None
-                if interrupt_metadata is not None and not interrupt_metadata:
-                    interrupt_metadata = None
+            try:
+                for node in self._execution_order:
+                    # Determine input data for the node
+                    if has_multiple_inputs(node):
+                        # Multi-input node: gather all dependency results as tuple
+                        input_data: Any = tuple(
+                            self._results[dep.node.name] for dep in node.inputs
+                        )
+                    elif has_input_dependency(node):
+                        # Single-input node: node takes input from another node
+                        input_node = node.input.node
+                        if input_node.name not in self._results:
+                            msg = f"Input node {input_node.name} has not been executed"
+                            raise FlowError(msg)
+                        input_data = self._results[input_node.name]
+                        # Track edge
+                        self._edge_history.append((input_node.name, node.name))
+                    else:
+                        # No-input node: takes input from flow inputs
+                        input_data = inputs
 
-                envelope = await self._persist_checkpoint(
-                    checkpoint=e.checkpoint,
-                    store=config.checkpoint_store,
-                    is_interrupted=True,
-                    interrupt_reason=interrupt_reason,
-                    interrupt_metadata=interrupt_metadata,
-                )
+                    # Execute node with interrupt checking
+                    # Consume stream to check interrupts, get result via node.run()
+                    result: Any = None
+                    tool_result: Any = None
+                    stream_items: list[ProgressItem] = []
 
-                # Attach checkpoint ID to exception metadata
-                e.checkpoint.metadata = e.checkpoint.metadata or {}
-                e.checkpoint.metadata["checkpoint_id"] = envelope.id
-                e.checkpoint.metadata["run_id"] = run_id
+                    async for item in node.astream(input_data):  # type: ignore[union-attr]
+                        stream_items.append(item)
 
-            raise
+                        # Extract result using same logic as BaseNode.run()
+                        if isinstance(item, ToolResult) and item.result is not None:
+                            tool_result = item.result
 
-        except Exception as e:
-            # Wrap any other exception in a FlowError for consistency
-            if isinstance(e, FlowError):
+                        # Check interrupt handlers on each progress item
+                        decision = await self._check_interrupt_handlers(item)
+                        if decision.should_interrupt:
+                            # Store result before interrupting if we have it
+                            if tool_result is not None:
+                                self._results[node.name] = tool_result
+
+                            checkpoint = self._create_checkpoint(node.name, run_id)
+                            raise InterruptionRequested(
+                                checkpoint=checkpoint,
+                                decision=decision,
+                            )
+
+                    # Prefer ToolResult if available, otherwise run full reconstruction
+                    if tool_result is not None:
+                        result = tool_result
+                    else:
+                        # Need to reconstruct from stream - just call node.run()
+                        result = await node.run(input_data)  # type: ignore[union-attr]
+
+                    self._results[node.name] = result
+
+                # Smart detection: If we have a single result that's already
+                # the output type, return it directly instead of trying to reconstruct
+                if len(self._results) == 1:
+                    single_result = next(iter(self._results.values()))
+                    if isinstance(single_result, self._output_type):
+                        return single_result  # type: ignore
+
+                # Construct the output BaseModel from the results
+                return self._output_type(**self._results)
+
+            except InterruptionRequested as e:
+                # Enhance checkpoint with flow-level information
+                e.checkpoint.flow_id = self.flow_id
+                e.checkpoint.node_states = self._results.copy()
+                e.checkpoint.edge_history = self._edge_history.copy()
+                # Capture conversation memory
+                if self._conversation_memory is not None:
+                    e.checkpoint.conversation_memory = self._conversation_memory.get()
+
+                # Persist checkpoint if store configured
+                if config.checkpoint_store is not None:
+                    # Extract interrupt information from decision
+                    interrupt_reason = getattr(e.decision, "reason", None)
+                    interrupt_metadata = getattr(e.decision, "metadata", None)
+                    # Convert empty dict to None
+                    if interrupt_metadata is not None and not interrupt_metadata:
+                        interrupt_metadata = None
+
+                    envelope = await self._persist_checkpoint(
+                        checkpoint=e.checkpoint,
+                        store=config.checkpoint_store,
+                        is_interrupted=True,
+                        interrupt_reason=interrupt_reason,
+                        interrupt_metadata=interrupt_metadata,
+                    )
+
+                    # Attach checkpoint ID to exception metadata
+                    e.checkpoint.metadata = e.checkpoint.metadata or {}
+                    e.checkpoint.metadata["checkpoint_id"] = envelope.id
+                    e.checkpoint.metadata["run_id"] = run_id
+
                 raise
-            msg = f"Flow execution failed: {e}"
-            raise FlowError(msg) from e
 
-        finally:
-            # Reset context variable if it was set
-            if token is not None:
-                _active_flow_memory.reset(token)
+            except Exception as e:
+                # Wrap any other exception in a FlowError for consistency
+                if isinstance(e, FlowError):
+                    raise
+                msg = f"Flow execution failed: {e}"
+                raise FlowError(msg) from e
+
+            finally:
+                # Reset context variable if it was set
+                if token is not None:
+                    _active_flow_memory.reset(token)
 
     def get_execution_order(self) -> list[str]:
         """Get the names of nodes in execution order.
@@ -894,15 +923,50 @@ class CompiledFlow[InputT: BaseModel, OutputT: BaseModel]:
 
         """
         if self.use_stepper and self.engine is not None:
-            # Set memory context for stepper engine execution
-            token = None
-            if self.flow is not None and self.flow._conversation_memory is not None:
-                token = _active_flow_memory.set(self.flow._conversation_memory)
-            try:
-                return await self.engine.invoke(inputs, config)
-            finally:
-                if token is not None:
-                    _active_flow_memory.reset(token)
+            from contextlib import nullcontext
+
+            from pydantic_flow.telemetry.setup import is_enabled
+
+            # Prepare config
+            config = config or RunConfig()
+            run_id = config.run_id or str(uuid.uuid4())
+
+            # Telemetry: check if enabled before importing/instrumenting
+            if is_enabled():
+                from pydantic_flow.telemetry.attributes import AttributeKey
+                from pydantic_flow.telemetry.attributes import MetricName
+                from pydantic_flow.telemetry.attributes import SpanKind
+                from pydantic_flow.telemetry.helpers import create_span_async
+                from pydantic_flow.telemetry.helpers import measure_duration_async
+                from pydantic_flow.telemetry.helpers import record_counter
+
+                flow_attrs: dict[str, Any] = {
+                    str(AttributeKey.RUN_ID): run_id,
+                    str(AttributeKey.EXECUTION_MODE): "stepper",
+                }
+                if self.flow is not None:
+                    flow_attrs[str(AttributeKey.FLOW_ID)] = self.flow.flow_id
+
+                record_counter(MetricName.FLOW_RUNS, attributes=flow_attrs)
+
+                span_ctx = create_span_async(SpanKind.FLOW_RUN, attributes=flow_attrs)
+                duration_ctx = measure_duration_async(
+                    MetricName.FLOW_DURATION, attributes=flow_attrs
+                )
+            else:
+                span_ctx = nullcontext()
+                duration_ctx = nullcontext()
+
+            async with span_ctx, duration_ctx:
+                # Set memory context for stepper engine execution
+                token = None
+                if self.flow is not None and self.flow._conversation_memory is not None:
+                    token = _active_flow_memory.set(self.flow._conversation_memory)
+                try:
+                    return await self.engine.invoke(inputs, config)
+                finally:
+                    if token is not None:
+                        _active_flow_memory.reset(token)
         if self.flow is not None:
             return await self.flow.run(inputs)
         msg = "CompiledFlow has neither flow nor engine configured"

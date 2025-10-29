@@ -86,6 +86,7 @@ from pydantic_flow.streaming.helpers import iter_fields
 from pydantic_flow.streaming.helpers import iter_tokens
 from pydantic_flow.streaming.parser import StreamingParser
 from pydantic_flow.streaming.parser import parse_json_stream
+from pydantic_flow.telemetry import setup_telemetry
 
 # Public API - supports both direct and module imports
 __all__ = [
@@ -167,5 +168,6 @@ __all__ = [
     "iter_fields",
     "iter_tokens",
     "parse_json_stream",
+    "setup_telemetry",
 ]
 __version__ = get_project_info().version

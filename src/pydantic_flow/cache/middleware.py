@@ -31,7 +31,7 @@ T = TypeVar("T")
 _singleflight = Singleflight()
 
 
-async def maybe_cached_execute[T](  # noqa: PLR0913
+async def maybe_cached_execute[T](  # noqa: PLR0913, PLR0915
     node_name: str,
     inputs: dict[str, Any],
     exec_fn: Callable[[], Awaitable[T]],
@@ -66,8 +66,46 @@ async def maybe_cached_execute[T](  # noqa: PLR0913
         key = build_cache_key(node_name, inputs, policy, context)
         current_time = time.time()
 
-        entry = await backend.get(key)
+        # Telemetry: check if enabled before importing/instrumenting
+        from contextlib import nullcontext
+
+        from pydantic_flow.telemetry.setup import is_enabled
+
+        telemetry_enabled = is_enabled()
+        cache_attrs: dict[str, Any] = {}
+
+        if telemetry_enabled:
+            from pydantic_flow.telemetry.attributes import AttributeKey
+            from pydantic_flow.telemetry.attributes import MetricName
+            from pydantic_flow.telemetry.attributes import SpanKind
+            from pydantic_flow.telemetry.helpers import create_span_async
+            from pydantic_flow.telemetry.helpers import measure_duration_async
+            from pydantic_flow.telemetry.helpers import record_counter
+
+            cache_attrs = {
+                str(AttributeKey.NODE_ID): node_name,
+                str(AttributeKey.CACHE_BACKEND): backend.__class__.__name__,
+                str(AttributeKey.CACHE_KEY_HASH): key[:16],
+            }
+
+            record_counter(MetricName.CACHE_LOOKUPS, attributes=cache_attrs)
+
+            lookup_span_ctx = create_span_async(
+                SpanKind.CACHE_LOOKUP, attributes=cache_attrs
+            )
+            lookup_duration_ctx = measure_duration_async(
+                MetricName.CACHE_LOOKUP_DURATION, attributes=cache_attrs
+            )
+        else:
+            lookup_span_ctx = nullcontext()
+            lookup_duration_ctx = nullcontext()
+
+        async with lookup_span_ctx, lookup_duration_ctx:
+            entry = await backend.get(key)
+
         if entry is not None:
+            if telemetry_enabled:
+                record_counter(MetricName.CACHE_HITS, attributes=cache_attrs)  # type: ignore[possibly-undefined]
             ttl_remaining = entry.ttl_remaining(current_time)
             cache_events.append(
                 CacheHit(
@@ -79,6 +117,8 @@ async def maybe_cached_execute[T](  # noqa: PLR0913
             )
             return entry.value, cache_events
 
+        if telemetry_enabled:
+            record_counter(MetricName.CACHE_MISSES, attributes=cache_attrs)  # type: ignore[possibly-undefined]
         cache_events.append(
             CacheMiss(
                 node_id=node_name,
@@ -99,7 +139,38 @@ async def maybe_cached_execute[T](  # noqa: PLR0913
             )
 
             try:
-                await backend.set(key, entry)
+                # Telemetry for cache write
+                if telemetry_enabled:
+                    from pydantic_flow.telemetry.attributes import (
+                        MetricName as _MetricName,
+                    )
+                    from pydantic_flow.telemetry.attributes import SpanKind as _SpanKind
+                    from pydantic_flow.telemetry.helpers import (
+                        create_span_async as _create_span,
+                    )
+                    from pydantic_flow.telemetry.helpers import (
+                        measure_duration_async as _measure,
+                    )
+                    from pydantic_flow.telemetry.helpers import (
+                        record_counter as _counter,
+                    )
+
+                    write_attrs: dict[str, Any] = {**cache_attrs}
+                    _counter(_MetricName.CACHE_WRITES, attributes=write_attrs)
+
+                    write_span_ctx = _create_span(
+                        _SpanKind.CACHE_WRITE, attributes=write_attrs
+                    )
+                    write_duration_ctx = _measure(
+                        _MetricName.CACHE_WRITE_DURATION, attributes=write_attrs
+                    )
+                else:
+                    write_span_ctx = nullcontext()
+                    write_duration_ctx = nullcontext()
+
+                async with write_span_ctx, write_duration_ctx:
+                    await backend.set(key, entry)
+
                 value_size = sys.getsizeof(result)
                 cache_events.append(
                     CacheWrite(
