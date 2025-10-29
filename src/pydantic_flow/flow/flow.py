@@ -4,7 +4,8 @@ This module provides the Flow class that manages workflow execution,
 dependency resolution, and DAG validation.
 
 BREAKING CHANGE: Added HITL (Human-in-the-Loop) support with flow_id,
-interrupt handlers, checkpoints, and resumption.
+interrupt handlers, checkpoints, and resumption. Added checkpoint persistence
+via pluggable checkpoint stores.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from __future__ import annotations
 from collections import deque
 from collections.abc import Callable
 from enum import StrEnum
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import TypeVar
 import uuid
@@ -41,6 +43,10 @@ from pydantic_flow.streaming.events import InterruptCallback
 from pydantic_flow.streaming.events import InterruptDecision
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import ToolResult
+
+if TYPE_CHECKING:
+    from pydantic_flow.checkpoints.interface import CheckpointEnvelope
+    from pydantic_flow.checkpoints.interface import CheckpointStore
 
 InputT = TypeVar("InputT", bound=BaseModel)
 OutputT = TypeVar("OutputT", bound=BaseModel)
@@ -175,7 +181,6 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             FlowCheckpoint with captured state.
 
         """
-        # Capture conversation memory if it exists
         conversation_memory = None
         if self._conversation_memory is not None:
             conversation_memory = self._conversation_memory.get()
@@ -188,6 +193,39 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             edge_history=self._edge_history.copy(),
             conversation_memory=conversation_memory,
         )
+
+    async def _persist_checkpoint(
+        self,
+        checkpoint: FlowCheckpoint,
+        store: CheckpointStore,
+    ) -> CheckpointEnvelope:
+        """Persist a checkpoint to the configured store.
+
+        Args:
+            checkpoint: The checkpoint to persist.
+            store: The checkpoint store to use.
+
+        Returns:
+            The persisted checkpoint envelope with ID.
+
+        Raises:
+            CheckpointBackendError: If persistence fails.
+
+        """
+        # Local imports to avoid circular dependency
+        from pydantic_flow.checkpoints.interface import CheckpointEnvelope
+        from pydantic_flow.checkpoints.interface import CheckpointId
+        from pydantic_flow.checkpoints.interface import RunId
+        from pydantic_flow.checkpoints.interface import generate_checkpoint_id
+
+        envelope = CheckpointEnvelope(
+            id=CheckpointId(generate_checkpoint_id()),
+            run_id=RunId(checkpoint.run_id),
+            node_id=checkpoint.interrupted_node_id,
+            checkpoint=checkpoint,
+        )
+
+        return await store.save(envelope, overwrite=False)
 
     async def resume(self, checkpoint: FlowCheckpoint, inputs: InputT) -> OutputT:
         """Resume flow execution from a checkpoint.
@@ -332,11 +370,12 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
         self._execution_order = execution_order
 
-    async def run(self, inputs: InputT) -> OutputT:
+    async def run(self, inputs: InputT, config: RunConfig | None = None) -> OutputT:
         """Execute the flow with the given inputs.
 
         Args:
             inputs: The input data for the flow (must match the flow's InputT type)
+            config: Optional run configuration including checkpoint store
 
         Returns:
             The flow results with the specified OutputT type
@@ -347,12 +386,14 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             InterruptionRequested: If a HITL interrupt handler requests stopping
 
         """
-        # Runtime validation of input type
         if not isinstance(inputs, self._input_type):
             expected_name = self._input_type.__name__
             actual_name = type(inputs).__name__
             msg = f"Input type mismatch: expected {expected_name}, got {actual_name}"
             raise TypeError(msg)
+
+        config = config or RunConfig()
+        run_id = config.run_id or str(uuid.uuid4())
 
         self._results = {}
         self._edge_history = []
@@ -394,9 +435,7 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                     # Check interrupt handlers on each progress item
                     decision = await self._check_interrupt_handlers(item)
                     if decision.should_interrupt:
-                        checkpoint = self._create_checkpoint(
-                            node.name, decision.metadata.get("run_id", "")
-                        )
+                        checkpoint = self._create_checkpoint(node.name, run_id)
                         raise InterruptionRequested(
                             checkpoint=checkpoint,
                             decision=decision,
@@ -433,6 +472,18 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             # Capture conversation memory
             if self._conversation_memory is not None:
                 e.checkpoint.conversation_memory = self._conversation_memory.get()
+
+            # Persist checkpoint if store configured
+            if config.checkpoint_store is not None:
+                envelope = await self._persist_checkpoint(
+                    e.checkpoint, config.checkpoint_store
+                )
+
+                # Attach checkpoint ID to exception metadata
+                e.checkpoint.metadata = e.checkpoint.metadata or {}
+                e.checkpoint.metadata["checkpoint_id"] = envelope.id
+                e.checkpoint.metadata["run_id"] = run_id
+
             raise
 
         except Exception as e:
@@ -790,5 +841,6 @@ class CompiledFlow[InputT: BaseModel, OutputT: BaseModel]:
         """
         if self.flow is not None:
             return await self.flow.resume(checkpoint, inputs)
+        # TODO: Implement resumption for stepper engine
         msg = "Resumption not yet supported for stepper engine"
         raise FlowError(msg)

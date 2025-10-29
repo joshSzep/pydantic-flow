@@ -115,6 +115,7 @@ class ProgressType(StrEnum):
     CACHE_MISS = "cache_miss"
     CACHE_WRITE = "cache_write"
     CACHE_ERROR = "cache_error"
+    CHECKPOINT_SAVED = "checkpoint_saved"
 
 
 class ProgressItem(BaseModel):
@@ -456,3 +457,19 @@ class CacheError(ProgressItem):
     error: str
     operation: str
     key: str | None = None
+
+
+class CheckpointSaved(ProgressItem):
+    """Checkpoint was persisted to storage.
+
+    Attributes:
+        node_id: Node where checkpoint was created.
+        checkpoint_id: Unique identifier for the saved checkpoint.
+        run_id: Run identifier for checkpoint correlation.
+        store_type: Type of checkpoint store used.
+
+    """
+
+    type: ProgressType = ProgressType.CHECKPOINT_SAVED
+    checkpoint_id: str
+    store_type: str

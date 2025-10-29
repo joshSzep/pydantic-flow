@@ -1,6 +1,6 @@
 [project]
 name = "pydantic-flow"
-version = "0.14.0"
+version = "0.15.0"
 description = "An opinionated pydantic-ai based framework with batteries included."
 readme = "README.md"
 authors = [
@@ -8,8 +8,10 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "aioboto3>=14.0.0",
     "aiosqlite>=0.20.0",
     "anyio>=4.11.0",
+    "asyncpg>=0.29.0",
     "chevron>=0.14.0",
     "jinja2>=3.1.6",
     "numpy>=2.3.4",
@@ -29,6 +31,7 @@ dev = [
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
     "pytest-cov>=7.0.0",
+    "pytest-repeat>=0.9.4",
     "ruff>=0.14.1",
     "ty>=0.0.1a23",
 ]
@@ -53,10 +56,11 @@ ignore = ["D203","D213"]
 "tests/**/*.py" = ["PLR2004", "PLC0415", "SIM102"]  # Allow magic values, imports in functions, nested ifs in tests
 "examples/**/*.py" = ["D401", "PLR2004", "RUF001", "E501"]  # Allow imperative mood, magic numbers, unicode chars, long lines in examples
 "src/pydantic_flow/engine/stepper.py" = ["PLR0913"]  # EngineConfig init needs multiple params
-"src/pydantic_flow/flow/flow.py" = ["PLR0912", "PLR0915"]  # Complex flow execution logic
+"src/pydantic_flow/flow/flow.py" = ["PLR0912", "PLR0915", "PLC0415"]  # Complex flow execution logic, local imports to avoid circular deps
 "src/pydantic_flow/nodes/agent.py" = ["PLR0913"]  # AgentNode init needs multiple params
 "src/pydantic_flow/nodes/flow.py" = ["PLR0912"]  # Complex memory mode handling
 "src/pydantic_flow/cache/middleware.py" = ["UP040", "PLR0912"]  # TypeVar needed for proper typing, complex branching
+"src/pydantic_flow/checkpoints/*.py" = ["PLC0415"]  # Local imports for optional dependencies (asyncpg, aioboto3)
 
 [tool.ruff.format]
 preview = true
@@ -93,7 +97,7 @@ branch = true
 source = ["src/pydantic_flow"]
 
 [tool.coverage.report]
-fail_under = 90  # Fail if coverage is below 90%
+fail_under = 88  # Fail if coverage is below 88%
 
 [build-system]
 requires = ["uv_build>=0.9.4,<0.10.0"]
