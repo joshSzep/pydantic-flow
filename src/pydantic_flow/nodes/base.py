@@ -64,8 +64,19 @@ class BaseNode[InputT, OutputT](ABC):
         self._output: NodeOutput[OutputT] = NodeOutput(node=self)
         self._interrupt_handlers: list[InterruptHandlerRegistration] = []
         # Store type information for runtime inspection
-        self._input_type: type[InputT] = self.__class__.__orig_bases__[0].__args__[0]  # type: ignore
-        self._output_type: type[OutputT] = self.__class__.__orig_bases__[0].__args__[1]  # type: ignore
+        # Find the base with generic type parameters (handles multiple inheritance)
+        type_base = None
+        for base in self.__class__.__orig_bases__:  # type: ignore
+            if hasattr(base, "__args__") and len(base.__args__) >= 2:  # type: ignore  # noqa: PLR2004
+                type_base = base
+                break
+        if type_base is not None:
+            self._input_type: type[InputT] = type_base.__args__[0]  # type: ignore
+            self._output_type: type[OutputT] = type_base.__args__[1]  # type: ignore
+        else:
+            # Fallback for edge cases
+            self._input_type = Any  # type: ignore
+            self._output_type = Any  # type: ignore
 
     @property
     def output(self) -> NodeOutput[OutputT]:

@@ -20,6 +20,7 @@ A modern, type-safe, composable Python framework for building AI workflows with 
 - **Automatic DAG Resolution**: Intelligent dependency tracking and execution ordering ([learn more](docs/dag_resolution.md))
 - **Human-in-the-Loop (HITL)**: Comprehensive interruption, approval, and resumption support ([learn more](docs/hitl.md))
 - **Production-Ready Prompt Library**: Standalone templating system with multiple engines ([learn more](docs/prompt_library.md))
+- **First-Class Caching**: LLM and embedding caching with pluggable backends (in-memory, SQLite, Redis), TTL, and observability ([learn more](docs/caching.md))
 - **Serializable & Inspectable**: Full observability and debugging support with OpenTelemetry integration
 
 ## 🚀 Quick Start

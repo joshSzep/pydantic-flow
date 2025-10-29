@@ -231,3 +231,43 @@ async def test_retriever_node_without_model_dump():
     # Check StreamStart with None input_preview
     assert isinstance(items[0], StreamStart)
     assert items[0].input_preview is None
+
+
+@pytest.mark.asyncio
+async def test_retriever_node_with_cache_policy():
+    """Test RetrieverNode accepts cache_policy parameter."""
+    from datetime import timedelta
+
+    from pydantic_flow.cache import CachePolicy
+
+    async def mock_retriever(query: SearchQuery):
+        yield {"id": "doc1", "content": "Result"}
+
+    policy = CachePolicy(enabled=True, ttl=timedelta(hours=1))
+    node = RetrieverNode(
+        retriever_fn=mock_retriever,
+        name="cached_retriever",
+        cache_policy=policy,
+    )
+
+    assert node.cache_policy is policy
+    if node.cache_policy:
+        assert node.cache_policy.enabled is True
+        assert node.cache_policy.ttl == timedelta(hours=1)
+    assert node.is_cacheable() is True
+
+
+@pytest.mark.asyncio
+async def test_retriever_node_without_cache_policy():
+    """Test RetrieverNode works without cache_policy."""
+
+    async def mock_retriever(query: SearchQuery):
+        yield {"id": "doc1", "content": "Result"}
+
+    node = RetrieverNode(
+        retriever_fn=mock_retriever,
+        name="uncached_retriever",
+    )
+
+    assert node.cache_policy is None
+    assert node.is_cacheable() is False

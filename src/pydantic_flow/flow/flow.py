@@ -18,6 +18,8 @@ import uuid
 
 from pydantic import BaseModel
 
+from pydantic_flow.cache.base import CacheBackend
+from pydantic_flow.cache.base import CachePolicy
 from pydantic_flow.core.errors import FlowCheckpoint
 from pydantic_flow.core.errors import FlowError
 from pydantic_flow.core.errors import HandlerPriority
@@ -76,6 +78,8 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         input_type: type[InputT],
         output_type: type[OutputT],
         memory_config: MemoryConfig | None = None,
+        cache_backend: CacheBackend | None = None,
+        default_cache_policy: CachePolicy | None = None,
     ) -> None:
         """Initialize a flow with the required input and output types.
 
@@ -84,6 +88,8 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             output_type: The BaseModel class to construct from flow results.
             memory_config: Optional configuration for conversation memory.
                          If None, uses default MemoryConfig().
+            cache_backend: Optional cache backend for node result caching.
+            default_cache_policy: Optional default cache policy for nodes.
 
         """
         self.nodes: list[BaseNode[Any, Any]] = []
@@ -98,6 +104,8 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         self._interrupt_handlers: list[InterruptHandlerRegistration] = []
         self._edge_history: list[tuple[str, str]] = []
         self.memory_config = memory_config or MemoryConfig()
+        self._cache_backend = cache_backend
+        self._default_cache_policy = default_cache_policy
         self._conversation_memory: ConversationMemory | None = None
         if self.memory_config.enable_conversation_memory:
             self._conversation_memory = ConversationMemory(
@@ -569,12 +577,47 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 entry_nodes=entry_nodes,
                 input_type=self._input_type,
                 output_type=self._output_type,
+                cache_backend=self._cache_backend,
+                default_cache_policy=self._default_cache_policy,
             )
             engine = StepperEngine(engine_config)
             return CompiledFlow(flow=self, engine=engine, use_stepper=True)
 
         self._calculate_execution_order()
         return CompiledFlow(flow=self, use_stepper=False)
+
+    async def cache_delete(self, key: str) -> None:
+        """Delete a specific cache entry.
+
+        Args:
+            key: The cache key to delete.
+
+        Raises:
+            FlowError: If no cache backend is configured.
+
+        """
+        if self._cache_backend is None:
+            msg = "No cache backend configured for this flow"
+            raise FlowError(msg)
+        await self._cache_backend.delete(key)
+
+    async def cache_invalidate(self, namespace: str) -> int:
+        """Invalidate all cache entries in a namespace.
+
+        Args:
+            namespace: The cache namespace to invalidate.
+
+        Returns:
+            Number of entries invalidated.
+
+        Raises:
+            FlowError: If no cache backend is configured.
+
+        """
+        if self._cache_backend is None:
+            msg = "No cache backend configured for this flow"
+            raise FlowError(msg)
+        return await self._cache_backend.invalidate_namespace(namespace)
 
     def _has_cycles(self) -> bool:
         """Check if the flow has cycles."""

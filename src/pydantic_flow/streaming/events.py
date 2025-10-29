@@ -91,6 +91,10 @@ class ProgressType(StrEnum):
         ERROR: Non-fatal error or warning.
         END: Stream completes successfully.
         HEARTBEAT: Liveness signal during long operation.
+        CACHE_HIT: Cache hit occurred.
+        CACHE_MISS: Cache miss occurred.
+        CACHE_WRITE: Cache write completed.
+        CACHE_ERROR: Cache operation error.
 
     """
 
@@ -107,6 +111,10 @@ class ProgressType(StrEnum):
     HEARTBEAT = "heartbeat"
     MEMORY_COMPRESSION_PENDING = "memory_compression_pending"
     MEMORY_COMPRESSION_COMPLETE = "memory_compression_complete"
+    CACHE_HIT = "cache_hit"
+    CACHE_MISS = "cache_miss"
+    CACHE_WRITE = "cache_write"
+    CACHE_ERROR = "cache_error"
 
 
 class ProgressItem(BaseModel):
@@ -382,3 +390,69 @@ class MemoryCompressionComplete(ProgressItem):
     type: ProgressType = ProgressType.MEMORY_COMPRESSION_COMPLETE
     metrics: Any  # CompressionMetrics - avoid circular import
     compressed_messages_preview: list[dict[str, str]] = Field(default_factory=list)
+
+
+class CacheHit(ProgressItem):
+    """Cache hit occurred during node execution.
+
+    Attributes:
+        node_id: Node that had the cache hit.
+        key: Cache key that was hit.
+        backend: Name of cache backend used.
+        ttl_remaining: Remaining TTL in seconds, or None if no TTL.
+
+    """
+
+    type: ProgressType = ProgressType.CACHE_HIT
+    key: str
+    backend: str
+    ttl_remaining: float | None = None
+
+
+class CacheMiss(ProgressItem):
+    """Cache miss occurred during node execution.
+
+    Attributes:
+        node_id: Node that had the cache miss.
+        key: Cache key that missed.
+        backend: Name of cache backend used.
+
+    """
+
+    type: ProgressType = ProgressType.CACHE_MISS
+    key: str
+    backend: str
+
+
+class CacheWrite(ProgressItem):
+    """Cache write completed.
+
+    Attributes:
+        node_id: Node that wrote to cache.
+        key: Cache key written.
+        backend: Name of cache backend used.
+        value_size_bytes: Size of cached value in bytes.
+
+    """
+
+    type: ProgressType = ProgressType.CACHE_WRITE
+    key: str
+    backend: str
+    value_size_bytes: int
+
+
+class CacheError(ProgressItem):
+    """Cache operation error occurred.
+
+    Attributes:
+        node_id: Node where error occurred.
+        error: Error message.
+        operation: Operation that failed (get/set/delete).
+        key: Cache key involved, if applicable.
+
+    """
+
+    type: ProgressType = ProgressType.CACHE_ERROR
+    error: str
+    operation: str
+    key: str | None = None

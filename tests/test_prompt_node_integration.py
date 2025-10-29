@@ -1,5 +1,6 @@
 """Tests for PromptNode integration with prompt templating system."""
 
+from datetime import timedelta
 import json
 
 from pydantic import BaseModel
@@ -13,6 +14,7 @@ from pydantic_flow import PromptNode
 from pydantic_flow import PromptTemplate
 from pydantic_flow import TemplateFormat
 from pydantic_flow import ToolResult
+from pydantic_flow.cache import CachePolicy
 from pydantic_flow.prompt import AsIsParser
 from pydantic_flow.prompt import JsonModelParser
 from pydantic_flow.streaming.helpers import collect_all_tokens
@@ -338,3 +340,33 @@ class TestPromptNodeConfiguration:
 
         result = await collect_tool_result(stream)
         assert isinstance(result, str)
+
+
+class TestPromptNodeCaching:
+    """Test PromptNode cache_policy support."""
+
+    async def test_prompt_node_with_cache_policy(self):
+        """Test that PromptNode accepts cache_policy parameter."""
+        cache_policy = CachePolicy(
+            enabled=True,
+            ttl=timedelta(hours=1),
+        )
+
+        node = PromptNode[QueryInput, str](
+            prompt="Explain {topic}",
+            config=PromptConfig(model="test"),
+            cache_policy=cache_policy,
+        )
+
+        assert node.cache_policy == cache_policy
+        assert node.is_cacheable()
+
+    async def test_prompt_node_without_cache_policy(self):
+        """Test that PromptNode works without cache_policy."""
+        node = PromptNode[QueryInput, str](
+            prompt="Explain {topic}",
+            config=PromptConfig(model="test"),
+        )
+
+        assert node.cache_policy is None
+        assert not node.is_cacheable()

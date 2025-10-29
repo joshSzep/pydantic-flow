@@ -6,7 +6,9 @@ import uuid
 
 from pydantic import BaseModel
 
+from pydantic_flow.cache.base import CachePolicy
 from pydantic_flow.nodes.base import NodeWithInput
+from pydantic_flow.nodes.mixins import CacheableNode
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import RetrievalItem
 from pydantic_flow.streaming.events import StreamEnd
@@ -14,7 +16,7 @@ from pydantic_flow.streaming.events import StreamStart
 
 
 class RetrieverNode[QueryModel: BaseModel, ResultModel: BaseModel](
-    NodeWithInput[QueryModel, ResultModel]
+    CacheableNode, NodeWithInput[QueryModel, ResultModel]
 ):
     """Streaming retriever that yields search results progressively.
 
@@ -29,6 +31,7 @@ class RetrieverNode[QueryModel: BaseModel, ResultModel: BaseModel](
         input: Any = None,
         name: str | None = None,
         run_id: str | None = None,
+        cache_policy: CachePolicy | None = None,
     ) -> None:
         """Initialize a RetrieverNode.
 
@@ -37,10 +40,12 @@ class RetrieverNode[QueryModel: BaseModel, ResultModel: BaseModel](
             input: Optional input from another node's output.
             name: Optional unique identifier for this node.
             run_id: Optional run identifier for tracking execution.
+            cache_policy: Optional cache policy for this node.
 
         """
         super().__init__(input, name, run_id)
         self.retriever_fn = retriever_fn
+        self.cache_policy = cache_policy
 
     async def astream(self, input_data: QueryModel) -> AsyncIterator[ProgressItem]:
         """Stream retrieval items as they are found.

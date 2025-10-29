@@ -1,6 +1,6 @@
 [project]
 name = "pydantic-flow"
-version = "0.13.0"
+version = "0.14.0"
 description = "An opinionated pydantic-ai based framework with batteries included."
 readme = "README.md"
 authors = [
@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
+    "aiosqlite>=0.20.0",
     "anyio>=4.11.0",
     "chevron>=0.14.0",
     "jinja2>=3.1.6",
@@ -16,6 +17,7 @@ dependencies = [
     "opentelemetry-exporter-otlp>=1.38.0",
     "opentelemetry-sdk>=1.38.0",
     "pydantic-ai>=1.2.1",
+    "redis[hiredis]>=5.0.0",
     "rich>=14.2.0",
     "sqlite-utils>=3.38",
     "typer>=0.20.0",
@@ -54,6 +56,7 @@ ignore = ["D203","D213"]
 "src/pydantic_flow/flow/flow.py" = ["PLR0912", "PLR0915"]  # Complex flow execution logic
 "src/pydantic_flow/nodes/agent.py" = ["PLR0913"]  # AgentNode init needs multiple params
 "src/pydantic_flow/nodes/flow.py" = ["PLR0912"]  # Complex memory mode handling
+"src/pydantic_flow/cache/middleware.py" = ["UP040", "PLR0912"]  # TypeVar needed for proper typing, complex branching
 
 [tool.ruff.format]
 preview = true
@@ -75,7 +78,6 @@ addopts = [
     "--cov=src/pydantic_flow",  # Coverage for pydantic_flow package
     "--cov-report=term-missing",  # Show missing lines in coverage
     "--cov-report=html",  # Generate HTML coverage report
-    "--cov-fail-under=90",  # Fail if coverage is below 90%
 ]
 asyncio_mode = "auto"
 testpaths = ["tests"]
@@ -89,6 +91,9 @@ filterwarnings = [
 [tool.coverage.run]
 branch = true
 source = ["src/pydantic_flow"]
+
+[tool.coverage.report]
+fail_under = 90  # Fail if coverage is below 90%
 
 [build-system]
 requires = ["uv_build>=0.9.4,<0.10.0"]

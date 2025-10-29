@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from pydantic import Field
 from pydantic import model_validator
 
+from pydantic_flow.cache.middleware import maybe_cached_execute
 from pydantic_flow.core.errors import FlowError
 from pydantic_flow.core.errors import FlowTimeoutError
 from pydantic_flow.core.errors import RecursionLimitError
@@ -88,6 +89,8 @@ class EngineConfig[InputT: BaseModel, OutputT: BaseModel](BaseModel):
         entry_nodes: Names of nodes to execute first.
         input_type: Expected input type for the flow.
         output_type: Expected output type for the flow.
+        cache_backend: Optional cache backend for node execution.
+        default_cache_policy: Optional default cache policy for nodes.
 
     """
 
@@ -97,6 +100,8 @@ class EngineConfig[InputT: BaseModel, OutputT: BaseModel](BaseModel):
     entry_nodes: list[str]
     input_type: type[InputT]
     output_type: type[OutputT]
+    cache_backend: Any = None
+    default_cache_policy: Any = None
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -143,6 +148,8 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
         self.entry_nodes = config.entry_nodes
         self.input_type = config.input_type
         self.output_type = config.output_type
+        self.cache_backend = config.cache_backend
+        self.default_cache_policy = config.default_cache_policy
 
     async def invoke(
         self,
@@ -258,7 +265,25 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
             """Execute a single node and return its name and result."""
             node = self.nodes_by_name[node_name]
             input_data = self._get_node_input(node, inputs, results)
-            result = await node.run(input_data)
+
+            # Check if node supports caching
+            node_cache_policy = getattr(node, "cache_policy", None)
+            effective_policy = node_cache_policy or self.default_cache_policy
+
+            if self.cache_backend is not None and effective_policy is not None:
+                # Use cached execution
+                result, _cache_events = await maybe_cached_execute(
+                    node_name=node_name,
+                    inputs={"input": input_data},
+                    exec_fn=lambda: node.run(input_data),
+                    backend=self.cache_backend,
+                    policy=effective_policy,
+                    context=None,
+                )
+            else:
+                # Direct execution without caching
+                result = await node.run(input_data)
+
             return node_name, result
 
         tasks = [execute_node(node_name) for node_name in frontier]

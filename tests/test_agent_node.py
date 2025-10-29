@@ -551,3 +551,81 @@ async def test_llm_node_result_truly_no_model_dump():
     assert isinstance(stream_end, StreamEnd)
     # result_preview should be None since dict doesn't have model_dump
     assert stream_end.result_preview is None
+
+
+@pytest.mark.asyncio
+async def test_agent_node_with_cache_policy():
+    """Test AgentNode accepts cache_policy parameter."""
+    from datetime import timedelta
+
+    from pydantic_flow.cache import CachePolicy
+
+    mock_agent = MagicMock(spec=Agent)
+
+    policy = CachePolicy(enabled=True, ttl=timedelta(hours=1))
+    node = AgentNode[InputModel, str](
+        agent=mock_agent,
+        prompt_template="Query: {query}",
+        name="cached_agent",
+        cache_policy=policy,
+    )
+
+    assert node.cache_policy is policy
+    if node.cache_policy:
+        assert node.cache_policy.enabled is True
+        assert node.cache_policy.ttl == timedelta(hours=1)
+    assert node.is_cacheable() is True
+
+
+@pytest.mark.asyncio
+async def test_agent_node_without_cache_policy():
+    """Test AgentNode works without cache_policy."""
+    mock_agent = MagicMock(spec=Agent)
+
+    node = AgentNode[InputModel, str](
+        agent=mock_agent,
+        prompt_template="Query: {query}",
+        name="uncached_agent",
+    )
+
+    assert node.cache_policy is None
+    assert node.is_cacheable() is False
+
+
+@pytest.mark.asyncio
+async def test_llm_node_with_cache_policy():
+    """Test LLMNode accepts cache_policy parameter."""
+    from datetime import timedelta
+
+    from pydantic_flow.cache import CachePolicy
+
+    mock_agent = MagicMock(spec=Agent)
+
+    policy = CachePolicy(enabled=True, ttl=timedelta(hours=1))
+    node = LLMNode[InputModel, OutputModel](
+        agent=mock_agent,
+        prompt_template="Query: {query}",
+        name="cached_llm",
+        cache_policy=policy,
+    )
+
+    assert node.cache_policy is policy
+    if node.cache_policy:
+        assert node.cache_policy.enabled is True
+        assert node.cache_policy.ttl == timedelta(hours=1)
+    assert node.is_cacheable() is True
+
+
+@pytest.mark.asyncio
+async def test_llm_node_without_cache_policy():
+    """Test LLMNode works without cache_policy."""
+    mock_agent = MagicMock(spec=Agent)
+
+    node = LLMNode[InputModel, OutputModel](
+        agent=mock_agent,
+        prompt_template="Query: {query}",
+        name="uncached_llm",
+    )
+
+    assert node.cache_policy is None
+    assert node.is_cacheable() is False

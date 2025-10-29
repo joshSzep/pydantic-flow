@@ -209,3 +209,7 @@ __marimo__/
 # Personal Utilities
 git-push.sh
 
+# Cache Example Databases
+.example-cache.db
+.example-cache.db-shm
+.example-cache.db-wal

@@ -3,14 +3,14 @@
 This module provides various node types for constructing type-safe workflows.
 """
 
+# Concrete node implementations
+from pydantic_flow.nodes.agent import AgentNode as AgentNode
 from pydantic_flow.nodes.base import BaseNode as BaseNode
 from pydantic_flow.nodes.base import MergeNode as MergeNode
 from pydantic_flow.nodes.base import NodeOutput as NodeOutput
 from pydantic_flow.nodes.base import NodeProtocol as NodeProtocol
 from pydantic_flow.nodes.base import NodeWithInput as NodeWithInput
 from pydantic_flow.nodes.base import RunnableNode as RunnableNode
-
-# Concrete node implementations
 from pydantic_flow.nodes.conditional import IfNode as IfNode
 from pydantic_flow.nodes.flow import FlowNode as FlowNode
 from pydantic_flow.nodes.human import ApprovalNode as ApprovalNode

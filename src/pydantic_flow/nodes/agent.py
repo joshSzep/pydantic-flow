@@ -12,9 +12,11 @@ import uuid
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
+from pydantic_flow.cache.base import CachePolicy
 from pydantic_flow.core.errors import InterruptionRequested
 from pydantic_flow.memory import _active_flow_memory
 from pydantic_flow.nodes.base import NodeWithInput
+from pydantic_flow.nodes.mixins import CacheableNode
 from pydantic_flow.streaming.events import NonFatalError
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import StreamEnd
@@ -23,11 +25,16 @@ from pydantic_flow.streaming.events import TokenChunk
 from pydantic_flow.streaming.observers import observe_agent_stream
 
 
-class AgentNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, OutputT]):
+class AgentNode[InputModel: BaseModel, OutputT](
+    CacheableNode, NodeWithInput[InputModel, OutputT]
+):
     """A streaming-native node that uses a pydantic-ai Agent.
 
     This node integrates user-supplied pydantic-ai agents with our streaming
     infrastructure, yielding tokens and progress items while the agent runs.
+
+    Supports caching via the cache_policy attribute when used with a Flow
+    that has a cache backend configured.
     """
 
     def __init__(
@@ -39,6 +46,7 @@ class AgentNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Output
         name: str | None = None,
         run_id: str | None = None,
         use_conversation_memory: bool = True,
+        cache_policy: CachePolicy | None = None,
     ) -> None:
         """Initialize an AgentNode.
 
@@ -51,12 +59,14 @@ class AgentNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Output
             run_id: Optional run identifier for tracking execution.
             use_conversation_memory: Whether to use conversation memory from
                                    the active flow context. Default True.
+            cache_policy: Optional cache policy for this node.
 
         """
         super().__init__(input, name, run_id)
         self.agent = agent
         self.prompt_template = prompt_template or ""
         self.use_conversation_memory = use_conversation_memory
+        self.cache_policy = cache_policy
 
     async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:
         """Stream progress items while executing the LLM call.
@@ -135,7 +145,7 @@ class AgentNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Output
 
 
 class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
-    NodeWithInput[InputModel, OutputModel]
+    CacheableNode, NodeWithInput[InputModel, OutputModel]
 ):
     """A streaming-native LLM node with structured output.
 
@@ -152,6 +162,7 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
         name: str | None = None,
         run_id: str | None = None,
         use_conversation_memory: bool = True,
+        cache_policy: CachePolicy | None = None,
     ) -> None:
         """Initialize an LLMNode.
 
@@ -163,11 +174,14 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
             run_id: Optional run identifier for tracking execution.
             use_conversation_memory: Whether to use conversation memory from
                                    the active flow context. Default True.
+            cache_policy: Optional cache policy for this node.
 
         """
         super().__init__(input, name, run_id)
         self.agent = agent
         self.prompt_template = prompt_template
+        self.use_conversation_memory = use_conversation_memory
+        self.cache_policy = cache_policy
         self.use_conversation_memory = use_conversation_memory
 
     async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:

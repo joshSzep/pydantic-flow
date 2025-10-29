@@ -10,10 +10,12 @@ import uuid
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
+from pydantic_flow.cache import CachePolicy
 from pydantic_flow.core.errors import FlowCheckpoint
 from pydantic_flow.core.errors import InterruptionRequested
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.base import NodeWithInput
+from pydantic_flow.nodes.mixins import CacheableNode
 from pydantic_flow.prompt.engines import get_renderer
 from pydantic_flow.prompt.enums import JoinStrategy
 from pydantic_flow.prompt.enums import TemplateFormat
@@ -40,7 +42,10 @@ class PromptConfig(BaseModel):
     chat_join_strategy: JoinStrategy = JoinStrategy.SIMPLE
 
 
-class PromptNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, OutputT]):
+class PromptNode[InputModel: BaseModel, OutputT](
+    CacheableNode,
+    NodeWithInput[InputModel, OutputT],
+):
     """A streaming-native node that calls an LLM using a templated prompt.
 
     This node creates a pydantic-ai agent internally and provides streaming
@@ -60,6 +65,7 @@ class PromptNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Outpu
         input: NodeOutput[InputModel] | None = None,
         name: str | None = None,
         run_id: str | None = None,
+        cache_policy: CachePolicy | None = None,
     ) -> None:
         """Initialize a PromptNode.
 
@@ -72,9 +78,11 @@ class PromptNode[InputModel: BaseModel, OutputT](NodeWithInput[InputModel, Outpu
             input: Optional input from another node's output
             name: Optional unique identifier for this node
             run_id: Optional run identifier for tracking execution
+            cache_policy: Optional cache policy for this node
 
         """
         super().__init__(input, name, run_id)
+        self.cache_policy = cache_policy
         self.config = config or PromptConfig()
         self.output_parser = output_parser
 
