@@ -14,14 +14,13 @@ from pathlib import Path
 import anyio
 from pydantic import BaseModel
 
-from pydantic_flow.hitl.checkpoints.interface import CheckpointBackendError
+from pydantic_flow.hitl.checkpoints.base import BaseCheckpointStore
 from pydantic_flow.hitl.checkpoints.interface import CheckpointConflict
 from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
 from pydantic_flow.hitl.checkpoints.interface import CheckpointId
 from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
 from pydantic_flow.hitl.checkpoints.interface import RunId
 from pydantic_flow.hitl.checkpoints.interface import SortOrder
-from pydantic_flow.hitl.checkpoints.serde import compute_content_hash
 from pydantic_flow.hitl.checkpoints.serde import deserialize_checkpoint
 from pydantic_flow.hitl.checkpoints.serde import serialize_checkpoint
 
@@ -57,7 +56,7 @@ class IndexEntry(BaseModel):
     file_path: str
 
 
-class FlatFileCheckpointStore:
+class FlatFileCheckpointStore(BaseCheckpointStore):
     """Flat-file JSON checkpoint store.
 
     Stores each checkpoint as an individual JSON file with atomic writes.
@@ -155,63 +154,50 @@ class FlatFileCheckpointStore:
                     entries.append(IndexEntry.model_validate_json(line))
         return entries
 
-    async def save(
-        self, envelope: CheckpointEnvelope, *, overwrite: bool = False
+    async def _do_save(
+        self, envelope: CheckpointEnvelope, overwrite: bool
     ) -> CheckpointEnvelope:
-        """Save a checkpoint to a JSON file.
+        """Save checkpoint to flat file.
 
         Args:
-            envelope: The checkpoint envelope to save.
+            envelope: The prepared checkpoint envelope with computed hash.
             overwrite: If False, raise CheckpointConflict if file exists.
 
         Returns:
-            The saved envelope with computed content hash.
+            The saved envelope.
 
         Raises:
             CheckpointConflict: If checkpoint exists and overwrite=False.
-            CheckpointBackendError: If file operation fails.
 
         """
-        try:
-            async with self._lock:
-                checkpoint_path = self._get_checkpoint_path(envelope)
+        async with self._lock:
+            checkpoint_path = self._get_checkpoint_path(envelope)
 
-                if not overwrite and checkpoint_path.exists():
-                    msg = (
-                        f"Checkpoint {envelope.id} already exists "
-                        f"for run {envelope.run_id}"
-                    )
-                    raise CheckpointConflict(msg)
+            if not overwrite and checkpoint_path.exists():
+                msg = (
+                    f"Checkpoint {envelope.id} already exists for run {envelope.run_id}"
+                )
+                raise CheckpointConflict(msg)
 
-                envelope_copy = envelope.model_copy(deep=True)
-                if envelope_copy.content_hash is None:
-                    envelope_copy.content_hash = compute_content_hash(envelope_copy)
+            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
-                checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path = checkpoint_path.with_suffix(".tmp")
+            json_str = serialize_checkpoint(envelope)
 
-                temp_path = checkpoint_path.with_suffix(".tmp")
-                json_str = serialize_checkpoint(envelope_copy)
+            async with await anyio.open_file(temp_path, "w") as f:
+                await f.write(json_str)
 
-                async with await anyio.open_file(temp_path, "w") as f:
-                    await f.write(json_str)
+            await anyio.Path(temp_path).rename(checkpoint_path)
 
-                await anyio.Path(temp_path).rename(checkpoint_path)
+            if not overwrite:
+                await self._append_to_index(envelope)
 
-                if not overwrite:
-                    await self._append_to_index(envelope_copy)
+            return envelope
 
-                return envelope_copy
-
-        except CheckpointConflict:
-            raise
-        except Exception as e:
-            msg = f"Failed to save checkpoint: {e}"
-            raise CheckpointBackendError(msg, cause=e) from e
-
-    async def latest(
+    async def _do_latest(
         self, run_id: RunId, node_id: str | None = None
     ) -> CheckpointEnvelope | None:
-        """Get the most recent checkpoint for a run.
+        """Get the most recent checkpoint from flat file.
 
         Args:
             run_id: The run to query.
@@ -219,9 +205,6 @@ class FlatFileCheckpointStore:
 
         Returns:
             The latest checkpoint envelope, or None if not found.
-
-        Raises:
-            CheckpointBackendError: If file operation fails.
 
         """
         try:
@@ -242,14 +225,11 @@ class FlatFileCheckpointStore:
 
         except FileNotFoundError:
             return None
-        except Exception as e:
-            msg = f"Failed to get latest checkpoint: {e}"
-            raise CheckpointBackendError(msg, cause=e) from e
 
-    async def get(
+    async def _do_get(
         self, run_id: RunId, checkpoint_id: CheckpointId
     ) -> CheckpointEnvelope | None:
-        """Get a specific checkpoint by ID.
+        """Get a specific checkpoint by ID from flat file.
 
         Args:
             run_id: The run identifier.
@@ -257,9 +237,6 @@ class FlatFileCheckpointStore:
 
         Returns:
             The checkpoint envelope, or None if not found.
-
-        Raises:
-            CheckpointBackendError: If file operation fails.
 
         """
         try:
@@ -278,14 +255,11 @@ class FlatFileCheckpointStore:
 
         except FileNotFoundError:
             return None
-        except Exception as e:
-            msg = f"Failed to get checkpoint: {e}"
-            raise CheckpointBackendError(msg, cause=e) from e
 
-    async def list(
+    async def _do_list(
         self, query: CheckpointQuery
     ) -> tuple[list[CheckpointEnvelope], str | None]:
-        """List checkpoints matching query criteria.
+        """List checkpoints matching query criteria from flat file.
 
         Args:
             query: Query parameters for filtering and pagination.
@@ -293,56 +267,48 @@ class FlatFileCheckpointStore:
         Returns:
             Tuple of (list of checkpoint envelopes, next cursor or None).
 
-        Raises:
-            CheckpointBackendError: If file operation fails.
-
         """
-        try:
-            if query.run_id is None:
-                return [], None
+        if query.run_id is None:
+            return [], None
 
-            entries = await self._read_index(query.run_id)
+        entries = await self._read_index(query.run_id)
 
-            if query.node_id is not None:
-                entries = [e for e in entries if e.node_id == query.node_id]
+        if query.node_id is not None:
+            entries = [e for e in entries if e.node_id == query.node_id]
 
-            if query.since is not None:
-                entries = [e for e in entries if e.created_at >= query.since]
+        if query.since is not None:
+            entries = [e for e in entries if e.created_at >= query.since]
 
-            if query.until is not None:
-                entries = [e for e in entries if e.created_at <= query.until]
+        if query.until is not None:
+            entries = [e for e in entries if e.created_at <= query.until]
 
-            reverse = query.sort_order == SortOrder.DESC
-            entries.sort(key=lambda e: e.created_at, reverse=reverse)
+        reverse = query.sort_order == SortOrder.DESC
+        entries.sort(key=lambda e: e.created_at, reverse=reverse)
 
-            cursor_idx = 0
-            if query.cursor is not None:
-                try:
-                    cursor_idx = int(query.cursor)
-                except ValueError:
-                    cursor_idx = 0
+        cursor_idx = 0
+        if query.cursor is not None:
+            try:
+                cursor_idx = int(query.cursor)
+            except ValueError:
+                cursor_idx = 0
 
-            page_entries = entries[cursor_idx : cursor_idx + query.limit]
+        page_entries = entries[cursor_idx : cursor_idx + query.limit]
 
-            envelopes: list[CheckpointEnvelope] = []
-            for entry in page_entries:
-                file_path = self.config.base_path / entry.file_path
-                async with await anyio.open_file(file_path, "r") as f:
-                    content: str = await f.read()  # type: ignore[assignment]
-                envelopes.append(deserialize_checkpoint(content))
+        envelopes: list[CheckpointEnvelope] = []
+        for entry in page_entries:
+            file_path = self.config.base_path / entry.file_path
+            async with await anyio.open_file(file_path, "r") as f:
+                content: str = await f.read()  # type: ignore[assignment]
+            envelopes.append(deserialize_checkpoint(content))
 
-            next_cursor = None
-            if cursor_idx + query.limit < len(entries):
-                next_cursor = str(cursor_idx + query.limit)
+        next_cursor = None
+        if cursor_idx + query.limit < len(entries):
+            next_cursor = str(cursor_idx + query.limit)
 
-            return envelopes, next_cursor
+        return envelopes, next_cursor
 
-        except Exception as e:
-            msg = f"Failed to list checkpoints: {e}"
-            raise CheckpointBackendError(msg, cause=e) from e
-
-    async def delete(self, run_id: RunId, checkpoint_id: CheckpointId) -> bool:
-        """Delete a specific checkpoint.
+    async def _do_delete(self, run_id: RunId, checkpoint_id: CheckpointId) -> bool:
+        """Delete a specific checkpoint from flat file.
 
         Args:
             run_id: The run identifier.
@@ -351,29 +317,21 @@ class FlatFileCheckpointStore:
         Returns:
             True if checkpoint was deleted, False if it didn't exist.
 
-        Raises:
-            CheckpointBackendError: If file operation fails.
-
         """
-        try:
-            entries = await self._read_index(run_id)
-            matching = [e for e in entries if e.checkpoint_id == checkpoint_id]
+        entries = await self._read_index(run_id)
+        matching = [e for e in entries if e.checkpoint_id == checkpoint_id]
 
-            if not matching:
-                return False
-
-            file_path = self.config.base_path / matching[0].file_path
-            if file_path.exists():
-                await anyio.Path(file_path).unlink()
-                return True
+        if not matching:
             return False
 
-        except Exception as e:
-            msg = f"Failed to delete checkpoint: {e}"
-            raise CheckpointBackendError(msg, cause=e) from e
+        file_path = self.config.base_path / matching[0].file_path
+        if file_path.exists():
+            await anyio.Path(file_path).unlink()
+            return True
+        return False
 
-    async def purge(self, run_id: RunId) -> int:
-        """Delete all checkpoints for a run.
+    async def _do_purge(self, run_id: RunId) -> int:
+        """Delete all checkpoints for a run from flat file.
 
         Args:
             run_id: The run identifier.
@@ -381,49 +339,36 @@ class FlatFileCheckpointStore:
         Returns:
             Number of checkpoints deleted.
 
-        Raises:
-            CheckpointBackendError: If file operation fails.
-
         """
-        try:
-            entries = await self._read_index(run_id)
-            deleted_count = 0
+        entries = await self._read_index(run_id)
+        deleted_count = 0
 
-            for entry in entries:
-                file_path = self.config.base_path / entry.file_path
-                if file_path.exists():
-                    await anyio.Path(file_path).unlink()
-                    deleted_count += 1
+        for entry in entries:
+            file_path = self.config.base_path / entry.file_path
+            if file_path.exists():
+                await anyio.Path(file_path).unlink()
+                deleted_count += 1
 
-            index_path = self._get_index_path(run_id)
-            if index_path.exists():
-                await anyio.Path(index_path).unlink()
+        index_path = self._get_index_path(run_id)
+        if index_path.exists():
+            await anyio.Path(index_path).unlink()
 
-            return deleted_count
+        return deleted_count
 
-        except Exception as e:
-            msg = f"Failed to purge checkpoints: {e}"
-            raise CheckpointBackendError(msg, cause=e) from e
-
-    async def healthcheck(self) -> bool:
+    async def _do_healthcheck(self) -> bool:
         """Verify store access and permissions.
 
-        Raises:
-            CheckpointBackendError: If store is not accessible.
+        Returns:
+            True if store is accessible.
 
         """
-        try:
-            self.config.base_path.mkdir(parents=True, exist_ok=True)
+        self.config.base_path.mkdir(parents=True, exist_ok=True)
 
-            test_file = self.config.base_path / ".healthcheck"
-            async with await anyio.open_file(test_file, "w") as f:
-                await f.write("ok")
-            await anyio.Path(test_file).unlink()
-            return True
-
-        except Exception as e:
-            msg = f"Healthcheck failed: {e}"
-            raise CheckpointBackendError(msg, cause=e) from e
+        test_file = self.config.base_path / ".healthcheck"
+        async with await anyio.open_file(test_file, "w") as f:
+            await f.write("ok")
+        await anyio.Path(test_file).unlink()
+        return True
 
     def __repr__(self) -> str:
         """Return a string representation of the store."""

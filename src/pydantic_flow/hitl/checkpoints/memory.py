@@ -8,16 +8,16 @@ from __future__ import annotations
 
 import asyncio
 
+from pydantic_flow.hitl.checkpoints.base import BaseCheckpointStore
 from pydantic_flow.hitl.checkpoints.interface import CheckpointConflict
 from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
 from pydantic_flow.hitl.checkpoints.interface import CheckpointId
 from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
 from pydantic_flow.hitl.checkpoints.interface import RunId
 from pydantic_flow.hitl.checkpoints.interface import SortOrder
-from pydantic_flow.hitl.checkpoints.serde import compute_content_hash
 
 
-class InMemoryCheckpointStore:
+class InMemoryCheckpointStore(BaseCheckpointStore):
     """In-memory checkpoint store for testing and development.
 
     All data is stored in memory and lost when the process exits.
@@ -29,20 +29,20 @@ class InMemoryCheckpointStore:
         self._checkpoints: dict[tuple[RunId, CheckpointId], CheckpointEnvelope] = {}
         self._lock = asyncio.Lock()
 
-    async def save(
-        self, envelope: CheckpointEnvelope, *, overwrite: bool = False
+    async def _do_save(
+        self, envelope: CheckpointEnvelope, overwrite: bool
     ) -> CheckpointEnvelope:
-        """Save a checkpoint to memory.
+        """Save checkpoint to memory.
 
         Args:
-            envelope: The checkpoint envelope to save.
+            envelope: The prepared checkpoint envelope with computed hash.
             overwrite: If False, raise CheckpointConflict if ID exists.
 
         Returns:
-            The saved envelope with computed content hash.
+            The saved envelope.
 
         Raises:
-            CheckpointConflict: If checkpoint ID exists and overwrite=False.
+            CheckpointConflict: If checkpoint exists and overwrite=False.
 
         """
         key = (envelope.run_id, envelope.id)
@@ -54,17 +54,13 @@ class InMemoryCheckpointStore:
                 )
                 raise CheckpointConflict(msg)
 
-            envelope_copy = envelope.model_copy(deep=True)
-            if envelope_copy.content_hash is None:
-                envelope_copy.content_hash = compute_content_hash(envelope_copy)
+            self._checkpoints[key] = envelope
+            return envelope
 
-            self._checkpoints[key] = envelope_copy
-            return envelope_copy
-
-    async def latest(
+    async def _do_latest(
         self, run_id: RunId, node_id: str | None = None
     ) -> CheckpointEnvelope | None:
-        """Get the most recent checkpoint for a run.
+        """Get the most recent checkpoint from memory.
 
         Args:
             run_id: The run to query.
@@ -86,10 +82,10 @@ class InMemoryCheckpointStore:
 
             return max(candidates, key=lambda e: e.created_at)
 
-    async def get(
+    async def _do_get(
         self, run_id: RunId, checkpoint_id: CheckpointId
     ) -> CheckpointEnvelope | None:
-        """Get a specific checkpoint by ID.
+        """Get a specific checkpoint from memory.
 
         Args:
             run_id: The run identifier.
@@ -103,10 +99,10 @@ class InMemoryCheckpointStore:
         async with self._lock:
             return self._checkpoints.get(key)
 
-    async def list(
+    async def _do_list(
         self, query: CheckpointQuery
     ) -> tuple[list[CheckpointEnvelope], str | None]:
-        """List checkpoints matching query criteria.
+        """List checkpoints from memory.
 
         Args:
             query: Query parameters for filtering and pagination.
@@ -148,8 +144,8 @@ class InMemoryCheckpointStore:
 
             return page, next_cursor
 
-    async def delete(self, run_id: RunId, checkpoint_id: CheckpointId) -> bool:
-        """Delete a specific checkpoint.
+    async def _do_delete(self, run_id: RunId, checkpoint_id: CheckpointId) -> bool:
+        """Delete a checkpoint from memory.
 
         Args:
             run_id: The run identifier.
@@ -166,8 +162,8 @@ class InMemoryCheckpointStore:
                 return True
             return False
 
-    async def purge(self, run_id: RunId) -> int:
-        """Delete all checkpoints for a run.
+    async def _do_purge(self, run_id: RunId) -> int:
+        """Delete all checkpoints for a run from memory.
 
         Args:
             run_id: The run identifier.
@@ -184,10 +180,14 @@ class InMemoryCheckpointStore:
                 del self._checkpoints[key]
             return len(keys_to_delete)
 
-    async def healthcheck(self) -> bool:
-        """Verify store connectivity.
+    async def _do_healthcheck(self) -> bool:
+        """Verify store health.
 
         Always succeeds for in-memory store.
+
+        Returns:
+            True.
+
         """
         return True
 

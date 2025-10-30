@@ -4,6 +4,7 @@ Provides pluggable checkpoint stores for persisting flow execution state,
 enabling interruption and resumption across processes or machines.
 """
 
+from pydantic_flow.hitl.checkpoints.base import BaseCheckpointStore
 from pydantic_flow.hitl.checkpoints.config import CheckpointStoreConfig
 from pydantic_flow.hitl.checkpoints.config import CheckpointStoreType
 from pydantic_flow.hitl.checkpoints.config import create_checkpoint_store
@@ -36,6 +37,7 @@ from pydantic_flow.hitl.checkpoints.sqlite import SQLiteCheckpointStore
 from pydantic_flow.hitl.checkpoints.sqlite import SQLiteCheckpointStoreConfig
 
 __all__ = [
+    "BaseCheckpointStore",
     "CheckpointBackendError",
     "CheckpointConflict",
     "CheckpointEnvelope",
