@@ -10,7 +10,7 @@ import hashlib
 import json
 from typing import Any
 
-from pydantic_flow.checkpoints.interface import CheckpointEnvelope
+from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
 
 
 def serialize_checkpoint(envelope: CheckpointEnvelope) -> str:

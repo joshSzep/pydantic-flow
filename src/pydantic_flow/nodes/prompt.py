@@ -1,7 +1,4 @@
-"""PromptNode implementation for LLM-based processing.
-
-BREAKING CHANGE: Added HITL interrupt checks to PromptNode.
-"""
+"""PromptNode implementation for LLM-based processing."""
 
 from collections.abc import AsyncIterator
 from typing import Any
@@ -11,8 +8,8 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from pydantic_flow.cache import CachePolicy
-from pydantic_flow.core.errors import FlowCheckpoint
-from pydantic_flow.core.errors import InterruptionRequested
+from pydantic_flow.hitl.interrupts import FlowCheckpoint
+from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.nodes.mixins import CacheableNode

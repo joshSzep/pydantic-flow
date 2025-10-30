@@ -15,9 +15,9 @@ from pydantic_flow import Flow
 from pydantic_flow import PromptConfig
 from pydantic_flow import PromptNode
 from pydantic_flow import ToolNode
-from pydantic_flow.core.errors import HandlerPriority
-from pydantic_flow.core.errors import InterruptionRequested
-from pydantic_flow.streaming.events import InterruptDecision
+from pydantic_flow.hitl.decisions import InterruptDecision
+from pydantic_flow.hitl.interrupts import HandlerPriority
+from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import StreamEnd
 from pydantic_flow.streaming.events import TokenChunk

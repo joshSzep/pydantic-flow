@@ -11,18 +11,18 @@ from typing import Annotated
 from pydantic import BaseModel
 from pydantic import Field
 
-from pydantic_flow.checkpoints.flatfile import FlatFileCheckpointStore
-from pydantic_flow.checkpoints.flatfile import FlatFileCheckpointStoreConfig
-from pydantic_flow.checkpoints.interface import CheckpointStore
-from pydantic_flow.checkpoints.memory import InMemoryCheckpointStore
-from pydantic_flow.checkpoints.postgres import PostgresCheckpointStore
-from pydantic_flow.checkpoints.postgres import PostgresCheckpointStoreConfig
-from pydantic_flow.checkpoints.redis import RedisCheckpointStore
-from pydantic_flow.checkpoints.redis import RedisCheckpointStoreConfig
-from pydantic_flow.checkpoints.s3 import S3CheckpointStore
-from pydantic_flow.checkpoints.s3 import S3CheckpointStoreConfig
-from pydantic_flow.checkpoints.sqlite import SQLiteCheckpointStore
-from pydantic_flow.checkpoints.sqlite import SQLiteCheckpointStoreConfig
+from pydantic_flow.hitl.checkpoints.flatfile import FlatFileCheckpointStore
+from pydantic_flow.hitl.checkpoints.flatfile import FlatFileCheckpointStoreConfig
+from pydantic_flow.hitl.checkpoints.interface import CheckpointStore
+from pydantic_flow.hitl.checkpoints.memory import InMemoryCheckpointStore
+from pydantic_flow.hitl.checkpoints.postgres import PostgresCheckpointStore
+from pydantic_flow.hitl.checkpoints.postgres import PostgresCheckpointStoreConfig
+from pydantic_flow.hitl.checkpoints.redis import RedisCheckpointStore
+from pydantic_flow.hitl.checkpoints.redis import RedisCheckpointStoreConfig
+from pydantic_flow.hitl.checkpoints.s3 import S3CheckpointStore
+from pydantic_flow.hitl.checkpoints.s3 import S3CheckpointStoreConfig
+from pydantic_flow.hitl.checkpoints.sqlite import SQLiteCheckpointStore
+from pydantic_flow.hitl.checkpoints.sqlite import SQLiteCheckpointStoreConfig
 
 
 class CheckpointStoreType(Enum):

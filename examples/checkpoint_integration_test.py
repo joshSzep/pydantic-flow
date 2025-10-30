@@ -13,13 +13,13 @@ from pydantic import BaseModel
 
 from pydantic_flow import Flow
 from pydantic_flow import PromptNode
-from pydantic_flow.checkpoints import InMemoryCheckpointStore
-from pydantic_flow.checkpoints.interface import CheckpointId
-from pydantic_flow.checkpoints.interface import CheckpointQuery
-from pydantic_flow.checkpoints.interface import RunId
-from pydantic_flow.core.errors import InterruptionRequested
 from pydantic_flow.core.run_config import RunConfig
-from pydantic_flow.streaming.events import InterruptDecision
+from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
+from pydantic_flow.hitl.checkpoints.interface import RunId
+from pydantic_flow.hitl.checkpoints.memory import InMemoryCheckpointStore
+from pydantic_flow.hitl.decisions import InterruptDecision
+from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.streaming.events import ProgressItem
 
 

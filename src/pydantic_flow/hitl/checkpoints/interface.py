@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from pydantic import Field
 from pydantic_core import core_schema
 
-from pydantic_flow.core.errors import FlowCheckpoint
+from pydantic_flow.hitl.interrupts import FlowCheckpoint
 
 
 class CheckpointId(str):

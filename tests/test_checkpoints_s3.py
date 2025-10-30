@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from pydantic_flow.checkpoints.interface import CheckpointQuery
-from pydantic_flow.checkpoints.s3 import S3CheckpointStore
-from pydantic_flow.checkpoints.s3 import S3CheckpointStoreConfig
+from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
+from pydantic_flow.hitl.checkpoints.s3 import S3CheckpointStore
+from pydantic_flow.hitl.checkpoints.s3 import S3CheckpointStoreConfig
 from tests.test_checkpoints_conformance import CheckpointStoreConformanceTests
 
 
@@ -253,9 +253,9 @@ class TestS3CheckpointStoreSpecific:
         """Test concurrent S3 operations."""
         import asyncio
 
-        from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-        from pydantic_flow.checkpoints.interface import CheckpointId
-        from pydantic_flow.checkpoints.interface import RunId
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+        from pydantic_flow.hitl.checkpoints.interface import RunId
 
         run_id = RunId("concurrent_test")
 
@@ -279,8 +279,8 @@ class TestS3CheckpointStoreSpecific:
     @pytest.mark.asyncio
     async def test_object_key_format(self, store: S3CheckpointStore) -> None:
         """Test that object keys follow expected format."""
-        from pydantic_flow.checkpoints.interface import CheckpointId
-        from pydantic_flow.checkpoints.interface import RunId
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+        from pydantic_flow.hitl.checkpoints.interface import RunId
 
         run_id = RunId("test_run")
         checkpoint_id = CheckpointId("ckpt_123")

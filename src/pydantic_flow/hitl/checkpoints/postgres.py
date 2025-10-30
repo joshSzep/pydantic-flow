@@ -5,18 +5,23 @@ Stores checkpoints in PostgreSQL with JSONB for efficient querying.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel
 
-from pydantic_flow.checkpoints.interface import CheckpointBackendError
-from pydantic_flow.checkpoints.interface import CheckpointConflict
-from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-from pydantic_flow.checkpoints.interface import CheckpointId
-from pydantic_flow.checkpoints.interface import CheckpointQuery
-from pydantic_flow.checkpoints.interface import RunId
-from pydantic_flow.checkpoints.interface import SortOrder
-from pydantic_flow.checkpoints.serde import compute_content_hash
-from pydantic_flow.checkpoints.serde import deserialize_checkpoint
-from pydantic_flow.checkpoints.serde import serialize_checkpoint
+from pydantic_flow.hitl.checkpoints.interface import CheckpointBackendError
+from pydantic_flow.hitl.checkpoints.interface import CheckpointConflict
+from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
+from pydantic_flow.hitl.checkpoints.interface import RunId
+from pydantic_flow.hitl.checkpoints.interface import SortOrder
+from pydantic_flow.hitl.checkpoints.serde import compute_content_hash
+from pydantic_flow.hitl.checkpoints.serde import deserialize_checkpoint
+from pydantic_flow.hitl.checkpoints.serde import serialize_checkpoint
+
+if TYPE_CHECKING:
+    pass
 
 
 class PostgresCheckpointStoreConfig(BaseModel):
@@ -68,7 +73,7 @@ class PostgresCheckpointStore:
     async def _get_pool(self):
         """Get or create connection pool."""
         if self._pool is None:
-            import asyncpg
+            import asyncpg  # noqa: PLC0415
 
             self._pool = await asyncpg.create_pool(self.config.dsn)
         return self._pool

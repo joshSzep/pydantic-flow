@@ -9,10 +9,10 @@ from __future__ import annotations
 from typing import Any
 
 from pydantic_flow.cache.base import CachePolicy
-from pydantic_flow.core.errors import HandlerPriority
-from pydantic_flow.core.errors import InterruptHandlerRegistration
-from pydantic_flow.streaming.events import InterruptCallback
-from pydantic_flow.streaming.events import InterruptDecision
+from pydantic_flow.hitl.decisions import InterruptCallback
+from pydantic_flow.hitl.decisions import InterruptDecision
+from pydantic_flow.hitl.interrupts import HandlerPriority
+from pydantic_flow.hitl.interrupts import InterruptHandlerRegistration
 from pydantic_flow.streaming.events import ProgressItem
 
 

@@ -11,7 +11,7 @@ from pydantic_flow import HumanNode
 from pydantic_flow import HumanResponse
 from pydantic_flow import InterruptDecision
 from pydantic_flow import InterruptionRequested
-from pydantic_flow.core.errors import FlowCheckpoint
+from pydantic_flow.hitl.interrupts import FlowCheckpoint
 from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import StreamStart

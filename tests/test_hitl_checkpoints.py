@@ -8,12 +8,12 @@ from pydantic_flow import HandlerPriority
 from pydantic_flow import InterruptDecision
 from pydantic_flow import InterruptionRequested
 from pydantic_flow import PromptNode
-from pydantic_flow.checkpoints.interface import CheckpointQuery
-from pydantic_flow.checkpoints.interface import RunId
-from pydantic_flow.checkpoints.interface import filter_interrupted
-from pydantic_flow.checkpoints.interface import list_interrupted
-from pydantic_flow.checkpoints.memory import InMemoryCheckpointStore
 from pydantic_flow.core.run_config import RunConfig
+from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
+from pydantic_flow.hitl.checkpoints.interface import RunId
+from pydantic_flow.hitl.checkpoints.interface import filter_interrupted
+from pydantic_flow.hitl.checkpoints.interface import list_interrupted
+from pydantic_flow.hitl.checkpoints.memory import InMemoryCheckpointStore
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import StreamEnd
 
@@ -181,10 +181,10 @@ async def test_filter_interrupted_checkpoints():
     # Create normal checkpoint by manually saving
     flow.clear_interrupt_handlers()
     run_id_2 = "test_filter_002"
-    from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-    from pydantic_flow.checkpoints.interface import CheckpointId
-    from pydantic_flow.checkpoints.interface import generate_checkpoint_id
-    from pydantic_flow.core.errors import FlowCheckpoint
+    from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+    from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+    from pydantic_flow.hitl.checkpoints.interface import generate_checkpoint_id
+    from pydantic_flow.hitl.interrupts import FlowCheckpoint
 
     normal_checkpoint = FlowCheckpoint(
         flow_id=flow.flow_id,
@@ -244,11 +244,11 @@ async def test_list_interrupted_helper():
 @pytest.mark.asyncio
 async def test_backwards_compatibility_without_interrupt_fields():
     """Test that checkpoints without interrupt fields still work."""
-    from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-    from pydantic_flow.checkpoints.interface import CheckpointId
-    from pydantic_flow.checkpoints.interface import RunId
-    from pydantic_flow.checkpoints.interface import generate_checkpoint_id
-    from pydantic_flow.core.errors import FlowCheckpoint
+    from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+    from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+    from pydantic_flow.hitl.checkpoints.interface import RunId
+    from pydantic_flow.hitl.checkpoints.interface import generate_checkpoint_id
+    from pydantic_flow.hitl.interrupts import FlowCheckpoint
 
     # Create envelope without interrupt fields (old format)
     checkpoint = FlowCheckpoint(

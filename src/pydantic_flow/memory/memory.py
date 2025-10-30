@@ -13,8 +13,8 @@ from typing import TYPE_CHECKING
 from typing import Protocol
 from typing import runtime_checkable
 
-from pydantic_flow.core.errors import FlowCheckpoint
-from pydantic_flow.core.errors import InterruptionRequested
+from pydantic_flow.hitl.interrupts import FlowCheckpoint
+from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.streaming.events import MemoryCompressionComplete
 from pydantic_flow.streaming.events import MemoryCompressionPending
 

@@ -6,13 +6,13 @@ from unittest.mock import MagicMock
 from pydantic import BaseModel
 import pytest
 
-from pydantic_flow.core.errors import FlowCheckpoint
-from pydantic_flow.core.errors import InterruptionRequested
 from pydantic_flow.flow.flow import Flow
+from pydantic_flow.hitl.decisions import InterruptDecision
+from pydantic_flow.hitl.interrupts import FlowCheckpoint
+from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.memory.config import MemoryConfig
 from pydantic_flow.memory.memory import ConversationMemory
 from pydantic_flow.nodes.base import BaseNode
-from pydantic_flow.streaming.events import InterruptDecision
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import StreamEnd
 from pydantic_flow.streaming.events import StreamStart

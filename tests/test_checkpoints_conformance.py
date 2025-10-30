@@ -10,12 +10,12 @@ from datetime import timedelta
 
 import pytest
 
-from pydantic_flow.checkpoints.interface import CheckpointConflict
-from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-from pydantic_flow.checkpoints.interface import CheckpointId
-from pydantic_flow.checkpoints.interface import CheckpointQuery
-from pydantic_flow.checkpoints.interface import RunId
-from pydantic_flow.checkpoints.interface import SortOrder
+from pydantic_flow.hitl.checkpoints.interface import CheckpointConflict
+from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
+from pydantic_flow.hitl.checkpoints.interface import RunId
+from pydantic_flow.hitl.checkpoints.interface import SortOrder
 
 
 class CheckpointStoreConformanceTests:

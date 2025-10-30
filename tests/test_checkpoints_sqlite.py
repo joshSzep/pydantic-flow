@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from pydantic_flow.checkpoints.sqlite import SQLiteCheckpointStore
-from pydantic_flow.checkpoints.sqlite import SQLiteCheckpointStoreConfig
+from pydantic_flow.hitl.checkpoints.sqlite import SQLiteCheckpointStore
+from pydantic_flow.hitl.checkpoints.sqlite import SQLiteCheckpointStoreConfig
 from tests.test_checkpoints_conformance import CheckpointStoreConformanceTests
 
 
@@ -111,10 +111,10 @@ class TestSQLiteCheckpointStoreSpecific:
         from datetime import UTC
         from datetime import datetime
 
-        from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-        from pydantic_flow.checkpoints.interface import CheckpointId
-        from pydantic_flow.checkpoints.interface import CheckpointQuery
-        from pydantic_flow.checkpoints.interface import RunId
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
+        from pydantic_flow.hitl.checkpoints.interface import RunId
 
         run_id = RunId("concurrent_test")
 

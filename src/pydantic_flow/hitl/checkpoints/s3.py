@@ -5,18 +5,23 @@ Stores checkpoints as JSON objects in S3-compatible object storage.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from pydantic import BaseModel
 
-from pydantic_flow.checkpoints.interface import CheckpointBackendError
-from pydantic_flow.checkpoints.interface import CheckpointConflict
-from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-from pydantic_flow.checkpoints.interface import CheckpointId
-from pydantic_flow.checkpoints.interface import CheckpointQuery
-from pydantic_flow.checkpoints.interface import RunId
-from pydantic_flow.checkpoints.interface import SortOrder
-from pydantic_flow.checkpoints.serde import compute_content_hash
-from pydantic_flow.checkpoints.serde import deserialize_checkpoint
-from pydantic_flow.checkpoints.serde import serialize_checkpoint
+from pydantic_flow.hitl.checkpoints.interface import CheckpointBackendError
+from pydantic_flow.hitl.checkpoints.interface import CheckpointConflict
+from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
+from pydantic_flow.hitl.checkpoints.interface import RunId
+from pydantic_flow.hitl.checkpoints.interface import SortOrder
+from pydantic_flow.hitl.checkpoints.serde import compute_content_hash
+from pydantic_flow.hitl.checkpoints.serde import deserialize_checkpoint
+from pydantic_flow.hitl.checkpoints.serde import serialize_checkpoint
+
+if TYPE_CHECKING:
+    pass
 
 
 class S3CheckpointStoreConfig(BaseModel):
@@ -57,7 +62,7 @@ class S3CheckpointStore:
         """Get or create S3 client."""
         if self._client is None:
             try:
-                import aioboto3
+                import aioboto3  # noqa: PLC0415
             except ImportError as e:
                 msg = "aioboto3 is required for S3CheckpointStore"
                 raise CheckpointBackendError(msg, cause=e) from e

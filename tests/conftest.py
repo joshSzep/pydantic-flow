@@ -2,10 +2,10 @@
 
 import pytest
 
-from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-from pydantic_flow.checkpoints.interface import CheckpointId
-from pydantic_flow.checkpoints.interface import RunId
-from pydantic_flow.core.errors import FlowCheckpoint
+from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+from pydantic_flow.hitl.checkpoints.interface import RunId
+from pydantic_flow.hitl.interrupts import FlowCheckpoint
 
 
 @pytest.fixture(autouse=True)

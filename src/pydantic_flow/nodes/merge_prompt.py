@@ -6,8 +6,8 @@ import uuid
 
 from pydantic_ai import Agent
 
-from pydantic_flow.core.errors import FlowCheckpoint
-from pydantic_flow.core.errors import InterruptionRequested
+from pydantic_flow.hitl.interrupts import FlowCheckpoint
+from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.nodes.base import MergeNode
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.prompt import PromptConfig

@@ -2,7 +2,7 @@
 
 import pytest
 
-from pydantic_flow.checkpoints.memory import InMemoryCheckpointStore
+from pydantic_flow.hitl.checkpoints.memory import InMemoryCheckpointStore
 from tests.test_checkpoints_conformance import CheckpointStoreConformanceTests
 
 
@@ -17,8 +17,8 @@ class TestInMemoryCheckpointStore(CheckpointStoreConformanceTests):
     @pytest.mark.asyncio
     async def test_store_is_empty_initially(self):
         """Test that a new store is empty."""
-        from pydantic_flow.checkpoints.interface import CheckpointQuery
-        from pydantic_flow.checkpoints.interface import RunId
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
+        from pydantic_flow.hitl.checkpoints.interface import RunId
 
         store = InMemoryCheckpointStore()
 
@@ -30,11 +30,11 @@ class TestInMemoryCheckpointStore(CheckpointStoreConformanceTests):
     @pytest.mark.asyncio
     async def test_store_isolation(self):
         """Test that different store instances don't share data."""
-        from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-        from pydantic_flow.checkpoints.interface import CheckpointId
-        from pydantic_flow.checkpoints.interface import CheckpointQuery
-        from pydantic_flow.checkpoints.interface import RunId
-        from pydantic_flow.core.errors import FlowCheckpoint
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
+        from pydantic_flow.hitl.checkpoints.interface import RunId
+        from pydantic_flow.hitl.interrupts import FlowCheckpoint
 
         store1 = InMemoryCheckpointStore()
         store2 = InMemoryCheckpointStore()

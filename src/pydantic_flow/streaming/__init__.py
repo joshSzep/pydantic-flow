@@ -6,7 +6,6 @@ for building streaming-native AI workflows.
 
 from pydantic_flow.streaming.events import Heartbeat
 from pydantic_flow.streaming.events import InterruptCallback
-from pydantic_flow.streaming.events import InterruptDecision
 from pydantic_flow.streaming.events import MemoryCompressionComplete
 from pydantic_flow.streaming.events import MemoryCompressionPending
 from pydantic_flow.streaming.events import NonFatalError
@@ -24,7 +23,6 @@ from pydantic_flow.streaming.events import ToolResult
 __all__ = [
     "Heartbeat",
     "InterruptCallback",
-    "InterruptDecision",
     "MemoryCompressionComplete",
     "MemoryCompressionPending",
     "NonFatalError",

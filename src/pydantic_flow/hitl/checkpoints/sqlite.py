@@ -10,16 +10,16 @@ from pathlib import Path
 import aiosqlite
 from pydantic import BaseModel
 
-from pydantic_flow.checkpoints.interface import CheckpointBackendError
-from pydantic_flow.checkpoints.interface import CheckpointConflict
-from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-from pydantic_flow.checkpoints.interface import CheckpointId
-from pydantic_flow.checkpoints.interface import CheckpointQuery
-from pydantic_flow.checkpoints.interface import RunId
-from pydantic_flow.checkpoints.interface import SortOrder
-from pydantic_flow.checkpoints.serde import compute_content_hash
-from pydantic_flow.checkpoints.serde import deserialize_checkpoint
-from pydantic_flow.checkpoints.serde import serialize_checkpoint
+from pydantic_flow.hitl.checkpoints.interface import CheckpointBackendError
+from pydantic_flow.hitl.checkpoints.interface import CheckpointConflict
+from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
+from pydantic_flow.hitl.checkpoints.interface import RunId
+from pydantic_flow.hitl.checkpoints.interface import SortOrder
+from pydantic_flow.hitl.checkpoints.serde import compute_content_hash
+from pydantic_flow.hitl.checkpoints.serde import deserialize_checkpoint
+from pydantic_flow.hitl.checkpoints.serde import serialize_checkpoint
 
 
 class SQLiteCheckpointStoreConfig(BaseModel):

@@ -9,9 +9,6 @@ consuming the stream internally.
 """
 
 from pydantic_flow.core import FlowTimeoutError
-from pydantic_flow.core import HandlerPriority
-from pydantic_flow.core import InterruptHandlerRegistration
-from pydantic_flow.core import InterruptionRequested
 from pydantic_flow.core import RecursionLimitError
 from pydantic_flow.core import Route
 from pydantic_flow.core import RouterFunction
@@ -22,6 +19,16 @@ from pydantic_flow.flow import CyclicDependencyError
 from pydantic_flow.flow import ExecutionMode
 from pydantic_flow.flow import Flow
 from pydantic_flow.flow import FlowError
+from pydantic_flow.hitl import ApprovalNode
+from pydantic_flow.hitl import FlowCheckpoint
+from pydantic_flow.hitl import HandlerPriority
+from pydantic_flow.hitl import HumanInputRequest
+from pydantic_flow.hitl import HumanNode
+from pydantic_flow.hitl import HumanResponse
+from pydantic_flow.hitl import InterruptCallback
+from pydantic_flow.hitl import InterruptDecision
+from pydantic_flow.hitl import InterruptHandlerRegistration
+from pydantic_flow.hitl import InterruptionRequested
 from pydantic_flow.memory import BaseMemoryCompressor
 from pydantic_flow.memory import CompressionMetrics
 from pydantic_flow.memory import ConversationMemory
@@ -30,12 +37,8 @@ from pydantic_flow.memory import MemoryCompressor
 from pydantic_flow.memory import MemoryConfig
 from pydantic_flow.memory import SlidingWindowCompressor
 from pydantic_flow.memory import SummarizationCompressor
-from pydantic_flow.nodes import ApprovalNode
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import FlowNode
-from pydantic_flow.nodes import HumanInputRequest
-from pydantic_flow.nodes import HumanNode
-from pydantic_flow.nodes import HumanResponse
 from pydantic_flow.nodes import IfNode
 from pydantic_flow.nodes import MergeNode
 from pydantic_flow.nodes import MergeParserNode
@@ -85,8 +88,6 @@ from pydantic_flow.rag import VectorRetrieverNode
 from pydantic_flow.rag import VectorStore
 from pydantic_flow.rag import WebLoader
 from pydantic_flow.streaming import Heartbeat
-from pydantic_flow.streaming import InterruptCallback
-from pydantic_flow.streaming import InterruptDecision
 from pydantic_flow.streaming import MemoryCompressionComplete
 from pydantic_flow.streaming import MemoryCompressionPending
 from pydantic_flow.streaming import NonFatalError
@@ -111,7 +112,6 @@ from pydantic_flow.telemetry import traced_cache_lookup
 from pydantic_flow.telemetry import traced_cache_write
 from pydantic_flow.telemetry import traced_node_execution
 
-# Public API - supports both direct and module imports
 __all__ = [
     "AgentNode",
     "ApprovalNode",
@@ -134,6 +134,7 @@ __all__ = [
     "ExecutionMode",
     "FSLoader",
     "Flow",
+    "FlowCheckpoint",
     "FlowError",
     "FlowNode",
     "FlowTimeoutError",

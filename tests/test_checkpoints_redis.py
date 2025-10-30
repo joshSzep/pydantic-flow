@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-from pydantic_flow.checkpoints.redis import RedisCheckpointStore
-from pydantic_flow.checkpoints.redis import RedisCheckpointStoreConfig
+from pydantic_flow.hitl.checkpoints.redis import RedisCheckpointStore
+from pydantic_flow.hitl.checkpoints.redis import RedisCheckpointStoreConfig
 from tests.test_checkpoints_conformance import CheckpointStoreConformanceTests
 
 
@@ -250,7 +250,9 @@ class TestRedisCheckpointStoreConformance(CheckpointStoreConformanceTests):
         )
         store = RedisCheckpointStore(config)
 
-        with patch("pydantic_flow.checkpoints.redis.from_url", mock_redis_connection):
+        with patch(
+            "pydantic_flow.hitl.checkpoints.redis.from_url", mock_redis_connection
+        ):
             await store.healthcheck()
 
         store._redis = mock_redis  # type: ignore[assignment]
@@ -271,7 +273,9 @@ class TestRedisCheckpointStoreSpecific:
         )
         store = RedisCheckpointStore(config)
 
-        with patch("pydantic_flow.checkpoints.redis.from_url", mock_redis_connection):
+        with patch(
+            "pydantic_flow.hitl.checkpoints.redis.from_url", mock_redis_connection
+        ):
             await store.healthcheck()
 
         store._redis = mock_redis  # type: ignore[assignment]
@@ -322,9 +326,9 @@ class TestRedisCheckpointStoreSpecific:
         from datetime import UTC
         from datetime import datetime
 
-        from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-        from pydantic_flow.checkpoints.interface import CheckpointId
-        from pydantic_flow.checkpoints.interface import RunId
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+        from pydantic_flow.hitl.checkpoints.interface import RunId
 
         envelope = CheckpointEnvelope(
             id=CheckpointId("test_ckpt"),
@@ -350,7 +354,7 @@ class TestRedisCheckpointStoreSpecific:
 
         assert store._redis is None
 
-        with patch("pydantic_flow.checkpoints.redis.from_url") as mock_from_url:
+        with patch("pydantic_flow.hitl.checkpoints.redis.from_url") as mock_from_url:
             mock_client = MockRedis()
 
             # Make from_url return an awaitable that resolves to the mock client

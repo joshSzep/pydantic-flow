@@ -2,10 +2,6 @@
 
 This module provides the Flow class that manages workflow execution,
 dependency resolution, and DAG validation.
-
-BREAKING CHANGE: Added HITL (Human-in-the-Loop) support with flow_id,
-interrupt handlers, checkpoints, and resumption. Added checkpoint persistence
-via pluggable checkpoint stores.
 """
 
 from __future__ import annotations
@@ -23,31 +19,31 @@ from pydantic import BaseModel
 
 from pydantic_flow.cache.base import CacheBackend
 from pydantic_flow.cache.base import CachePolicy
-from pydantic_flow.core.errors import FlowCheckpoint
 from pydantic_flow.core.errors import FlowError
-from pydantic_flow.core.errors import HandlerPriority
-from pydantic_flow.core.errors import InterruptHandlerRegistration
-from pydantic_flow.core.errors import InterruptionRequested
 from pydantic_flow.core.routing import Route
 from pydantic_flow.core.run_config import RunConfig
 from pydantic_flow.engine.stepper import ConditionalEdge
 from pydantic_flow.engine.stepper import EngineConfig
 from pydantic_flow.engine.stepper import StepperEngine
 from pydantic_flow.flow.exceptions import CyclicDependencyError
+from pydantic_flow.hitl.decisions import InterruptCallback
+from pydantic_flow.hitl.decisions import InterruptDecision
+from pydantic_flow.hitl.interrupts import FlowCheckpoint
+from pydantic_flow.hitl.interrupts import HandlerPriority
+from pydantic_flow.hitl.interrupts import InterruptHandlerRegistration
+from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.memory import ConversationMemory
 from pydantic_flow.memory import MemoryConfig
 from pydantic_flow.memory import _active_flow_memory
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes.protocols import has_input_dependency
 from pydantic_flow.nodes.protocols import has_multiple_inputs
-from pydantic_flow.streaming.events import InterruptCallback
-from pydantic_flow.streaming.events import InterruptDecision
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import ToolResult
 
 if TYPE_CHECKING:
-    from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-    from pydantic_flow.checkpoints.interface import CheckpointStore
+    from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+    from pydantic_flow.hitl.checkpoints.interface import CheckpointStore
 
 InputT = TypeVar("InputT", bound=BaseModel)
 OutputT = TypeVar("OutputT", bound=BaseModel)
@@ -282,10 +278,10 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
         """
         # Local imports to avoid circular dependency
-        from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-        from pydantic_flow.checkpoints.interface import CheckpointId
-        from pydantic_flow.checkpoints.interface import RunId
-        from pydantic_flow.checkpoints.interface import generate_checkpoint_id
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+        from pydantic_flow.hitl.checkpoints.interface import RunId
+        from pydantic_flow.hitl.checkpoints.interface import generate_checkpoint_id
 
         envelope = CheckpointEnvelope(
             id=CheckpointId(generate_checkpoint_id()),
@@ -438,8 +434,8 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
         """
         # Local imports to avoid circular dependency
-        from pydantic_flow.checkpoints.interface import CheckpointId
-        from pydantic_flow.checkpoints.interface import RunId
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+        from pydantic_flow.hitl.checkpoints.interface import RunId
 
         envelope = await store.get(RunId(run_id), CheckpointId(checkpoint_id))
         if envelope is None:

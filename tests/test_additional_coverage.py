@@ -9,15 +9,15 @@ from pydantic_flow import ExecutionMode
 from pydantic_flow import Flow
 from pydantic_flow import MergeParserNode
 from pydantic_flow import MergeToolNode
-from pydantic_flow.core.errors import FlowCheckpoint
 from pydantic_flow.core.errors import FlowError
 from pydantic_flow.core.routing import Route
+from pydantic_flow.hitl.decisions import InterruptDecision
+from pydantic_flow.hitl.interrupts import FlowCheckpoint
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import IfNode
 from pydantic_flow.nodes import ParserNode
 from pydantic_flow.nodes import RetryNode
 from pydantic_flow.nodes import ToolNode
-from pydantic_flow.streaming.events import InterruptDecision
 from pydantic_flow.streaming.events import NonFatalError
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import StreamEnd

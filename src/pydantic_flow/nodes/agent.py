@@ -1,7 +1,4 @@
-"""Streaming-native PromptNode for LLM operations.
-
-BREAKING CHANGE: Added HITL interrupt checks to AgentNode and LLMNode.
-"""
+"""Streaming-native PromptNode for LLM operations."""
 
 from __future__ import annotations
 
@@ -13,7 +10,7 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from pydantic_flow.cache.base import CachePolicy
-from pydantic_flow.core.errors import InterruptionRequested
+from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.memory import _active_flow_memory
 from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.nodes.mixins import CacheableNode

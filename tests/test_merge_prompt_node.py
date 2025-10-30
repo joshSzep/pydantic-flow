@@ -5,11 +5,11 @@ from collections.abc import AsyncIterator
 from pydantic import BaseModel
 import pytest
 
-from pydantic_flow.core.errors import InterruptionRequested
+from pydantic_flow.hitl.decisions import InterruptDecision
+from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.nodes import MergePromptNode
 from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.nodes.prompt import PromptConfig
-from pydantic_flow.streaming.events import InterruptDecision
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import ProgressType
 from pydantic_flow.streaming.events import StreamEnd

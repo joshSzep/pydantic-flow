@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from pydantic_flow.checkpoints.flatfile import FlatFileCheckpointStore
-from pydantic_flow.checkpoints.flatfile import FlatFileCheckpointStoreConfig
-from pydantic_flow.checkpoints.flatfile import PartitioningStrategy
+from pydantic_flow.hitl.checkpoints.flatfile import FlatFileCheckpointStore
+from pydantic_flow.hitl.checkpoints.flatfile import FlatFileCheckpointStoreConfig
+from pydantic_flow.hitl.checkpoints.flatfile import PartitioningStrategy
 from tests.test_checkpoints_conformance import CheckpointStoreConformanceTests
 
 
@@ -115,9 +115,9 @@ class TestFlatFileCheckpointStoreSpecific:
 
         import anyio
 
-        from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-        from pydantic_flow.checkpoints.interface import CheckpointId
-        from pydantic_flow.checkpoints.interface import RunId
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+        from pydantic_flow.hitl.checkpoints.interface import RunId
 
         run_id = RunId("test_run")
 
@@ -157,10 +157,10 @@ class TestFlatFileCheckpointStoreSpecific:
         from datetime import UTC
         from datetime import datetime
 
-        from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-        from pydantic_flow.checkpoints.interface import CheckpointId
-        from pydantic_flow.checkpoints.interface import CheckpointQuery
-        from pydantic_flow.checkpoints.interface import RunId
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
+        from pydantic_flow.hitl.checkpoints.interface import RunId
 
         run_id = RunId("concurrent_run")
 

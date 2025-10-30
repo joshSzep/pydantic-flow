@@ -1,4 +1,4 @@
-"""HumanNode for Human-in-the-Loop (HITL) interactions.
+"""HITL nodes for Human-in-the-Loop interactions.
 
 This module provides specialized nodes that interrupt flow execution
 to request human input or approval before continuing.
@@ -13,11 +13,11 @@ from typing import Any
 from pydantic import BaseModel
 from pydantic import Field
 
-from pydantic_flow.core.errors import FlowCheckpoint
-from pydantic_flow.core.errors import InterruptionRequested
+from pydantic_flow.hitl.decisions import InterruptDecision
+from pydantic_flow.hitl.interrupts import FlowCheckpoint
+from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.base import NodeWithInput
-from pydantic_flow.streaming.events import InterruptDecision
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import StreamStart
 
@@ -166,7 +166,6 @@ class HumanNode[InputModel: BaseModel, OutputModel: BaseModel](
         """
         actual_run_id = self.run_id or ""
 
-        # Emit start event
         start_item = StreamStart(
             run_id=actual_run_id,
             node_id=self.name,
@@ -174,12 +173,10 @@ class HumanNode[InputModel: BaseModel, OutputModel: BaseModel](
         )
         yield start_item
 
-        # Create the human input request
         input_request = self._create_input_request(input_data)
 
-        # Create checkpoint for interruption
         checkpoint = FlowCheckpoint(
-            flow_id="",  # Will be set by Flow
+            flow_id="",
             run_id=actual_run_id,
             interrupted_node_id=self.name,
             node_states={},
@@ -187,14 +184,12 @@ class HumanNode[InputModel: BaseModel, OutputModel: BaseModel](
             metadata=input_request.model_dump(),
         )
 
-        # Create interrupt decision
         decision = InterruptDecision.interrupt(
             reason=f"Human input required: {input_request.prompt}",
             replacement_value=input_request,
             metadata={"request": input_request.model_dump()},
         )
 
-        # Always interrupt
         raise InterruptionRequested(checkpoint=checkpoint, decision=decision)
 
     def parse_response(self, response: HumanResponse) -> OutputModel:
@@ -211,8 +206,6 @@ class HumanNode[InputModel: BaseModel, OutputModel: BaseModel](
         if self._response_parser is not None:
             return self._response_parser(response)
 
-        # No parser configured - return response as-is
-        # Caller is responsible for ensuring OutputModel = HumanResponse
         return response  # type: ignore
 
 
@@ -277,7 +270,6 @@ class ApprovalNode[InputModel: BaseModel](NodeWithInput[InputModel, HumanRespons
         )
         yield start_item
 
-        # Create input request
         prompt = self._format_prompt(input_data)
         context = input_data.model_dump() if hasattr(input_data, "model_dump") else {}
         input_request = HumanInputRequest(
@@ -288,7 +280,6 @@ class ApprovalNode[InputModel: BaseModel](NodeWithInput[InputModel, HumanRespons
             metadata={"node_id": self.name, "run_id": actual_run_id},
         )
 
-        # Create checkpoint
         checkpoint = FlowCheckpoint(
             flow_id="",
             run_id=actual_run_id,
@@ -298,7 +289,6 @@ class ApprovalNode[InputModel: BaseModel](NodeWithInput[InputModel, HumanRespons
             metadata=input_request.model_dump(),
         )
 
-        # Create interrupt decision
         decision = InterruptDecision.interrupt(
             reason=f"Approval required: {prompt}",
             replacement_value=input_request,

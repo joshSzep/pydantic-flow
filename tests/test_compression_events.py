@@ -2,8 +2,8 @@
 
 import pytest
 
+from pydantic_flow.hitl.decisions import InterruptDecision
 from pydantic_flow.memory.compression import CompressionMetrics
-from pydantic_flow.streaming.events import InterruptDecision
 from pydantic_flow.streaming.events import MemoryCompressionComplete
 from pydantic_flow.streaming.events import MemoryCompressionPending
 from pydantic_flow.streaming.events import ProgressItem

@@ -9,9 +9,9 @@ from unittest.mock import patch
 
 import pytest
 
-from pydantic_flow.checkpoints.interface import CheckpointQuery
-from pydantic_flow.checkpoints.postgres import PostgresCheckpointStore
-from pydantic_flow.checkpoints.postgres import PostgresCheckpointStoreConfig
+from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
+from pydantic_flow.hitl.checkpoints.postgres import PostgresCheckpointStore
+from pydantic_flow.hitl.checkpoints.postgres import PostgresCheckpointStoreConfig
 from tests.test_checkpoints_conformance import CheckpointStoreConformanceTests
 
 
@@ -379,9 +379,9 @@ class TestPostgresCheckpointStoreSpecific:
         """Test concurrent database operations."""
         import asyncio
 
-        from pydantic_flow.checkpoints.interface import CheckpointEnvelope
-        from pydantic_flow.checkpoints.interface import CheckpointId
-        from pydantic_flow.checkpoints.interface import RunId
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+        from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+        from pydantic_flow.hitl.checkpoints.interface import RunId
 
         run_id = RunId("concurrent_test")
 
