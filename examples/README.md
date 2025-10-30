@@ -6,6 +6,62 @@ This directory contains example scripts demonstrating various features of the py
 
 ### 🔍 RAG (Retrieval-Augmented Generation)
 
+#### Document Splitters and Reranking
+
+**File:** `rag_splitters_simple.py`
+
+Simple RAG pipeline demonstrating:
+- Sentence-based document splitting with overlap
+- Lexical reranking baseline
+- MMR diversification to reduce redundancy
+- Lambda comparison (relevance vs diversity balance)
+
+**Run with:**
+```bash
+cd examples
+uv run python rag_splitters_simple.py
+```
+
+**File:** `rag_markdown_docs.py`
+
+Technical documentation RAG example:
+- Markdown heading-based splitting
+- Preserves heading hierarchy in metadata
+- Query-relevant section retrieval
+- MMR diversification across different sections
+
+**Run with:**
+```bash
+cd examples
+uv run python rag_markdown_docs.py
+```
+
+**File:** `rag_comprehensive.py`
+
+Complete demonstration of all RAG features:
+- All three splitter strategies (Token, Sentence, Markdown)
+- Lexical reranking baseline
+- MMR diversification
+- Source-aware selection
+- Side-by-side comparisons
+
+**Run with:**
+```bash
+cd examples
+uv run python rag_comprehensive.py
+```
+
+**Key concepts:**
+- **TokenSplitter**: Approximate token-based chunking with overlap
+- **SentenceSplitter**: Preserves sentence and paragraph boundaries
+- **MarkdownHeadingSplitter**: Splits by ATX headings with hierarchy metadata
+- **LexicalReranker**: Dependency-free TF-IDF baseline reranker
+- **CohereReranker**: Optional Cohere Rerank API integration
+- **mmr_select()**: Maximal Marginal Relevance for diversity
+- **diversify_by_source()**: Source-aware selection constraints
+
+#### Vector Search
+
 **File:** `rag_simple.py`
 
 Complete example of RAG pipeline with streaming:

@@ -265,7 +265,7 @@ class TestLoops:
         with pytest.raises(ValueError) as exc_info:
             flow.set_entry_nodes("nonexistent")
 
-        assert "Unknown entry nodes" in str(exc_info.value)
+        assert "Unknown node name" in str(exc_info.value)
         assert "nonexistent" in str(exc_info.value)
 
     def test_set_entry_nodes_with_no_nodes_raises(self) -> None:

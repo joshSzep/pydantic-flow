@@ -90,50 +90,56 @@ The framework uses entry points for auto-discovery, designed for seamless extern
 
 ### Flow Construction
 
-The framework supports two distinct patterns for building workflows, each optimized for different use cases:
+The framework uses a **unified node-reference API** where users always work with node objects rather than string identifiers. The framework automatically selects the optimal execution engine based on flow structure analysis.
 
-#### Implicit DAG Pattern
+#### Unified API Design
 
-Node dependencies are expressed through constructor parameters, with execution order determined automatically via topological sort. Best for linear, acyclic workflows where dependencies flow naturally from data transformations.
+All flow construction uses direct node references:
+- `flow.add_edge(source_node, target_node)` - Node objects, not strings
+- `flow.set_entry_nodes(node1, node2)` - Node objects as entry points  
+- Router functions return `BaseNode | Route` for control flow decisions
+- Automatic engine selection via graph analysis (cycle detection, conditional edge detection)
 
-**Characteristics:**
-- Entry nodes inferred from nodes with no dependencies
-- Execution order calculated from node dependency graph
-- Uses efficient topological sort algorithm
-- Minimal API surface - just add nodes, system handles the rest
+#### Dual Execution Engines
 
-**Trade-offs:**
-- Cannot express cycles or loops
-- No conditional routing
-- Simpler mental model for straightforward pipelines
+The framework maintains two execution engines and automatically selects the optimal one:
 
-#### Explicit Edge Pattern
+**DAG Engine:**
+- Uses topological sort (O(V+E) complexity)
+- Optimal for acyclic flows without conditional routing
+- Entry nodes inferred from nodes with no incoming edges
+- Direct execution without control flow overhead
 
-Edges and entry points are declared explicitly, with execution managed by the stepper engine. Required for flows with loops, conditional routing, or complex control flow.
+**Stepper Engine:**
+- Frontier-based wave execution
+- Required for cycles, loops, and conditional routing
+- Supports `Route.END` sentinel for termination
+- Handles dynamic control flow patterns
 
-**Characteristics:**
-- Entry nodes must be explicitly declared via `set_entry_nodes()`
-- Edges defined via `add_edge()` and `add_conditional_edges()`
-- Stepper engine executes nodes in frontier-based waves
-- Supports cycles and dynamic routing via `Route.END` sentinel
+#### Automatic Engine Selection
 
-**Trade-offs:**
-- More verbose API (entry points, explicit edges)
-- Slightly higher execution overhead (stepper vs direct DAG execution)
-- Enables complex control flow patterns impossible in DAG mode
-
-#### Engine Selection
-
-The framework automatically selects the appropriate execution engine:
+Graph analysis determines the appropriate engine:
 - **Auto mode** (default): Detects cycles or conditional edges, uses stepper if needed
-- **DAG mode**: Forces topological sort, errors if cycles/routing detected
+- **DAG mode**: Forces topological sort, errors if cycles/routing detected  
 - **Stepper mode**: Forces stepper engine for all flows
 
-Users can override via `flow.compile(mode=ExecutionMode.DAG|STEPPER|AUTO)`.
+Selection can be overridden via `flow.compile(mode=ExecutionMode.DAG|STEPPER|AUTO)`.
 
-#### Pattern Purity
+Users can inspect selection reasoning via `compiled_flow.explain()` which returns:
+- Selected engine mode
+- Detected features (cycles, conditional edges, explicit edges)
+- Inferred entry nodes
+- Human-readable selection reasons
 
-**Mixing patterns within a single flow is discouraged** as it creates ambiguity about execution order and control flow. When both patterns are needed, use sub-flows (FlowNode) to compose them as separate, encapsulated units.
+#### Type Safety Benefits
+
+The node-reference approach provides:
+- Full IDE autocomplete and type checking
+- Compile-time validation of node connections
+- Refactoring safety - rename detection across codebase
+- Clear error messages when nodes are not found
+
+
 
 ## Goals
 

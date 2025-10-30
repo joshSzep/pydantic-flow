@@ -210,7 +210,7 @@ def test_set_entry_nodes_unknown():
     )
     flow.add_nodes(node)
 
-    with pytest.raises(ValueError, match="Unknown entry nodes"):
+    with pytest.raises(ValueError, match="Unknown node name"):
         flow.set_entry_nodes("unknown", "also_unknown")
 
 
@@ -473,11 +473,12 @@ def test_flow_add_edge():
         output_type=TwoResults,
     )
     flow.add_nodes(node1, node2)
-    flow.add_edge("node1", "node2")
+    flow.add_edge(node1, node2)
 
     # Verify edge was added
-    assert "node1" in flow._edges
-    assert "node2" in flow._edges["node1"]
+    assert any(
+        edge.source == node1 and edge.target == node2 for edge in flow._explicit_edges
+    )
 
 
 # Test register interrupt handler (flow.py lines 86-103)

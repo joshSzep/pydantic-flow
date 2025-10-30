@@ -4,12 +4,19 @@ This module provides the routing primitives for conditional edges that enable
 loops and dynamic control flow in workflows.
 """
 
+from __future__ import annotations
+
 from enum import StrEnum
+from typing import TYPE_CHECKING
+from typing import Any
 from typing import Protocol
 from typing import TypeVar
 from typing import runtime_checkable
 
 from pydantic import BaseModel
+
+if TYPE_CHECKING:
+    pass
 
 
 class Route(StrEnum):
@@ -23,13 +30,18 @@ class Route(StrEnum):
     END = "END"
 
 
-T_Route = Route | str
+if TYPE_CHECKING:
+    T_Route = Route | str | "BaseNode"
+else:
+    T_Route = Route | str
+
 """Type alias for routing outcomes.
 
 A router function can return:
 - Route.END: to terminate the flow
 - str: the name of the target node to route to
-- list[str]: multiple target nodes for fan-out
+- BaseNode: direct reference to the target node
+- list of the above: multiple target nodes for fan-out
 """
 
 
@@ -45,26 +57,26 @@ class RouterFunction(Protocol[StateT_contra]):
 
     Example:
         ```python
-        from pydantic_flow.core.routing import T_Route
+        from pydantic_flow.core.routing import Route
 
-        def router(state: OutputState) -> T_Route:
+        def router(state: OutputState) -> Route | BaseNode:
             if state.tick.n >= 5:  # IDE knows about .tick attribute
                 return Route.END
-            return "tick"
+            return tick_node  # Return node reference
 
-        flow.add_conditional_edges("tick", router)  # Type checked!
+        flow.add_conditional_edges(tick_node, router)  # Type checked!
         ```
 
     """
 
-    def __call__(self, state: StateT_contra) -> T_Route | list[T_Route]:
+    def __call__(self, state: StateT_contra) -> Any:
         """Route based on typed state.
 
         Args:
             state: The typed state object with known fields.
 
         Returns:
-            Routing outcome(s) - either Route.END, node name(s), or list of node names.
+            Routing outcome(s) - Route.END, node reference, or list.
 
         """
         ...

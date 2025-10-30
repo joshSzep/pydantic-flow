@@ -487,84 +487,94 @@ See `examples/loops/` for complete runnable examples.
 
 ### Flow Construction Patterns
 
-pydantic-flow supports two patterns for building flows, each suited to different use cases:
+pydantic-flow provides a **unified node-reference API** for building flows. You always work with node objects, and the framework automatically selects the optimal execution engine based on your flow's structure.
 
-#### Pattern 1: Implicit DAG (Node Dependencies)
+#### Basic Pattern: Node References
 
-Best for **acyclic workflows** where dependencies are clear and linear:
+All flows are built using direct references to node objects:
 
 ```python
-from pydantic_flow.nodes import NodeWithInput
+from pydantic_flow import Flow, Route
+from pydantic_flow.nodes import ToolNode
 
-class ProcessNode(NodeWithInput[DataType, ResultType]):
-    """Node with explicit input dependency."""
-    
-    def __init__(self, input_node: BaseNode[Any, DataType]):
-        self.input = input_node.output
-        super().__init__(name="process")
-    
-    async def run(self, input_data: DataType) -> ResultType:
-        # Process the data from input_node
-        return process(input_data)
-
-# Build flow - execution order determined automatically
+# Create nodes
 flow = Flow(input_type=InputType, output_type=OutputType)
-fetch = FetchNode(name="fetch")
-process = ProcessNode(input_node=fetch)  # Dependency declared in constructor
-transform = TransformNode(input_node=process)
+fetch = ToolNode(tool_func=fetch_data, name="fetch")
+process = ToolNode(tool_func=process_data, name="process")
+flow.add_nodes(fetch, process)
 
-flow.add_nodes(fetch, process, transform)
-# No need to call set_entry_nodes() - inferred from dependencies
-# No explicit edges needed - determined via topological sort
-result = await flow.run(input_data)
+# Define edges using node objects (NOT strings)
+flow.set_entry_nodes(fetch)  # Entry point
+flow.add_edge(fetch, process)  # Static edge
+
+# Compile and run (automatically picks optimal engine)
+compiled = flow.compile()
+result = await compiled.invoke(input_data, config)
 ```
 
-**When to use:**
-- Linear or tree-like data pipelines
-- No loops or conditional routing needed
-- Dependencies naturally expressed through node constructors
+#### Conditional Routing and Loops
 
-#### Pattern 2: Explicit Edges (Stepper Engine)
-
-Required for **loops, conditional routing, or complex control flow**:
+For dynamic control flow, use conditional edges with router functions:
 
 ```python
 flow = Flow(input_type=StateType, output_type=StateType)
 
-# Add all nodes first
+# Add all nodes
 plan = PlanNode(name="plan")
 execute = ExecuteNode(name="execute")
 flow.add_nodes(plan, execute)
 
-# Explicitly define entry point (required for stepper engine)
-flow.set_entry_nodes("plan")
+# Set entry point
+flow.set_entry_nodes(plan)
 
-# Add static edges
-flow.add_edge("plan", "execute")
+# Add static edge
+flow.add_edge(plan, execute)
 
-# Add conditional routing
-def should_continue(state: BaseModel) -> T_Route:
+# Add conditional edge with router function
+def should_continue(state: BaseModel) -> Route | BaseNode:
     execute_state = getattr(state, "execute")
     if execute_state.iterations >= 5:
-        return Route.END
-    return "plan"  # Loop back to start
+        return Route.END  # Terminate flow
+    return plan  # Loop back (return node object!)
 
-flow.add_conditional_edges("execute", should_continue)
+flow.add_conditional_edges(execute, should_continue)
 
-# Compile (automatically uses stepper engine due to conditional edges)
+# Compile (auto-detects loop, uses stepper engine)
 compiled = flow.compile()
 result = await compiled.invoke(initial_state, config)
 ```
 
-**When to use:**
-- Loops or cycles in the workflow
-- Conditional routing based on state
-- Complex control flow patterns
-- Multiple entry points
+**Router functions return:**
+- `Route.END` - Terminate flow execution
+- `BaseNode` object - Direct reference to target node
+- `list[Route | BaseNode]` - Multiple targets for fan-out
 
-#### Choosing the Right Mode
+#### Automatic Engine Selection
 
-You can also explicitly control which engine to use:
+The framework analyzes your flow and picks the best execution engine:
+
+```python
+# Simple acyclic flow → uses fast DAG engine (O(V+E) topological sort)
+flow = Flow(...)
+flow.add_nodes(a, b, c)
+flow.add_edge(a, b)
+flow.add_edge(b, c)
+compiled = flow.compile()  # Auto-detects DAG, uses topological sort
+
+# Flow with loop → uses stepper engine (frontier-based execution)
+flow = Flow(...)
+flow.add_nodes(plan, execute)
+flow.add_edge(plan, execute)
+flow.add_conditional_edges(execute, lambda s: plan if s.continue else Route.END)
+compiled = flow.compile()  # Auto-detects cycle, uses stepper
+
+# See why a particular engine was chosen
+compiled.explain()  # Shows: engine, reasons, detected features
+```
+
+#### Explicit Engine Control
+
+You can override automatic selection if needed:
 
 ```python
 from pydantic_flow import ExecutionMode
@@ -577,34 +587,50 @@ compiled = flow.compile(mode=ExecutionMode.STEPPER)
 
 # Auto-detect (default) - uses stepper if needed, otherwise DAG
 compiled = flow.compile(mode=ExecutionMode.AUTO)
+
+# Explain the selection
+print(compiled.explain())
+# Output:
+# Engine: STEPPER
+# Reasons:
+#   - Flow contains cycles
+#   - Detected conditional edges
+# Entry nodes: plan
 ```
 
-#### ⚠️ Avoid Mixing Patterns
+#### Understanding explain()
 
-**Don't mix implicit and explicit construction in the same flow:**
+The `explain()` method shows how your flow will execute:
 
 ```python
-# ❌ BAD: Mixing patterns causes confusion
-flow = Flow(...)
-node_a = NodeWithInput(input_node=start)  # Implicit dependency
-flow.add_nodes(start, node_a)
-flow.add_edge("start", "node_b")  # Explicit edge
-flow.set_entry_nodes("start")  # Explicit entry
-# Result: Unclear execution order, potential conflicts
+compiled = flow.compile()
+analysis = compiled.explain()
+
+# Returns a structured explanation:
+# {
+#   "mode": "STEPPER",
+#   "has_cycles": True,
+#   "has_conditional_edges": True,
+#   "entry_nodes": ["plan"],
+#   "reasons": [
+#     "Flow contains cycles",
+#     "Detected conditional edges"
+#   ]
+# }
 ```
 
-**Instead, choose one pattern consistently:**
+#### 📌 Best Practices
 
-```python
-# ✅ GOOD: Pure explicit pattern
-flow = Flow(...)
-flow.add_nodes(start, node_a, node_b)
-flow.set_entry_nodes("start")
-flow.add_edge("start", "node_a")
-flow.add_edge("node_a", "node_b")
-```
+**✅ DO:**
+- Use node references everywhere: `flow.add_edge(node_a, node_b)`
+- Let the framework auto-detect the optimal engine
+- Return node objects from router functions: `return target_node`
+- Use `Route.END` to terminate flows
 
-If you need both patterns, use **sub-flows** (FlowNode) to compose them separately.
+**❌ DON'T:**
+- Manually choose execution modes unless you have a specific reason
+- Create complex nested conditional logic - break into separate nodes instead
+
 
 ### Sub-flow Composition with FlowNode
 
@@ -1101,6 +1127,62 @@ uv sync
 
 pydantic-flow includes a comprehensive, type-safe RAG adapter layer with streaming support:
 
+### Document Splitters
+
+Split documents using three strategies: token-based, sentence-based, or markdown heading-based:
+
+```python
+from pydantic_flow.rag import (
+    SentenceSplitter,
+    TokenSplitter,
+    MarkdownHeadingSplitter,
+    SplitConfig,
+)
+
+# Sentence splitter preserves sentence boundaries
+splitter = SentenceSplitter()
+config = SplitConfig(
+    splitter_type="sentence",
+    max_chars=500,
+    overlap=50,
+    min_chunk_chars=20,
+)
+
+chunks = splitter.split(text, source_id="doc1", config=config)
+```
+
+### Reranking
+
+Improve retrieval results with lexical or provider-based reranking:
+
+```python
+from pydantic_flow.rag import LexicalReranker, CohereReranker
+
+# Lexical baseline (dependency-free)
+reranker = LexicalReranker()
+scored = reranker.score(query="reset password", chunks=chunks)
+
+# Cohere Rerank API (optional)
+cohere_reranker = CohereReranker(api_key="...", model="rerank-english-v3.0")
+scored = cohere_reranker.score(query, chunks)
+```
+
+### Diversification
+
+Reduce redundancy using MMR (Maximal Marginal Relevance):
+
+```python
+from pydantic_flow.rag import mmr_select, diversify_by_source
+
+# MMR with lambda balancing relevance vs diversity
+final = mmr_select(scored, k=5, lambda_mult=0.3)
+
+# Source-aware diversification
+final = diversify_by_source(scored, k=5, max_per_source=2)
+```
+
+### Full Pipeline Example
+
 ```python
 from pydantic_flow.rag import (
     OpenAIEmbeddings,
@@ -1108,27 +1190,39 @@ from pydantic_flow.rag import (
     VectorRetriever,
     VectorRetrieverNode,
     FSLoader,
+    SentenceSplitter,
+    SplitConfig,
+    LexicalReranker,
+    mmr_select,
 )
 from pydantic_flow.rag.nodes.retriever import QueryInput
 
-# 1. Load and chunk documents
-loader = FSLoader(path="docs/", chunk_size=1000)
+# 1. Load and split documents
+loader = FSLoader(path="docs/")
 documents = await loader.load()
+
+splitter = SentenceSplitter()
+config = SplitConfig(max_chars=500, overlap=50)
+
+all_chunks = []
+for doc in documents:
+    chunks = splitter.split(doc.content, doc.id, config)
+    all_chunks.extend(chunks)
 
 # 2. Setup embeddings and vector store
 embeddings = OpenAIEmbeddings(dimensions=1536)
 store = HNSWMemoryStore(dim=1536)
 
 # 3. Generate and upsert embeddings
-for doc in documents:
-    vecs = await embeddings.embed([doc.content])
-    await store.upsert([(doc.id, vecs[0], doc)])
+for chunk in all_chunks:
+    vecs = await embeddings.embed([chunk.text])
+    await store.upsert([(chunk.id, vecs[0], chunk)])
 
 # 4. Create retriever and node
 retriever = VectorRetriever(
     embedding_provider=embeddings,
     vector_store=store,
-    default_k=3
+    default_k=20
 )
 
 retriever_node = VectorRetrieverNode(
@@ -1136,20 +1230,41 @@ retriever_node = VectorRetrieverNode(
     name="semantic-search"
 )
 
-# 5. Stream retrieval results
-query = QueryInput(query="What is pydantic-flow?", k=3)
-async for item in retriever_node.astream(query):
-    if isinstance(item, RetrievalItem):
-        print(f"📄 {item.content[:80]}...")
+# 5. Retrieve, rerank, and diversify
+query = QueryInput(query="What is pydantic-flow?", k=20)
+docs = await retriever_node.run(query)
+
+# Convert docs to chunks for reranking
+from pydantic_flow.rag.splitters import DocumentChunk, ChunkMetadata
+
+chunks = [
+    DocumentChunk(
+        id=doc["id"],
+        text=doc["content"],
+        metadata=ChunkMetadata(source_id=doc["id"], chunk_index=0)
+    )
+    for doc in docs.documents
+]
+
+reranker = LexicalReranker()
+scored = reranker.score(query.query, chunks)
+
+# Apply MMR diversification
+final = mmr_select(scored, k=5, lambda_mult=0.4)
+
+for chunk in final:
+    print(f"Score: {chunk.score:.3f} - {chunk.chunk.text[:80]}...")
 ```
 
 **Supported Components:**
+- **Splitters**: Token, Sentence, Markdown heading-based
+- **Rerankers**: Lexical baseline (TF-IDF), Cohere Rerank API
+- **Diversification**: MMR selection, source-aware filtering
 - **Embeddings**: OpenAI, Cohere, HuggingFace, Ollama
 - **Vector Stores**: HNSW (in-memory), PostgreSQL pgvector
 - **Loaders**: Filesystem, Web (HTTP/HTTPS)
-- **Retrievers**: Semantic search with filtering
 
-See [docs/rag-adapters.md](docs/rag-adapters.md) for complete documentation.
+See [docs/rag-adapters.md](docs/rag-adapters.md) and [examples/rag_comprehensive.py](examples/rag_comprehensive.py) for complete documentation.
 
 ## Architecture
 

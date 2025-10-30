@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING
 from typing import Any
@@ -27,7 +28,7 @@ from pydantic_flow.core.errors import FlowError
 from pydantic_flow.core.errors import HandlerPriority
 from pydantic_flow.core.errors import InterruptHandlerRegistration
 from pydantic_flow.core.errors import InterruptionRequested
-from pydantic_flow.core.routing import T_Route
+from pydantic_flow.core.routing import Route
 from pydantic_flow.core.run_config import RunConfig
 from pydantic_flow.engine.stepper import ConditionalEdge
 from pydantic_flow.engine.stepper import EngineConfig
@@ -50,6 +51,58 @@ if TYPE_CHECKING:
 
 InputT = TypeVar("InputT", bound=BaseModel)
 OutputT = TypeVar("OutputT", bound=BaseModel)
+
+
+@dataclass
+class Edge:
+    """Represents a directed edge between two nodes.
+
+    Attributes:
+        source: The source node.
+        target: The target node.
+
+    """
+
+    source: BaseNode[Any, Any]
+    target: BaseNode[Any, Any]
+
+
+@dataclass
+class ConditionalEdgeConfig:
+    """Configuration for a conditional routing edge.
+
+    Attributes:
+        source: The source node where routing decision is made.
+        router: Function that determines the next node(s) to execute.
+
+    """
+
+    source: BaseNode[Any, Any]
+    router: Callable[[BaseModel], Any]
+
+
+@dataclass
+class GraphAnalysis:
+    """Results of flow graph structure analysis.
+
+    Attributes:
+        has_cycles: Whether the graph contains cycles.
+        has_conditional_edges: Whether there are conditional routing edges.
+        has_explicit_edges: Whether there are explicit edges defined.
+        entry_nodes: List of nodes with no incoming dependencies.
+        execution_order: Topologically sorted node order (None if has cycles).
+        mode: Recommended execution mode based on analysis.
+        reasons: Human-readable reasons for mode selection.
+
+    """
+
+    has_cycles: bool
+    has_conditional_edges: bool
+    has_explicit_edges: bool
+    entry_nodes: list[BaseNode[Any, Any]]
+    execution_order: list[BaseNode[Any, Any]] | None
+    mode: ExecutionMode
+    reasons: list[str]
 
 
 class ExecutionMode(StrEnum):
@@ -103,9 +156,19 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         self._results: dict[str, Any] = {}
         self._input_type = input_type
         self._output_type = output_type
-        self._edges: dict[str, list[str]] = {}
-        self._conditional_edges: list[ConditionalEdge[Any]] = []
-        self._entry_nodes: list[str] | None = None
+
+        # Node-based edge storage
+        self._explicit_edges: list[Edge] = []
+        self._conditional_edges: list[ConditionalEdgeConfig] = []
+        self._conditional_mappings: dict[
+            BaseNode[Any, Any], dict[str, BaseNode[Any, Any] | Route]
+        ] = {}
+        self._entry_nodes: list[BaseNode[Any, Any]] | None = None
+
+        # Node lookup dictionaries
+        self._nodes_by_name: dict[str, BaseNode[Any, Any]] = {}
+        self._nodes_by_id: dict[int, BaseNode[Any, Any]] = {}
+
         self.flow_id: str = str(uuid.uuid4())
         self._interrupt_handlers: list[InterruptHandlerRegistration] = []
         self._edge_history: list[tuple[str, str]] = []
@@ -397,6 +460,10 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         for node in nodes:
             if node not in self.nodes:
                 self.nodes.append(node)
+                # Update lookup dictionaries
+                self._nodes_by_name[node.name] = node
+                self._nodes_by_id[id(node)] = node
+
         # Recalculate execution order when nodes are added
         self._calculate_execution_order()
 
@@ -639,60 +706,119 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             msg = f"Flow validation failed: {e}"
             raise FlowError(msg) from e
 
-    def add_edge(self, from_node: str, to_node: str) -> None:
+    def _resolve_node_reference(
+        self, node_ref: BaseNode[Any, Any] | str, param_name: str
+    ) -> BaseNode[Any, Any]:
+        """Resolve a node reference to a node object.
+
+        Args:
+            node_ref: Node object or string name to resolve.
+            param_name: Parameter name for error messages.
+
+        Returns:
+            Resolved node object.
+
+        Raises:
+            ValueError: If node not found in flow.
+
+        """
+        if isinstance(node_ref, BaseNode):
+            # Verify node is in the flow
+            if node_ref not in self.nodes:
+                msg = f"{param_name}: Node '{node_ref.name}' not in flow"
+                raise ValueError(msg)
+            return node_ref
+
+        # String reference - look up by name
+        if node_ref not in self._nodes_by_name:
+            available = sorted(self._nodes_by_name.keys())
+            msg = (
+                f"{param_name}: Unknown node name '{node_ref}'. "
+                f"Available nodes: {available}"
+            )
+            raise ValueError(msg)
+        return self._nodes_by_name[node_ref]
+
+    def add_edge(
+        self,
+        from_node: BaseNode[Any, Any] | str,
+        to_node: BaseNode[Any, Any] | str,
+    ) -> None:
         """Add a static edge between two nodes.
 
         Args:
-            from_node: Source node name.
-            to_node: Target node name.
+            from_node: Source node object.
+            to_node: Target node object.
+
+        Raises:
+            ValueError: If node not found in flow.
 
         """
-        if from_node not in self._edges:
-            self._edges[from_node] = []
-        self._edges[from_node].append(to_node)
+        # Resolve to node objects
+        source = self._resolve_node_reference(from_node, "from_node")
+        target = self._resolve_node_reference(to_node, "to_node")
+
+        # Store edge
+        self._explicit_edges.append(Edge(source=source, target=target))
 
     def add_conditional_edges(
         self,
-        from_node: str,
-        router: Callable[[BaseModel], T_Route | list[T_Route]],
-        mapping: dict[Any, str] | None = None,
+        from_node: BaseNode[Any, Any] | str,
+        router: Callable[[BaseModel], Any],
+        mapping: dict[Any, BaseNode[Any, Any] | str | Route] | None = None,
     ) -> None:
         """Add conditional routing edges from a node.
 
         Args:
-            from_node: Source node name.
+            from_node: Source node object.
             router: Function that receives state and returns routing target(s).
-            mapping: Optional dict to map router outputs to node names.
+                   Can return Route.END, node object, or list of any.
+            mapping: Optional dict to map router string outcomes to nodes.
+                   Keys are router return values, values are target nodes or Route.END.
 
         """
-        edge = ConditionalEdge(from_node, router, mapping)
-        self._conditional_edges.append(edge)
+        # Resolve source node
+        source = self._resolve_node_reference(from_node, "from_node")
 
-    def set_entry_nodes(self, *node_names: str) -> None:
+        # Store conditional edge
+        self._conditional_edges.append(
+            ConditionalEdgeConfig(source=source, router=router)
+        )
+
+        # Process mapping if provided
+        if mapping:
+            resolved_mapping: dict[str, BaseNode[Any, Any] | Route] = {}
+            for key, value in mapping.items():
+                # Handle Route.END specially - it's a terminal value, not a node
+                if isinstance(value, Route):
+                    resolved_mapping[str(key)] = value
+                else:
+                    target_node = self._resolve_node_reference(value, f"mapping[{key}]")
+                    resolved_mapping[str(key)] = target_node
+            self._conditional_mappings[source] = resolved_mapping
+
+    def set_entry_nodes(self, *nodes: BaseNode[Any, Any] | str) -> None:
         """Set the entry nodes for loop-capable execution.
 
         Args:
-            *node_names: Names of nodes to execute first.
+            *nodes: Node objects to execute first.
 
         Raises:
             ValueError: If no nodes specified or if any node name doesn't exist.
 
         """
-        if not node_names:
+        if not nodes:
             msg = "Must specify at least one entry node"
             raise ValueError(msg)
 
-        existing_names = {node.name for node in self.nodes}
-        unknown = set(node_names) - existing_names
+        # Resolve all node references
+        resolved_nodes: list[BaseNode[Any, Any]] = []
+        for i, node_ref in enumerate(nodes):
+            resolved = self._resolve_node_reference(node_ref, f"node[{i}]")
+            resolved_nodes.append(resolved)
 
-        if unknown:
-            msg = (
-                f"Unknown entry nodes: {sorted(unknown)}. "
-                f"Available nodes: {sorted(existing_names)}"
-            )
-            raise ValueError(msg)
-
-        self._entry_nodes = list(node_names)
+        # Store entry nodes
+        self._entry_nodes = resolved_nodes
 
     def compile(
         self, *, mode: ExecutionMode = ExecutionMode.AUTO
@@ -710,9 +836,13 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             FlowError: If flow structure is invalid or incompatible with mode.
 
         """
+        # Analyze graph structure
+        analysis: GraphAnalysis | None = None
+
         # Determine which engine to use
         if mode == ExecutionMode.AUTO:
-            use_stepper = self._should_use_stepper()
+            analysis = self._analyze_graph()
+            use_stepper = analysis.mode == ExecutionMode.STEPPER
         elif mode == ExecutionMode.STEPPER:
             use_stepper = True
         else:  # ExecutionMode.DAG
@@ -732,22 +862,64 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 raise FlowError(msg)
 
         if use_stepper:
-            entry_nodes = self._entry_nodes or self._infer_entry_nodes()
+            # Build edge dictionary from node-based edges for stepper
+            edges_dict: dict[str, list[str]] = {}
+            for edge in self._explicit_edges:
+                if edge.source.name not in edges_dict:
+                    edges_dict[edge.source.name] = []
+                edges_dict[edge.source.name].append(edge.target.name)
+
+            # Build ConditionalEdge list from node-based conditional edges
+            conditional_edges_list: list[ConditionalEdge[Any]] = []
+            for cond_edge in self._conditional_edges:
+                # Get mapping if exists
+                mapping = None
+                if cond_edge.source in self._conditional_mappings:
+                    node_mapping = self._conditional_mappings[cond_edge.source]
+                    # Convert node mapping to string mapping
+                    mapping = {}
+                    for key, value in node_mapping.items():
+                        if isinstance(value, Route):
+                            mapping[key] = value.value
+                        else:
+                            mapping[key] = value.name
+
+                conditional_edges_list.append(
+                    ConditionalEdge(cond_edge.source.name, cond_edge.router, mapping)
+                )
+
+            entry_node_names = [
+                n.name
+                for n in (
+                    self._entry_nodes
+                    if self._entry_nodes
+                    else self._infer_entry_nodes()
+                )
+            ]
             engine_config = EngineConfig(
                 nodes=self.nodes,
-                edges=self._edges,
-                conditional_edges=self._conditional_edges,
-                entry_nodes=entry_nodes,
+                edges=edges_dict,
+                conditional_edges=conditional_edges_list,
+                entry_nodes=entry_node_names,
                 input_type=self._input_type,
                 output_type=self._output_type,
                 cache_backend=self._cache_backend,
                 default_cache_policy=self._default_cache_policy,
             )
             engine = StepperEngine(engine_config)
-            return CompiledFlow(flow=self, engine=engine, use_stepper=True)
+            return CompiledFlow(
+                flow=self,
+                engine=engine,
+                use_stepper=True,
+                analysis=analysis,
+            )
 
         self._calculate_execution_order()
-        return CompiledFlow(flow=self, use_stepper=False)
+        return CompiledFlow(
+            flow=self,
+            use_stepper=False,
+            analysis=analysis,
+        )
 
     async def cache_delete(self, key: str) -> None:
         """Delete a specific cache entry.
@@ -819,7 +991,10 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         # Build adjacency list from explicit edges
         adj: dict[str, list[str]] = {}
         for node in self.nodes:
-            adj[node.name] = self._edges.get(node.name, [])
+            adj[node.name] = []
+
+        for edge in self._explicit_edges:
+            adj[edge.source.name].append(edge.target.name)
 
         # Add implicit edges from node dependencies
         for node in self.nodes:
@@ -862,14 +1037,93 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
         return False
 
-    def _infer_entry_nodes(self) -> list[str]:
+    def _infer_entry_nodes(self) -> list[BaseNode[Any, Any]]:
         """Infer entry nodes from nodes with no dependencies."""
         entry = []
         for node in self.nodes:
             deps = getattr(node, "dependencies", [])
             if not deps:
-                entry.append(node.name)
-        return entry if entry else [self.nodes[0].name] if self.nodes else []
+                entry.append(node)
+        return entry if entry else [self.nodes[0]] if self.nodes else []
+
+    def _analyze_graph(self) -> GraphAnalysis:
+        """Analyze flow graph structure to determine optimal execution engine.
+
+        Returns:
+            GraphAnalysis with details about graph structure and recommended mode.
+
+        """
+        reasons: list[str] = []
+
+        # Check for conditional edges
+        has_conditional = len(self._conditional_edges) > 0
+        if has_conditional:
+            reasons.append("Flow contains conditional routing edges")
+
+        # Check for explicit edges (indicates potential cycles)
+        has_explicit = len(self._explicit_edges) > 0
+        if has_explicit:
+            reasons.append("Flow contains explicit edges")
+
+        # Detect cycles
+        has_cycles = self._detect_cycles_efficiently()
+        if has_cycles:
+            reasons.append("Flow contains cycles")
+
+        # Find entry nodes
+        if self._entry_nodes:
+            entry_nodes = self._entry_nodes
+        else:
+            # Infer from nodes with no dependencies
+            entry_nodes = []
+            nodes_with_deps = set()
+
+            # Check implicit dependencies
+            for node in self.nodes:
+                if has_input_dependency(node):
+                    nodes_with_deps.add(node.input.node)
+                if has_multiple_inputs(node):
+                    for inp in node.inputs:
+                        nodes_with_deps.add(inp.node)
+
+            # Check explicit edges
+            for edge in self._explicit_edges:
+                nodes_with_deps.add(edge.target)
+
+            # Entry nodes are those with no incoming edges
+            entry_nodes = [n for n in self.nodes if n not in nodes_with_deps]
+
+            if not entry_nodes and self.nodes:
+                entry_nodes = [self.nodes[0]]
+
+        # Try topological sort (only possible if no cycles)
+        execution_order = None
+        if not has_cycles and not has_conditional:
+            try:
+                self._calculate_execution_order()
+                execution_order = self._execution_order.copy()
+            except CyclicDependencyError:
+                pass
+
+        # Determine recommended mode
+        if has_conditional or has_cycles:
+            mode = ExecutionMode.STEPPER
+            if not reasons:
+                reasons.append("Complex control flow detected")
+        else:
+            mode = ExecutionMode.DAG
+            if not reasons:
+                reasons.append("Simple acyclic workflow")
+
+        return GraphAnalysis(
+            has_cycles=has_cycles,
+            has_conditional_edges=has_conditional,
+            has_explicit_edges=has_explicit,
+            entry_nodes=entry_nodes,
+            execution_order=execution_order,
+            mode=mode,
+            reasons=reasons,
+        )
 
     def __repr__(self) -> str:
         """Return a string representation of the flow."""
@@ -895,18 +1149,56 @@ class CompiledFlow[InputT: BaseModel, OutputT: BaseModel]:
         flow: Flow[InputT, OutputT] | None = None,
         engine: StepperEngine[InputT, OutputT] | None = None,
         use_stepper: bool = False,
+        analysis: GraphAnalysis | None = None,
     ) -> None:
         """Initialize compiled flow.
 
         Args:
-            flow: Legacy flow for DAG execution.
-            engine: Stepper engine for loop-capable execution.
-            use_stepper: Whether to use the stepper engine.
+            flow: Source flow (for DAG mode).
+            engine: Stepper engine (for STEPPER mode).
+            use_stepper: Whether using stepper engine.
+            analysis: Graph analysis results (if available).
 
         """
+        self._flow = flow
+        self._engine = engine
+        self._use_stepper = use_stepper
+        self._analysis = analysis
+
+        # Legacy attributes for backward compatibility
         self.flow = flow
         self.engine = engine
         self.use_stepper = use_stepper
+
+    def explain(self) -> str:
+        """Explain the execution engine selection.
+
+        Returns:
+            Human-readable explanation of why this engine was selected.
+
+        """
+        if self._analysis is None:
+            if self._use_stepper:
+                return "Execution Engine: STEPPER\nReason: Explicitly requested"
+            return "Execution Engine: DAG\nReason: Explicitly requested"
+
+        lines = [
+            f"Execution Engine: {self._analysis.mode.value.upper()}",
+            "Reasons:",
+        ]
+        for reason in self._analysis.reasons:
+            lines.append(f"  - {reason}")
+
+        lines.append("\nGraph Structure:")
+        lines.append(f"  - Nodes: {len(self._flow.nodes) if self._flow else 'N/A'}")
+        lines.append(f"  - Has cycles: {self._analysis.has_cycles}")
+        lines.append(
+            f"  - Has conditional edges: {self._analysis.has_conditional_edges}"
+        )
+        lines.append(f"  - Has explicit edges: {self._analysis.has_explicit_edges}")
+        lines.append(f"  - Entry nodes: {[n.name for n in self._analysis.entry_nodes]}")
+
+        return "\n".join(lines)
 
     async def invoke(self, inputs: InputT, config: RunConfig | None = None) -> OutputT:
         """Execute the compiled flow.
