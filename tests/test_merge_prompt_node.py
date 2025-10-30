@@ -10,10 +10,10 @@ from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.nodes import MergePromptNode
 from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.nodes.prompt import PromptConfig
-from pydantic_flow.streaming.events import ProgressItem
-from pydantic_flow.streaming.events import ProgressType
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
+from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.base import ProgressType
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
 
 
 class DataA(BaseModel):

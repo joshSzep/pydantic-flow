@@ -4,10 +4,10 @@ from pydantic import BaseModel
 from pydantic import ValidationError
 import pytest
 
-from pydantic_flow.streaming.events import NonFatalError
-from pydantic_flow.streaming.events import PartialFields
+from pydantic_flow.streaming.core_events import PartialFields
 from pydantic_flow.streaming.parser import StreamingParser
 from pydantic_flow.streaming.parser import parse_json_stream
+from pydantic_flow.streaming.system_events import NonFatalError
 
 
 class PersonModel(BaseModel):

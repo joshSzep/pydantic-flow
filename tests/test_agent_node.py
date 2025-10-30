@@ -11,10 +11,10 @@ import pytest
 
 from pydantic_flow.nodes.agent import AgentNode
 from pydantic_flow.nodes.agent import LLMNode
-from pydantic_flow.streaming.events import NonFatalError
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
-from pydantic_flow.streaming.events import TokenChunk
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.core_events import TokenChunk
+from pydantic_flow.streaming.system_events import NonFatalError
 
 
 class InputModel(BaseModel):

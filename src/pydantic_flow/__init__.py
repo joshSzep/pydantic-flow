@@ -33,6 +33,8 @@ from pydantic_flow.memory import BaseMemoryCompressor
 from pydantic_flow.memory import CompressionMetrics
 from pydantic_flow.memory import ConversationMemory
 from pydantic_flow.memory import HybridCompressor
+from pydantic_flow.memory import MemoryCompressionComplete
+from pydantic_flow.memory import MemoryCompressionPending
 from pydantic_flow.memory import MemoryCompressor
 from pydantic_flow.memory import MemoryConfig
 from pydantic_flow.memory import SlidingWindowCompressor
@@ -88,8 +90,6 @@ from pydantic_flow.rag import VectorRetrieverNode
 from pydantic_flow.rag import VectorStore
 from pydantic_flow.rag import WebLoader
 from pydantic_flow.streaming import Heartbeat
-from pydantic_flow.streaming import MemoryCompressionComplete
-from pydantic_flow.streaming import MemoryCompressionPending
 from pydantic_flow.streaming import NonFatalError
 from pydantic_flow.streaming import PartialFields
 from pydantic_flow.streaming import ProgressItem

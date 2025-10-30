@@ -2,15 +2,15 @@
 
 import pytest
 
-from pydantic_flow.streaming.events import PartialFields
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
-from pydantic_flow.streaming.events import TokenChunk
-from pydantic_flow.streaming.events import ToolCall
+from pydantic_flow.streaming.core_events import PartialFields
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.core_events import TokenChunk
 from pydantic_flow.streaming.helpers import collect_all_tokens
 from pydantic_flow.streaming.helpers import collect_final_result
 from pydantic_flow.streaming.helpers import iter_fields
 from pydantic_flow.streaming.helpers import iter_tokens
+from pydantic_flow.streaming.tool_events import ToolCall
 
 
 @pytest.mark.asyncio

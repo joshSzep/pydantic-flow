@@ -18,9 +18,9 @@ from pydantic_flow import ToolNode
 from pydantic_flow.hitl.decisions import InterruptDecision
 from pydantic_flow.hitl.interrupts import HandlerPriority
 from pydantic_flow.hitl.interrupts import InterruptionRequested
-from pydantic_flow.streaming.events import ProgressItem
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import TokenChunk
+from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import TokenChunk
 
 
 class DocumentInput(BaseModel):

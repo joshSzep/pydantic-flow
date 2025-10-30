@@ -15,15 +15,15 @@ from typing import runtime_checkable
 
 from pydantic_flow.hitl.interrupts import FlowCheckpoint
 from pydantic_flow.hitl.interrupts import InterruptionRequested
-from pydantic_flow.streaming.events import MemoryCompressionComplete
-from pydantic_flow.streaming.events import MemoryCompressionPending
+from pydantic_flow.memory.events import MemoryCompressionComplete
+from pydantic_flow.memory.events import MemoryCompressionPending
 
 if TYPE_CHECKING:
     from pydantic_ai import ModelMessage
 
     from pydantic_flow.memory.compression import CompressionMetrics
     from pydantic_flow.memory.compression import MemoryCompressor
-    from pydantic_flow.streaming.events import ProgressItem
+    from pydantic_flow.streaming.base import ProgressItem
 
 
 _memory_event_emitter: ContextVar[Callable[[ProgressItem], None] | None] = ContextVar(

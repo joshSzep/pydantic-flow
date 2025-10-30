@@ -165,7 +165,7 @@ async def test_flow_compile_passes_cache_to_stepper():
 
     # Need at least one node and entry point for stepper mode
     from pydantic_flow.nodes.base import BaseNode
-    from pydantic_flow.streaming.events import StreamEnd
+    from pydantic_flow.streaming.core_events import StreamEnd
 
     class TestNode(BaseNode[SimpleInput, int]):
         """Test node."""

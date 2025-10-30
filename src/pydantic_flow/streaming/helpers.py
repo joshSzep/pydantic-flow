@@ -3,10 +3,10 @@
 from collections.abc import AsyncIterator
 from typing import Any
 
-from pydantic_flow.streaming.events import PartialFields
-from pydantic_flow.streaming.events import ProgressItem
-from pydantic_flow.streaming.events import ProgressType
-from pydantic_flow.streaming.events import TokenChunk
+from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.base import ProgressType
+from pydantic_flow.streaming.core_events import PartialFields
+from pydantic_flow.streaming.core_events import TokenChunk
 
 
 async def iter_tokens(stream: AsyncIterator[ProgressItem]) -> AsyncIterator[str]:

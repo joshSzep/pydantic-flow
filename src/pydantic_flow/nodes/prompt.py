@@ -19,12 +19,12 @@ from pydantic_flow.prompt.enums import TemplateFormat
 from pydantic_flow.prompt.templates import ChatPromptTemplate
 from pydantic_flow.prompt.templates import PromptTemplate
 from pydantic_flow.prompt.types import OutputParser
-from pydantic_flow.streaming.events import NonFatalError
-from pydantic_flow.streaming.events import ProgressItem
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
-from pydantic_flow.streaming.events import TokenChunk
-from pydantic_flow.streaming.events import ToolResult
+from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.core_events import TokenChunk
+from pydantic_flow.streaming.system_events import NonFatalError
+from pydantic_flow.streaming.tool_events import ToolResult
 
 
 class PromptConfig(BaseModel):

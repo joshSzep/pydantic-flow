@@ -12,13 +12,13 @@ from pydantic_ai import Agent
 
 from pydantic_flow.memory import _active_flow_memory
 from pydantic_flow.memory import _memory_event_emitter
-from pydantic_flow.streaming.events import MemoryCompressionComplete
-from pydantic_flow.streaming.events import MemoryCompressionPending
-from pydantic_flow.streaming.events import NonFatalError
-from pydantic_flow.streaming.events import ProgressItem
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
-from pydantic_flow.streaming.events import TokenChunk
+from pydantic_flow.memory.events import MemoryCompressionComplete
+from pydantic_flow.memory.events import MemoryCompressionPending
+from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.core_events import TokenChunk
+from pydantic_flow.streaming.system_events import NonFatalError
 
 
 async def observe_agent_stream(

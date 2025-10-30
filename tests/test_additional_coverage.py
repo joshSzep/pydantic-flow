@@ -18,10 +18,10 @@ from pydantic_flow.nodes import IfNode
 from pydantic_flow.nodes import ParserNode
 from pydantic_flow.nodes import RetryNode
 from pydantic_flow.nodes import ToolNode
-from pydantic_flow.streaming.events import NonFatalError
-from pydantic_flow.streaming.events import ProgressItem
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
+from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.system_events import NonFatalError
 
 
 class SimpleInput(BaseModel):

@@ -25,10 +25,10 @@ from pydantic_flow.rag.splitters import SplitConfig
 from pydantic_flow.rag.splitters import Splitter
 from pydantic_flow.rag.splitters import TokenSplitter
 from pydantic_flow.rag.splitters.base import ChunkMetadata
-from pydantic_flow.streaming.events import ProgressItem
-from pydantic_flow.streaming.events import RetrievalItem
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
+from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.retrieval_events import RetrievalItem
 
 
 class EnhancedQueryInput(BaseModel):

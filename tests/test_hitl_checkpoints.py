@@ -14,8 +14,8 @@ from pydantic_flow.hitl.checkpoints.interface import RunId
 from pydantic_flow.hitl.checkpoints.interface import filter_interrupted
 from pydantic_flow.hitl.checkpoints.interface import list_interrupted
 from pydantic_flow.hitl.checkpoints.memory import InMemoryCheckpointStore
-from pydantic_flow.streaming.events import ProgressItem
-from pydantic_flow.streaming.events import StreamEnd
+from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import StreamEnd
 
 
 class SimpleInput(BaseModel):

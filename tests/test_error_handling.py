@@ -5,7 +5,7 @@ import pytest
 
 from pydantic_flow.nodes import ParserNode
 from pydantic_flow.nodes import ToolNode
-from pydantic_flow.streaming.events import ToolResult
+from pydantic_flow.streaming.tool_events import ToolResult
 
 
 class SimpleInput(BaseModel):

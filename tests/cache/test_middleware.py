@@ -11,16 +11,16 @@ from pydantic import BaseModel
 import pytest
 
 from pydantic_flow.cache.base import CachePolicy
+from pydantic_flow.cache.events import CacheError
+from pydantic_flow.cache.events import CacheHit
+from pydantic_flow.cache.events import CacheMiss
+from pydantic_flow.cache.events import CacheWrite
 from pydantic_flow.cache.memory import InMemoryCache
 from pydantic_flow.cache.middleware import maybe_cached_execute
 from pydantic_flow.cache.middleware import maybe_cached_stream
-from pydantic_flow.streaming.events import CacheError
-from pydantic_flow.streaming.events import CacheHit
-from pydantic_flow.streaming.events import CacheMiss
-from pydantic_flow.streaming.events import CacheWrite
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
-from pydantic_flow.streaming.events import TokenChunk
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.core_events import TokenChunk
 
 
 class ResultModel(BaseModel):

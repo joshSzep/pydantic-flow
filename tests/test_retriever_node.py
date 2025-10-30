@@ -4,9 +4,9 @@ from pydantic import BaseModel
 import pytest
 
 from pydantic_flow.nodes.retriever import RetrieverNode
-from pydantic_flow.streaming.events import RetrievalItem
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.retrieval_events import RetrievalItem
 
 
 class SearchQuery(BaseModel):

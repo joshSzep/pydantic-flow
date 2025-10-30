@@ -13,10 +13,10 @@ from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.memory.config import MemoryConfig
 from pydantic_flow.memory.memory import ConversationMemory
 from pydantic_flow.nodes.base import BaseNode
-from pydantic_flow.streaming.events import ProgressItem
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
-from pydantic_flow.streaming.events import ToolResult
+from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.tool_events import ToolResult
 
 
 class SimpleInput(BaseModel):

@@ -12,11 +12,11 @@ import pytest
 
 from pydantic_flow.memory import _memory_event_emitter
 from pydantic_flow.memory.compression import CompressionMetrics
-from pydantic_flow.streaming.events import MemoryCompressionComplete
-from pydantic_flow.streaming.events import MemoryCompressionPending
-from pydantic_flow.streaming.events import ProgressType
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
+from pydantic_flow.memory.events import MemoryCompressionComplete
+from pydantic_flow.memory.events import MemoryCompressionPending
+from pydantic_flow.streaming.base import ProgressType
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.observers import observe_agent_stream
 
 

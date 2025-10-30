@@ -7,12 +7,12 @@ import uuid
 from pydantic_ai import Agent
 import pytest
 
-from pydantic_flow.streaming.events import NonFatalError
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
-from pydantic_flow.streaming.events import TokenChunk
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.core_events import TokenChunk
 from pydantic_flow.streaming.observers import observe_agent_stream
 from pydantic_flow.streaming.observers import stream_agent_text
+from pydantic_flow.streaming.system_events import NonFatalError
 
 
 @pytest.mark.asyncio

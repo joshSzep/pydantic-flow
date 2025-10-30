@@ -13,7 +13,7 @@ from pydantic_flow.hitl.decisions import InterruptCallback
 from pydantic_flow.hitl.decisions import InterruptDecision
 from pydantic_flow.hitl.interrupts import HandlerPriority
 from pydantic_flow.hitl.interrupts import InterruptHandlerRegistration
-from pydantic_flow.streaming.events import ProgressItem
+from pydantic_flow.streaming.base import ProgressItem
 
 
 class InterruptibleNodeMixin:

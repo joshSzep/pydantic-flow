@@ -6,10 +6,10 @@ import pytest
 from pydantic_flow.flow.flow import Flow
 from pydantic_flow.nodes.flow import FlowNode
 from pydantic_flow.nodes.tool import ToolNode
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
-from pydantic_flow.streaming.events import TokenChunk
-from pydantic_flow.streaming.events import ToolResult
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.core_events import TokenChunk
+from pydantic_flow.streaming.tool_events import ToolResult
 
 
 class SimpleInput(BaseModel):

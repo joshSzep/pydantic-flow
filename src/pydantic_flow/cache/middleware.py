@@ -18,13 +18,13 @@ from pydantic_flow.cache.base import CacheBackend
 from pydantic_flow.cache.base import CacheContentType
 from pydantic_flow.cache.base import CacheEntry
 from pydantic_flow.cache.base import CachePolicy
+from pydantic_flow.cache.events import CacheError
+from pydantic_flow.cache.events import CacheHit
+from pydantic_flow.cache.events import CacheMiss
+from pydantic_flow.cache.events import CacheWrite
 from pydantic_flow.cache.key import build_cache_key
 from pydantic_flow.cache.stampede import Singleflight
-from pydantic_flow.streaming.events import CacheError
-from pydantic_flow.streaming.events import CacheHit
-from pydantic_flow.streaming.events import CacheMiss
-from pydantic_flow.streaming.events import CacheWrite
-from pydantic_flow.streaming.events import ProgressItem
+from pydantic_flow.streaming.base import ProgressItem
 
 T = TypeVar("T")
 

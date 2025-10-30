@@ -11,10 +11,10 @@ from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.nodes.base import MergeNode
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.prompt import PromptConfig
-from pydantic_flow.streaming.events import NonFatalError
-from pydantic_flow.streaming.events import ProgressItem
-from pydantic_flow.streaming.events import StreamStart
+from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.observers import observe_agent_stream
+from pydantic_flow.streaming.system_events import NonFatalError
 
 
 class MergePromptNode[*InputTs, OutputT](MergeNode[*InputTs, OutputT]):

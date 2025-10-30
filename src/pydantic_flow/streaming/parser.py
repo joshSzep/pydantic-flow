@@ -12,8 +12,8 @@ from typing import TypeVar
 from pydantic import BaseModel
 from pydantic import ValidationError
 
-from pydantic_flow.streaming.events import NonFatalError
-from pydantic_flow.streaming.events import PartialFields
+from pydantic_flow.streaming.core_events import PartialFields
+from pydantic_flow.streaming.system_events import NonFatalError
 
 T = TypeVar("T", bound=BaseModel)
 

@@ -8,6 +8,7 @@ from pydantic_flow.hitl.checkpoints.base import BaseCheckpointStore
 from pydantic_flow.hitl.checkpoints.config import CheckpointStoreConfig
 from pydantic_flow.hitl.checkpoints.config import CheckpointStoreType
 from pydantic_flow.hitl.checkpoints.config import create_checkpoint_store
+from pydantic_flow.hitl.checkpoints.events import CheckpointSaved
 from pydantic_flow.hitl.checkpoints.flatfile import FlatFileCheckpointStore
 from pydantic_flow.hitl.checkpoints.flatfile import FlatFileCheckpointStoreConfig
 from pydantic_flow.hitl.checkpoints.flatfile import PartitioningStrategy
@@ -44,6 +45,7 @@ __all__ = [
     "CheckpointId",
     "CheckpointNotFound",
     "CheckpointQuery",
+    "CheckpointSaved",
     "CheckpointStore",
     "CheckpointStoreConfig",
     "CheckpointStoreError",

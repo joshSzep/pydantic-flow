@@ -9,9 +9,9 @@ from pydantic_flow.rag.nodes.enhanced_retriever import EnhancedRetrieverNode
 from pydantic_flow.rag.rerankers import RerankConfig
 from pydantic_flow.rag.retrievers.base import Retriever
 from pydantic_flow.rag.splitters import SplitConfig
-from pydantic_flow.streaming.events import RetrievalItem
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.retrieval_events import RetrievalItem
 
 
 class MockRetriever(Retriever):

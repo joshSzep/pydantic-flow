@@ -17,7 +17,7 @@ from pydantic_flow.rag.nodes.retriever import QueryInput
 from pydantic_flow.rag.nodes.retriever import VectorRetrieverNode
 from pydantic_flow.rag.retrievers.vector import VectorRetriever
 from pydantic_flow.rag.vectors.hnsw import HNSWMemoryStore
-from pydantic_flow.streaming.events import RetrievalItem
+from pydantic_flow.streaming.retrieval_events import RetrievalItem
 
 
 class MockEmbeddings(EmbeddingProvider):

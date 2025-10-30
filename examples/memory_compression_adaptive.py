@@ -27,9 +27,9 @@ from pydantic_flow import HybridCompressor
 from pydantic_flow import MemoryConfig
 from pydantic_flow import SlidingWindowCompressor
 from pydantic_flow import SummarizationCompressor
-from pydantic_flow.streaming.events import InterruptDecision
-from pydantic_flow.streaming.events import MemoryCompressionPending
-from pydantic_flow.streaming.events import ProgressItem
+from pydantic_flow.hitl.decisions import InterruptDecision
+from pydantic_flow.memory.events import MemoryCompressionPending
+from pydantic_flow.streaming.base import ProgressItem
 
 
 class ChatInput(BaseModel):

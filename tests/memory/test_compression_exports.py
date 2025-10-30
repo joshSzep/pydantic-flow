@@ -38,16 +38,16 @@ def test_main_package_compression_exports() -> None:
 
 
 def test_streaming_event_exports() -> None:
-    """Test that compression events are exported from streaming and main package."""
+    """Test that compression events are exported from memory and main package."""
     from pydantic_flow import MemoryCompressionComplete
     from pydantic_flow import MemoryCompressionPending
-    from pydantic_flow.streaming import MemoryCompressionComplete as StreamingComplete
-    from pydantic_flow.streaming import MemoryCompressionPending as StreamingPending
+    from pydantic_flow.memory import MemoryCompressionComplete as MemoryComplete
+    from pydantic_flow.memory import MemoryCompressionPending as MemoryPending
 
     assert MemoryCompressionComplete is not None
     assert MemoryCompressionPending is not None
-    assert MemoryCompressionComplete is StreamingComplete
-    assert MemoryCompressionPending is StreamingPending
+    assert MemoryCompressionComplete is MemoryComplete
+    assert MemoryCompressionPending is MemoryPending
 
 
 def test_all_exports_listed() -> None:
@@ -61,12 +61,10 @@ def test_all_exports_listed() -> None:
     assert "CompressionMetrics" in pydantic_flow.memory.__all__
     assert "HybridCompressor" in pydantic_flow.memory.__all__
     assert "MemoryCompressor" in pydantic_flow.memory.__all__
+    assert "MemoryCompressionComplete" in pydantic_flow.memory.__all__
+    assert "MemoryCompressionPending" in pydantic_flow.memory.__all__
     assert "SlidingWindowCompressor" in pydantic_flow.memory.__all__
     assert "SummarizationCompressor" in pydantic_flow.memory.__all__
-
-    # Streaming package
-    assert "MemoryCompressionComplete" in pydantic_flow.streaming.__all__
-    assert "MemoryCompressionPending" in pydantic_flow.streaming.__all__
 
     # Main package
     assert "BaseMemoryCompressor" in pydantic_flow.__all__

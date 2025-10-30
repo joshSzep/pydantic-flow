@@ -13,6 +13,8 @@ from pydantic_flow.memory.compressors import HybridCompressor
 from pydantic_flow.memory.compressors import SlidingWindowCompressor
 from pydantic_flow.memory.compressors import SummarizationCompressor
 from pydantic_flow.memory.config import MemoryConfig
+from pydantic_flow.memory.events import MemoryCompressionComplete
+from pydantic_flow.memory.events import MemoryCompressionPending
 from pydantic_flow.memory.memory import ConversationMemory
 from pydantic_flow.memory.memory import MemoryProtocol
 from pydantic_flow.memory.memory import ReadOnlyConversationMemory
@@ -26,6 +28,8 @@ __all__ = [
     "CompressionMetrics",
     "ConversationMemory",
     "HybridCompressor",
+    "MemoryCompressionComplete",
+    "MemoryCompressionPending",
     "MemoryCompressor",
     "MemoryConfig",
     "MemoryMode",

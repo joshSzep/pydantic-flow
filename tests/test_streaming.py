@@ -3,10 +3,10 @@
 from pydantic import BaseModel
 import pytest
 
-from pydantic_flow.streaming.events import ProgressType
-from pydantic_flow.streaming.events import StreamEnd
-from pydantic_flow.streaming.events import StreamStart
-from pydantic_flow.streaming.events import TokenChunk
+from pydantic_flow.streaming.base import ProgressType
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.core_events import TokenChunk
 from pydantic_flow.streaming.helpers import collect_all_tokens
 from pydantic_flow.streaming.helpers import collect_final_result
 from pydantic_flow.streaming.helpers import iter_tokens
