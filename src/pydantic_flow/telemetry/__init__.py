@@ -25,6 +25,9 @@ from pydantic_flow.telemetry.attributes import EventName
 from pydantic_flow.telemetry.attributes import MetricName
 from pydantic_flow.telemetry.attributes import SpanKind
 from pydantic_flow.telemetry.config import TelemetryConfig
+from pydantic_flow.telemetry.helpers import traced_cache_lookup
+from pydantic_flow.telemetry.helpers import traced_cache_write
+from pydantic_flow.telemetry.helpers import traced_node_execution
 from pydantic_flow.telemetry.setup import get_meter
 from pydantic_flow.telemetry.setup import get_tracer
 from pydantic_flow.telemetry.setup import is_enabled
@@ -40,4 +43,7 @@ __all__ = [
     "get_tracer",
     "is_enabled",
     "setup_telemetry",
+    "traced_cache_lookup",
+    "traced_cache_write",
+    "traced_node_execution",
 ]

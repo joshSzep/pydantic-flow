@@ -105,6 +105,9 @@ from pydantic_flow.streaming.helpers import iter_tokens
 from pydantic_flow.streaming.parser import StreamingParser
 from pydantic_flow.streaming.parser import parse_json_stream
 from pydantic_flow.telemetry import setup_telemetry
+from pydantic_flow.telemetry import traced_cache_lookup
+from pydantic_flow.telemetry import traced_cache_write
+from pydantic_flow.telemetry import traced_node_execution
 
 # Public API - supports both direct and module imports
 __all__ = [
@@ -205,5 +208,8 @@ __all__ = [
     "iter_tokens",
     "parse_json_stream",
     "setup_telemetry",
+    "traced_cache_lookup",
+    "traced_cache_write",
+    "traced_node_execution",
 ]
 __version__ = get_project_info().version

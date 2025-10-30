@@ -220,3 +220,151 @@ async def measure_duration_async(
     finally:
         duration_ms = (time.time() - start) * 1000
         record_histogram(metric_name, duration_ms, attributes)
+
+
+@asynccontextmanager
+async def traced_node_execution(
+    node_id: str,
+    node_type: str,
+    run_id: str | None = None,
+):
+    """Context manager for node execution with full telemetry.
+
+    Provides automatic span creation, duration measurement, and execution counting
+    for node operations. Zero-cost when telemetry is disabled.
+
+    Args:
+        node_id: Unique identifier for the node.
+        node_type: Class name of the node.
+        run_id: Optional run identifier for correlation.
+
+    Yields:
+        None
+
+    Example:
+        ```python
+        async with traced_node_execution("my_node", "AgentNode", run_id="abc123"):
+            result = await do_work()
+        ```
+
+    """
+    if not is_enabled():
+        yield
+        return
+
+    from pydantic_flow.telemetry.attributes import AttributeKey
+    from pydantic_flow.telemetry.attributes import MetricName
+    from pydantic_flow.telemetry.attributes import SpanKind
+
+    attrs: dict[str, Any] = {
+        str(AttributeKey.NODE_ID): node_id,
+        str(AttributeKey.NODE_TYPE): node_type,
+    }
+    if run_id:
+        attrs[str(AttributeKey.RUN_ID)] = run_id
+
+    record_counter(MetricName.NODE_EXECUTIONS, attributes=attrs)
+
+    async with (
+        create_span_async(SpanKind.NODE_RUN, attributes=attrs),
+        measure_duration_async(MetricName.NODE_DURATION, attributes=attrs),
+    ):
+        yield
+
+
+@asynccontextmanager
+async def traced_cache_lookup(
+    node_id: str,
+    cache_backend: str,
+    key_hash: str,
+):
+    """Context manager for cache lookup operations with telemetry.
+
+    Provides automatic span creation and duration measurement for cache lookups.
+    Zero-cost when telemetry is disabled.
+
+    Args:
+        node_id: Node requesting the cache lookup.
+        cache_backend: Name of the cache backend class.
+        key_hash: Hash of the cache key (first 16 chars).
+
+    Yields:
+        None
+
+    Example:
+        ```python
+        async with traced_cache_lookup("node1", "InMemoryCache", key[:16]):
+            entry = await backend.get(key)
+        ```
+
+    """
+    if not is_enabled():
+        yield
+        return
+
+    from pydantic_flow.telemetry.attributes import AttributeKey
+    from pydantic_flow.telemetry.attributes import MetricName
+    from pydantic_flow.telemetry.attributes import SpanKind
+
+    attrs = {
+        str(AttributeKey.NODE_ID): node_id,
+        str(AttributeKey.CACHE_BACKEND): cache_backend,
+        str(AttributeKey.CACHE_KEY_HASH): key_hash,
+    }
+
+    record_counter(MetricName.CACHE_LOOKUPS, attributes=attrs)
+
+    async with (
+        create_span_async(SpanKind.CACHE_LOOKUP, attributes=attrs),
+        measure_duration_async(MetricName.CACHE_LOOKUP_DURATION, attributes=attrs),
+    ):
+        yield
+
+
+@asynccontextmanager
+async def traced_cache_write(
+    node_id: str,
+    cache_backend: str,
+    key_hash: str,
+):
+    """Context manager for cache write operations with telemetry.
+
+    Provides automatic span creation and duration measurement for cache writes.
+    Zero-cost when telemetry is disabled.
+
+    Args:
+        node_id: Node requesting the cache write.
+        cache_backend: Name of the cache backend class.
+        key_hash: Hash of the cache key (first 16 chars).
+
+    Yields:
+        None
+
+    Example:
+        ```python
+        async with traced_cache_write("node1", "RedisCache", key[:16]):
+            await backend.set(key, value)
+        ```
+
+    """
+    if not is_enabled():
+        yield
+        return
+
+    from pydantic_flow.telemetry.attributes import AttributeKey
+    from pydantic_flow.telemetry.attributes import MetricName
+    from pydantic_flow.telemetry.attributes import SpanKind
+
+    attrs = {
+        str(AttributeKey.NODE_ID): node_id,
+        str(AttributeKey.CACHE_BACKEND): cache_backend,
+        str(AttributeKey.CACHE_KEY_HASH): key_hash,
+    }
+
+    record_counter(MetricName.CACHE_WRITES, attributes=attrs)
+
+    async with (
+        create_span_async(SpanKind.CACHE_WRITE, attributes=attrs),
+        measure_duration_async(MetricName.CACHE_WRITE_DURATION, attributes=attrs),
+    ):
+        yield

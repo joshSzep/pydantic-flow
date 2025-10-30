@@ -176,37 +176,11 @@ class BaseNode[InputT, OutputT](ABC):
             The final validated output data
 
         """
-        from contextlib import nullcontext
+        from pydantic_flow.telemetry.helpers import traced_node_execution
 
-        from pydantic_flow.telemetry.setup import is_enabled
-
-        # Telemetry: check if enabled before importing/instrumenting
-        if is_enabled():
-            from pydantic_flow.telemetry.attributes import AttributeKey
-            from pydantic_flow.telemetry.attributes import MetricName
-            from pydantic_flow.telemetry.attributes import SpanKind
-            from pydantic_flow.telemetry.helpers import create_span_async
-            from pydantic_flow.telemetry.helpers import measure_duration_async
-            from pydantic_flow.telemetry.helpers import record_counter
-
-            node_attrs: dict[str, Any] = {
-                str(AttributeKey.NODE_ID): self.name,
-                str(AttributeKey.NODE_TYPE): self.__class__.__name__,
-            }
-            if self.run_id:
-                node_attrs[str(AttributeKey.RUN_ID)] = self.run_id
-
-            record_counter(MetricName.NODE_EXECUTIONS, attributes=node_attrs)
-
-            span_ctx = create_span_async(SpanKind.NODE_RUN, attributes=node_attrs)
-            duration_ctx = measure_duration_async(
-                MetricName.NODE_DURATION, attributes=node_attrs
-            )
-        else:
-            span_ctx = nullcontext()
-            duration_ctx = nullcontext()
-
-        async with span_ctx, duration_ctx:
+        async with traced_node_execution(
+            self.name, self.__class__.__name__, self.run_id
+        ):
             final_result: OutputT | None = None
             tool_result: Any = None
 
