@@ -20,6 +20,8 @@ from pydantic_flow.nodes.human import HumanResponse as HumanResponse
 from pydantic_flow.nodes.merge_parser import MergeParserNode as MergeParserNode
 from pydantic_flow.nodes.merge_prompt import MergePromptNode as MergePromptNode
 from pydantic_flow.nodes.merge_tool import MergeToolNode as MergeToolNode
+from pydantic_flow.nodes.mixins import CacheableNode as CacheableNode
+from pydantic_flow.nodes.mixins import InterruptibleNodeMixin as InterruptibleNodeMixin
 from pydantic_flow.nodes.parser import ParserNode as ParserNode
 from pydantic_flow.nodes.prompt import PromptConfig as PromptConfig
 from pydantic_flow.nodes.prompt import PromptNode as PromptNode

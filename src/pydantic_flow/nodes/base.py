@@ -2,8 +2,6 @@
 
 This module provides the foundational building blocks for creating type-safe,
 composable AI workflows using Pydantic models with streaming-native execution.
-
-BREAKING CHANGE: Added HITL (Human-in-the-Loop) interrupt handler support to BaseNode.
 """
 
 from abc import ABC
@@ -15,10 +13,7 @@ from typing import cast
 
 from pydantic import BaseModel
 
-from pydantic_flow.core.errors import HandlerPriority
-from pydantic_flow.core.errors import InterruptHandlerRegistration
-from pydantic_flow.streaming.events import InterruptCallback
-from pydantic_flow.streaming.events import InterruptDecision
+from pydantic_flow.nodes.mixins import InterruptibleNodeMixin
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import StreamEnd
 from pydantic_flow.streaming.events import StreamStart
@@ -42,12 +37,14 @@ class NodeOutput[OutputT](BaseModel):
         return self.node._output_type
 
 
-class BaseNode[InputT, OutputT](ABC):
+class BaseNode[InputT, OutputT](InterruptibleNodeMixin, ABC):
     """Abstract base class for all workflow nodes.
 
     Nodes are streaming-native: the primary interface is astream() which
     yields progress items, with run() as a convenience wrapper that assembles
     the final result.
+
+    Inherits from InterruptibleNodeMixin to provide HITL interrupt support.
     """
 
     def __init__(self, name: str | None = None, run_id: str | None = None) -> None:
@@ -59,10 +56,10 @@ class BaseNode[InputT, OutputT](ABC):
             run_id: Optional run identifier for tracking execution.
 
         """
+        super().__init__()
         self.name = name or f"{self.__class__.__name__}_{id(self):x}"
         self.run_id = run_id
         self._output: NodeOutput[OutputT] = NodeOutput(node=self)
-        self._interrupt_handlers: list[InterruptHandlerRegistration] = []
         # Store type information for runtime inspection
         # Find the base with generic type parameters (handles multiple inheritance)
         type_base = None
@@ -82,56 +79,6 @@ class BaseNode[InputT, OutputT](ABC):
     def output(self) -> NodeOutput[OutputT]:
         """Get the typed output reference for this node."""
         return self._output
-
-    def register_interrupt_handler(
-        self,
-        callback: InterruptCallback,
-        priority: int = HandlerPriority.NORMAL,
-        metadata: dict[str, Any] | None = None,
-    ) -> None:
-        """Register an interrupt callback handler for this node.
-
-        Handlers are invoked in priority order (lowest first) when
-        checking for interrupts. Critical handlers (0-25) always execute.
-
-        Args:
-            callback: Async function that receives ProgressItem and returns
-                InterruptDecision.
-            priority: Priority level (0-100, lower executes first).
-            metadata: Optional metadata about the handler.
-
-        """
-        registration = InterruptHandlerRegistration(
-            callback=callback,
-            priority=priority,
-            metadata=metadata or {},
-        )
-        self._interrupt_handlers.append(registration)
-        # Keep handlers sorted by priority
-        self._interrupt_handlers.sort(key=lambda h: h.priority)
-
-    def clear_interrupt_handlers(self) -> None:
-        """Remove all registered interrupt handlers from this node."""
-        self._interrupt_handlers.clear()
-
-    async def _check_interrupt_handlers(self, item: ProgressItem) -> InterruptDecision:
-        """Check all registered interrupt handlers for this progress item.
-
-        Executes handlers in priority order. If any handler requests
-        interruption, returns immediately with that decision.
-
-        Args:
-            item: The progress item to check.
-
-        Returns:
-            InterruptDecision indicating whether to interrupt.
-
-        """
-        for handler in self._interrupt_handlers:
-            decision = await handler.callback(item)
-            if decision.should_interrupt:
-                return decision
-        return InterruptDecision.proceed()
 
     @abstractmethod
     async def astream(self, input_data: InputT) -> AsyncIterator[ProgressItem]:

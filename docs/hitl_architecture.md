@@ -581,35 +581,26 @@ class BaseNode[InputT, OutputT](ABC):
         self._output: NodeOutput[OutputT] = NodeOutput(node=self)
         self._input_type: type[InputT] = self.__class__.__orig_bases__[0].__args__[0]
         self._output_type: type[OutputT] = self.__class__.__orig_bases__[0].__args__[1]
-        
-        # NEW: Priority-sorted interrupt handlers for HITL
-        self._interrupt_handlers: list[InterruptHandlerRegistration] = []
     
-    def add_interrupt_handler(
+    def register_interrupt_handler(
         self,
-        handler: NodeInterruptHandler,
+        callback: InterruptCallback,
         priority: int = HandlerPriority.NORMAL,
-        name: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Register an interrupt handler with priority for this node.
+        """Register an interrupt callback handler for this node.
         
         Handlers execute in priority order (lower first). Critical handlers
         (priority 0-25) always execute even if higher priority handler interrupts.
         
         Args:
-            handler: Async function that receives (node, event, data) and
-                    returns InterruptDecision
+            callback: Async function that receives ProgressItem and returns
+                InterruptDecision.
             priority: Execution priority (0-100, default 50)
-            name: Optional name for debugging
+            metadata: Optional metadata about the handler.
         """
-        registration = InterruptHandlerRegistration(
-            handler=handler,
-            priority=priority,
-            name=name or handler.__name__,
-        )
-        self._interrupt_handlers.append(registration)
-        # Keep sorted by priority
-        self._interrupt_handlers.sort()
+        # Implementation provided by InterruptibleNodeMixin
+        pass
     
     async def _check_lifecycle_interrupt(
         self,
