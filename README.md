@@ -16,6 +16,7 @@ A modern, type-safe, composable Python framework for building AI workflows with 
 - **Reference-Based Wiring**: Connect nodes using `.output` references, not magic strings
 - **pydantic-ai Integration**: Use user-supplied pydantic-ai agents directly - no wrapping or renaming
 - **Progress Vocabulary**: Small, focused set of progress items (tokens, tool calls, retrievals, partial fields, errors, heartbeats)
+- **RAG Adapters**: Type-safe embeddings, vector stores, retrievers, and loaders for Retrieval-Augmented Generation ([learn more](docs/rag-adapters.md))
 - **Streaming Parser**: Tolerant incremental JSON parsing with partial field extraction
 - **Automatic DAG Resolution**: Intelligent dependency tracking and execution ordering ([learn more](docs/dag_resolution.md))
 - **Human-in-the-Loop (HITL)**: Comprehensive interruption, approval, and resumption support ([learn more](docs/hitl.md))
@@ -1095,6 +1096,60 @@ uv sync
 ```python
 # Coming soon!
 ```
+
+## RAG (Retrieval-Augmented Generation)
+
+pydantic-flow includes a comprehensive, type-safe RAG adapter layer with streaming support:
+
+```python
+from pydantic_flow.rag import (
+    OpenAIEmbeddings,
+    HNSWMemoryStore,
+    VectorRetriever,
+    VectorRetrieverNode,
+    FSLoader,
+)
+from pydantic_flow.rag.nodes.retriever import QueryInput
+
+# 1. Load and chunk documents
+loader = FSLoader(path="docs/", chunk_size=1000)
+documents = await loader.load()
+
+# 2. Setup embeddings and vector store
+embeddings = OpenAIEmbeddings(dimensions=1536)
+store = HNSWMemoryStore(dim=1536)
+
+# 3. Generate and upsert embeddings
+for doc in documents:
+    vecs = await embeddings.embed([doc.content])
+    await store.upsert([(doc.id, vecs[0], doc)])
+
+# 4. Create retriever and node
+retriever = VectorRetriever(
+    embedding_provider=embeddings,
+    vector_store=store,
+    default_k=3
+)
+
+retriever_node = VectorRetrieverNode(
+    retriever=retriever,
+    name="semantic-search"
+)
+
+# 5. Stream retrieval results
+query = QueryInput(query="What is pydantic-flow?", k=3)
+async for item in retriever_node.astream(query):
+    if isinstance(item, RetrievalItem):
+        print(f"📄 {item.content[:80]}...")
+```
+
+**Supported Components:**
+- **Embeddings**: OpenAI, Cohere, HuggingFace, Ollama
+- **Vector Stores**: HNSW (in-memory), PostgreSQL pgvector
+- **Loaders**: Filesystem, Web (HTTP/HTTPS)
+- **Retrievers**: Semantic search with filtering
+
+See [docs/rag-adapters.md](docs/rag-adapters.md) for complete documentation.
 
 ## Architecture
 

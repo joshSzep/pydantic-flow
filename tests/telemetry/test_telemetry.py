@@ -37,10 +37,41 @@ def double_value(input_data: Input) -> Output:
 
 
 @pytest.fixture(autouse=True)
-def _reset_telemetry():
+def _reset_telemetry(monkeypatch: pytest.MonkeyPatch):
     """Reset telemetry state between tests."""
-    # Telemetry is module-level singleton, so we need to be careful
-    # In real usage, setup_telemetry is called once at startup
+    from unittest.mock import MagicMock
+
+    from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+        OTLPMetricExporter,
+    )
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.sdk.metrics.export import MetricExportResult
+    from opentelemetry.sdk.trace.export import ConsoleSpanExporter
+
+    # Mock OTLP exporters to prevent actual network calls
+    mock_span_exporter = MagicMock(spec=OTLPSpanExporter)
+    mock_metric_exporter = MagicMock(spec=OTLPMetricExporter)
+    mock_console_exporter = MagicMock(spec=ConsoleSpanExporter)
+    # Add required attributes for metric exporter
+    mock_metric_exporter._preferred_temporality = {}
+    mock_metric_exporter._preferred_aggregation = {}
+    mock_metric_exporter.export = MagicMock(return_value=MetricExportResult.SUCCESS)
+    mock_metric_exporter.shutdown = MagicMock()
+    mock_metric_exporter.force_flush = MagicMock()
+
+    monkeypatch.setattr(
+        "pydantic_flow.telemetry.setup.OTLPSpanExporter",
+        lambda **kwargs: mock_span_exporter,
+    )
+    monkeypatch.setattr(
+        "pydantic_flow.telemetry.setup.OTLPMetricExporter",
+        lambda **kwargs: mock_metric_exporter,
+    )
+    monkeypatch.setattr(
+        "pydantic_flow.telemetry.setup.ConsoleSpanExporter",
+        lambda **kwargs: mock_console_exporter,
+    )
+
     yield
 
 

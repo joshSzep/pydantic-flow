@@ -8,6 +8,19 @@ from pydantic_flow.checkpoints.interface import RunId
 from pydantic_flow.core.errors import FlowCheckpoint
 
 
+@pytest.fixture(autouse=True)
+def _disable_telemetry_exports(monkeypatch: pytest.MonkeyPatch):
+    """Disable telemetry OTLP exports by default in tests.
+
+    Tests should not attempt to connect to real OTLP endpoints.
+    Individual tests can override this by setting the env var explicitly.
+    """
+    # Clear any OTLP endpoint env var that might cause connection attempts
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    # Disable telemetry by default - tests that need it can enable explicitly
+    monkeypatch.setenv("PFLOW_TELEMETRY_ENABLED", "false")
+
+
 @pytest.fixture
 def sample_checkpoint() -> FlowCheckpoint:
     """Create a sample checkpoint for testing."""

@@ -4,6 +4,29 @@ This directory contains example scripts demonstrating various features of the py
 
 ## Available Examples
 
+### 🔍 RAG (Retrieval-Augmented Generation)
+
+**File:** `rag_simple.py`
+
+Complete example of RAG pipeline with streaming:
+- Load markdown documents from filesystem
+- Generate embeddings (mock provider for demo)
+- Upsert to HNSW in-memory vector store
+- Query with streaming retrieval results
+- Display both streaming and non-streaming modes
+
+**Run with:**
+```bash
+cd examples
+uv run python rag_simple.py
+```
+
+**Key concepts:**
+- FSLoader for document ingestion and chunking
+- HNSWMemoryStore for fast in-memory search
+- VectorRetriever combining embeddings and store
+- VectorRetrieverNode streaming RetrievalItem events
+
 ### 🧠 Memory Modes
 
 **Files:** `memory_modes_simple.py`, `memory_modes_advanced.py`

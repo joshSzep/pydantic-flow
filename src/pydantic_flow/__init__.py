@@ -64,6 +64,24 @@ from pydantic_flow.prompt import OutputParser
 from pydantic_flow.prompt import PromptTemplate
 from pydantic_flow.prompt import TemplateFormat
 from pydantic_flow.prompt import from_template
+from pydantic_flow.rag import CohereEmbeddings
+from pydantic_flow.rag import Document
+from pydantic_flow.rag import EmbeddingNode
+from pydantic_flow.rag import EmbeddingProvider
+from pydantic_flow.rag import FSLoader
+from pydantic_flow.rag import HNSWMemoryStore
+from pydantic_flow.rag import HuggingFaceEmbeddings
+from pydantic_flow.rag import Loader
+from pydantic_flow.rag import Metadata
+from pydantic_flow.rag import OllamaEmbeddings
+from pydantic_flow.rag import OpenAIEmbeddings
+from pydantic_flow.rag import PostgresPGVectorStore
+from pydantic_flow.rag import Retriever
+from pydantic_flow.rag import SearchResult
+from pydantic_flow.rag import VectorRetriever
+from pydantic_flow.rag import VectorRetrieverNode
+from pydantic_flow.rag import VectorStore
+from pydantic_flow.rag import WebLoader
 from pydantic_flow.streaming import Heartbeat
 from pydantic_flow.streaming import InterruptCallback
 from pydantic_flow.streaming import InterruptDecision
@@ -98,18 +116,25 @@ __all__ = [
     "ChatMessage",
     "ChatPromptTemplate",
     "ChatRole",
+    "CohereEmbeddings",
     "CompiledFlow",
     "CompressionMetrics",
     "ConversationMemory",
     "CyclicDependencyError",
     "DelimitedParser",
+    "Document",
+    "EmbeddingNode",
+    "EmbeddingProvider",
     "ExecutionMode",
+    "FSLoader",
     "Flow",
     "FlowError",
     "FlowNode",
     "FlowTimeoutError",
+    "HNSWMemoryStore",
     "HandlerPriority",
     "Heartbeat",
+    "HuggingFaceEmbeddings",
     "HumanInputRequest",
     "HumanNode",
     "HumanResponse",
@@ -122,6 +147,7 @@ __all__ = [
     "JoinStrategy",
     "JsonModelParser",
     "LLMNode",
+    "Loader",
     "MemoryCompressionComplete",
     "MemoryCompressionPending",
     "MemoryCompressor",
@@ -130,12 +156,16 @@ __all__ = [
     "MergeParserNode",
     "MergePromptNode",
     "MergeToolNode",
+    "Metadata",
     "NodeOutput",
     "NodeWithInput",
     "NonFatalError",
+    "OllamaEmbeddings",
+    "OpenAIEmbeddings",
     "OutputParser",
     "ParserNode",
     "PartialFields",
+    "PostgresPGVectorStore",
     "ProgressItem",
     "ProgressType",
     "ProjectInfo",
@@ -144,12 +174,14 @@ __all__ = [
     "PromptTemplate",
     "RecursionLimitError",
     "RetrievalItem",
+    "Retriever",
     "RetrieverNode",
     "RetryNode",
     "Route",
     "RouterFunction",
     "RoutingError",
     "RunConfig",
+    "SearchResult",
     "SlidingWindowCompressor",
     "StreamEnd",
     "StreamStart",
@@ -161,6 +193,10 @@ __all__ = [
     "ToolCall",
     "ToolNode",
     "ToolResult",
+    "VectorRetriever",
+    "VectorRetrieverNode",
+    "VectorStore",
+    "WebLoader",
     "collect_all_tokens",
     "collect_final_result",
     "from_template",
