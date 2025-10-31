@@ -15,6 +15,7 @@ from pydantic import Field
 from pydantic import model_validator
 
 from pydantic_flow.cache.middleware import maybe_cached_execute
+from pydantic_flow.core.durability import DurabilityMode
 from pydantic_flow.core.errors import FlowError
 from pydantic_flow.core.errors import FlowTimeoutError
 from pydantic_flow.core.errors import RecursionLimitError
@@ -22,11 +23,17 @@ from pydantic_flow.core.errors import RoutingError
 from pydantic_flow.core.routing import Route
 from pydantic_flow.core.routing import T_Route
 from pydantic_flow.core.run_config import RunConfig
+from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+from pydantic_flow.hitl.checkpoints.interface import CheckpointStore
+from pydantic_flow.hitl.checkpoints.interface import RunId
+from pydantic_flow.hitl.checkpoints.interface import generate_checkpoint_id
+from pydantic_flow.hitl.interrupts import FlowCheckpoint
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes.protocols import NodeWithInput
 from pydantic_flow.nodes.protocols import NodeWithInputs
 from pydantic_flow.nodes.protocols import has_input_dependency
 from pydantic_flow.nodes.protocols import has_multiple_inputs
+from pydantic_flow.telemetry.helpers import instrument_checkpoint_write
 
 
 class IterationEvent(BaseModel):
@@ -91,6 +98,7 @@ class EngineConfig[InputT: BaseModel, OutputT: BaseModel](BaseModel):
         output_type: Expected output type for the flow.
         cache_backend: Optional cache backend for node execution.
         default_cache_policy: Optional default cache policy for nodes.
+        flow_id: Optional flow identifier for checkpoint tracking.
 
     """
 
@@ -102,6 +110,7 @@ class EngineConfig[InputT: BaseModel, OutputT: BaseModel](BaseModel):
     output_type: type[OutputT]
     cache_backend: Any = None
     default_cache_policy: Any = None
+    flow_id: str | None = None
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -150,6 +159,165 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
         self.output_type = config.output_type
         self.cache_backend = config.cache_backend
         self.default_cache_policy = config.default_cache_policy
+        self.flow_id = config.flow_id
+        self._background_tasks: set[Any] = set()
+
+    def _create_checkpoint(
+        self,
+        last_frontier: list[str],
+        results: dict[str, Any],
+        run_id: str,
+        checkpoint_reason: str = "interruption",
+        checkpoint_node_id: str | None = None,
+        execution_progress: dict[str, str] | None = None,
+    ) -> FlowCheckpoint:
+        """Create a checkpoint for flow resumption.
+
+        Args:
+            last_frontier: Nodes in the last executed frontier.
+            results: Current node execution results.
+            run_id: Current run identifier.
+            checkpoint_reason: Reason for checkpoint creation.
+            checkpoint_node_id: ID of the node that just completed.
+            execution_progress: Map of node_id to execution status.
+
+        Returns:
+            FlowCheckpoint with captured state.
+
+        """
+        interrupted_node_id = last_frontier[-1] if last_frontier else "unknown"
+        return FlowCheckpoint(
+            flow_id=self.flow_id or "stepper_engine",
+            run_id=run_id,
+            interrupted_node_id=interrupted_node_id,
+            node_states=results.copy(),
+            edge_history=[],
+            conversation_memory=None,
+            execution_progress=execution_progress or {},
+            checkpoint_reason=checkpoint_reason,
+            checkpoint_node_id=checkpoint_node_id,
+        )
+
+    async def _persist_checkpoint(
+        self,
+        checkpoint: FlowCheckpoint,
+        store: CheckpointStore,
+        durability_mode: str | None = None,
+    ) -> CheckpointEnvelope:
+        """Persist a checkpoint to the configured store.
+
+        Args:
+            checkpoint: The checkpoint to persist.
+            store: The checkpoint store to use.
+            durability_mode: Optional durability mode for telemetry.
+
+        Returns:
+            CheckpointEnvelope with persisted checkpoint details.
+
+        """
+        checkpoint_id = generate_checkpoint_id()
+        envelope = CheckpointEnvelope(
+            id=checkpoint_id,
+            run_id=RunId(checkpoint.run_id),
+            node_id=checkpoint.interrupted_node_id,
+            checkpoint=checkpoint,
+        )
+
+        # Add telemetry for checkpoint persistence
+        if durability_mode:
+            async with instrument_checkpoint_write(
+                node_id=checkpoint.interrupted_node_id or "unknown",
+                durability_mode=durability_mode,
+                checkpoint_size=None,  # Could calculate from envelope if needed
+            ):
+                return await store.save(envelope)
+
+        return await store.save(envelope)
+
+    async def _maybe_checkpoint_after_frontier(
+        self,
+        config: RunConfig,
+        current_frontier: list[str],
+        results: dict[str, Any],
+        run_id: str,
+        execution_progress: dict[str, str] | None = None,
+    ) -> None:
+        """Create checkpoint after frontier execution if durability mode requires it.
+
+        Args:
+            config: Run configuration with checkpoint store and durability mode.
+            current_frontier: Nodes that were just executed.
+            results: Current node execution results.
+            run_id: Current run identifier.
+            execution_progress: Optional execution progress tracking.
+
+        """
+        if config.checkpoint_store is None:
+            return
+        if config.durability_mode == DurabilityMode.EXIT:
+            return
+
+        checkpoint = self._create_checkpoint(
+            last_frontier=current_frontier,
+            results=results,
+            run_id=run_id,
+            checkpoint_reason="node_completion",
+            checkpoint_node_id=(current_frontier[-1] if current_frontier else None),
+            execution_progress=execution_progress,
+        )
+        if config.durability_mode == DurabilityMode.SYNC:
+            await self._persist_checkpoint(
+                checkpoint,
+                config.checkpoint_store,
+                durability_mode=config.durability_mode.value,
+            )
+        elif config.durability_mode == DurabilityMode.ASYNC:
+            coro = self._persist_checkpoint(
+                checkpoint,
+                config.checkpoint_store,
+                durability_mode=config.durability_mode.value,
+            )
+            task = asyncio.create_task(coro)
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
+
+    async def _checkpoint_on_exit(
+        self,
+        config: RunConfig,
+        current_frontier: list[str],
+        results: dict[str, Any],
+        run_id: str,
+        execution_progress: dict[str, str] | None = None,
+        checkpoint_reason: str = "flow_end",
+    ) -> None:
+        """Create checkpoint on flow exit if EXIT durability mode is enabled.
+
+        Args:
+            config: Run configuration with checkpoint store and durability mode.
+            current_frontier: Last executed frontier.
+            results: Current node execution results.
+            run_id: Current run identifier.
+            execution_progress: Optional execution progress tracking.
+            checkpoint_reason: Reason for checkpoint (flow_end or error).
+
+        """
+        if (
+            config.checkpoint_store is not None
+            and config.durability_mode == DurabilityMode.EXIT
+        ):
+            checkpoint = self._create_checkpoint(
+                last_frontier=current_frontier,
+                results=results,
+                run_id=run_id,
+                checkpoint_reason=checkpoint_reason,
+                checkpoint_node_id=(current_frontier[-1] if current_frontier else None),
+                execution_progress=execution_progress,
+            )
+            await self._persist_checkpoint(
+                checkpoint,
+                config.checkpoint_store,
+                durability_mode=config.durability_mode.value,
+            )
 
     async def invoke(
         self,
@@ -182,6 +350,13 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
         frontier = set(self.entry_nodes)
         iteration = 0
         events: list[IterationEvent] = []
+        run_id = config.run_id or "default_run"
+        current_frontier: list[str] = []
+
+        # Track execution progress for checkpointing
+        execution_progress: dict[str, str] = {}
+        for node_name in self.nodes_by_name:
+            execution_progress[node_name] = "pending"
 
         try:
             while frontier:
@@ -190,8 +365,14 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
                 current_frontier = list(frontier)
                 frontier = set()
 
-                await self._execute_frontier(current_frontier, inputs, results)
+                await self._execute_frontier(
+                    current_frontier, inputs, results, execution_progress
+                )
                 next_frontier, ended = await self._route_next(current_frontier, results)
+
+                await self._maybe_checkpoint_after_frontier(
+                    config, current_frontier, results, run_id, execution_progress
+                )
 
                 elapsed_ms = (time.time() - start_time) * 1000
                 if config.trace_iterations:
@@ -210,11 +391,44 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
                 frontier = next_frontier
                 iteration += 1
 
-            return self.output_type(**results)
+            output = self.output_type(**results)
+            await self._checkpoint_on_exit(
+                config,
+                current_frontier,
+                results,
+                run_id,
+                execution_progress,
+                checkpoint_reason="flow_end",
+            )
+            return output
 
         except FlowError:
+            # Mark failed nodes
+            for node_name, status in execution_progress.items():
+                if status == "running":
+                    execution_progress[node_name] = "failed"
+            await self._checkpoint_on_exit(
+                config,
+                current_frontier,
+                results,
+                run_id,
+                execution_progress,
+                checkpoint_reason="error",
+            )
             raise
         except Exception as e:
+            # Mark failed nodes
+            for node_name, status in execution_progress.items():
+                if status == "running":
+                    execution_progress[node_name] = "failed"
+            await self._checkpoint_on_exit(
+                config,
+                current_frontier,
+                results,
+                run_id,
+                execution_progress,
+                checkpoint_reason="error",
+            )
             msg = f"Flow execution failed: {e}"
             raise FlowError(msg) from e
 
@@ -258,11 +472,23 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
         frontier: list[str],
         inputs: InputT,
         results: dict[str, Any],
+        execution_progress: dict[str, str] | None = None,
     ) -> None:
-        """Execute all nodes in the current frontier in parallel."""
+        """Execute all nodes in the current frontier in parallel.
+
+        Args:
+            frontier: List of node names to execute.
+            inputs: Flow inputs.
+            results: Current execution results.
+            execution_progress: Optional execution progress tracking.
+
+        """
 
         async def execute_node(node_name: str) -> tuple[str, Any]:
             """Execute a single node and return its name and result."""
+            if execution_progress is not None:
+                execution_progress[node_name] = "running"
+
             node = self.nodes_by_name[node_name]
             input_data = self._get_node_input(node, inputs, results)
 
@@ -283,6 +509,9 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
             else:
                 # Direct execution without caching
                 result = await node.run(input_data)
+
+            if execution_progress is not None:
+                execution_progress[node_name] = "completed"
 
             return node_name, result
 

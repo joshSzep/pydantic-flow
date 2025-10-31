@@ -1,0 +1,272 @@
+{
+  "dashboard": {
+    "title": "Pydantic-Flow Durability & Checkpoints",
+    "tags": ["pydantic-flow", "durability", "checkpoints"],
+    "timezone": "browser",
+    "schemaVersion": 38,
+    "version": 1,
+    "panels": [
+      {
+        "title": "Checkpoint Write Rate by Mode",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "rate(pflow_checkpoint_writes_total[5m])",
+            "legendFormat": "{{checkpoint_durability_mode}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "ops", "label": "Checkpoints/sec"},
+          {"format": "short"}
+        ],
+        "alert": {
+          "name": "High Checkpoint Write Rate",
+          "conditions": [
+            {
+              "evaluator": {"params": [100], "type": "gt"},
+              "operator": {"type": "and"},
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"params": [], "type": "avg"},
+              "type": "query"
+            }
+          ],
+          "frequency": "1m",
+          "message": "Checkpoint write rate exceeds 100/sec - may indicate performance issues"
+        }
+      },
+      {
+        "title": "Checkpoint Write Latency",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(pflow_checkpoint_write_duration_ms_bucket[5m]))",
+            "legendFormat": "P95",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(pflow_checkpoint_write_duration_ms_bucket[5m]))",
+            "legendFormat": "P50",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(pflow_checkpoint_write_duration_ms_bucket[5m]))",
+            "legendFormat": "P99",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          {"format": "ms", "label": "Latency"},
+          {"format": "short"}
+        ],
+        "alert": {
+          "name": "High Checkpoint Latency",
+          "conditions": [
+            {
+              "evaluator": {"params": [1000], "type": "gt"},
+              "operator": {"type": "and"},
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"params": [], "type": "avg"},
+              "type": "query"
+            }
+          ],
+          "frequency": "1m",
+          "message": "P95 checkpoint write latency exceeds 1000ms - checkpoint store may be slow"
+        }
+      },
+      {
+        "title": "Checkpoint Writes by Node",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "rate(pflow_checkpoint_writes_total[5m])",
+            "legendFormat": "{{node_id}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "ops", "label": "Checkpoints/sec"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "title": "Checkpoint Size Distribution",
+        "type": "heatmap",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "sum(rate(pflow_checkpoint_writes_total[5m])) by (checkpoint_size_bytes)",
+            "legendFormat": "{{checkpoint_size_bytes}}",
+            "refId": "A"
+          }
+        ],
+        "heatmap": {
+          "yAxis": {
+            "format": "bytes",
+            "label": "Checkpoint Size"
+          }
+        }
+      },
+      {
+        "title": "SYNC vs ASYNC Mode Comparison",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(pflow_checkpoint_write_duration_ms_bucket{checkpoint_durability_mode=\"SYNC\"}[5m]))",
+            "legendFormat": "SYNC P95",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(pflow_checkpoint_write_duration_ms_bucket{checkpoint_durability_mode=\"ASYNC\"}[5m]))",
+            "legendFormat": "ASYNC P95",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {"format": "ms", "label": "Latency"},
+          {"format": "short"}
+        ]
+      },
+      {
+        "title": "Durability Mode Distribution",
+        "type": "piechart",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "targets": [
+          {
+            "expr": "sum(rate(pflow_checkpoint_writes_total[5m])) by (checkpoint_durability_mode)",
+            "legendFormat": "{{checkpoint_durability_mode}}",
+            "refId": "A"
+          }
+        ]
+      },
+      {
+        "title": "Checkpoint Failure Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "targets": [
+          {
+            "expr": "rate(pflow_checkpoint_errors_total[5m])",
+            "legendFormat": "Failures/sec",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "ops", "label": "Failures/sec"},
+          {"format": "short"}
+        ],
+        "alert": {
+          "name": "Checkpoint Write Failures",
+          "conditions": [
+            {
+              "evaluator": {"params": [1], "type": "gt"},
+              "operator": {"type": "and"},
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"params": [], "type": "avg"},
+              "type": "query"
+            }
+          ],
+          "frequency": "1m",
+          "message": "Checkpoint writes are failing - check checkpoint store health"
+        }
+      },
+      {
+        "title": "Background Checkpoint Queue Size",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "targets": [
+          {
+            "expr": "pflow_background_checkpoint_tasks",
+            "legendFormat": "Pending Tasks",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"format": "short", "label": "Tasks"},
+          {"format": "short"}
+        ],
+        "alert": {
+          "name": "Background Checkpoint Queue Growing",
+          "conditions": [
+            {
+              "evaluator": {"params": [10], "type": "gt"},
+              "operator": {"type": "and"},
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"params": [], "type": "avg"},
+              "type": "query"
+            }
+          ],
+          "frequency": "1m",
+          "message": "Background checkpoint queue is growing - writes may be slower than creation rate"
+        }
+      },
+      {
+        "title": "Checkpoint Latency by Node",
+        "type": "table",
+        "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(pflow_checkpoint_write_duration_ms_bucket[5m])) by (node_id, le))",
+            "legendFormat": "{{node_id}}",
+            "refId": "A",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {},
+              "indexByName": {},
+              "renameByName": {
+                "node_id": "Node",
+                "Value": "P95 Latency (ms)"
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "annotations": {
+      "list": [
+        {
+          "name": "Checkpoint Store Changes",
+          "datasource": "Prometheus",
+          "enable": true,
+          "expr": "changes(pflow_checkpoint_writes_total[5m]) > 0",
+          "iconColor": "blue",
+          "tagKeys": "checkpoint_durability_mode"
+        }
+      ]
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "durability_mode",
+          "type": "query",
+          "datasource": "Prometheus",
+          "query": "label_values(pflow_checkpoint_writes_total, checkpoint_durability_mode)",
+          "multi": true,
+          "includeAll": true
+        },
+        {
+          "name": "node_id",
+          "type": "query",
+          "datasource": "Prometheus",
+          "query": "label_values(pflow_checkpoint_writes_total, node_id)",
+          "multi": true,
+          "includeAll": true
+        }
+      ]
+    },
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "refresh": "30s"
+  }
+}

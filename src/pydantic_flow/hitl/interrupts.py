@@ -66,6 +66,12 @@ class FlowCheckpoint(BaseModel):
         node_states: Captured state of all nodes at interruption time.
         edge_history: Sequence of edges traversed before interruption.
         conversation_memory: Optional serialized conversation memory state.
+        execution_progress: Map of node_id to execution status
+            (pending/running/completed/failed).
+        checkpoint_reason: Reason for checkpoint creation
+            (node_completion/interruption/flow_end/error).
+        checkpoint_node_id: ID of the node that just completed
+            (if reason is node_completion).
         metadata: Additional context about the checkpoint.
 
     """
@@ -76,6 +82,24 @@ class FlowCheckpoint(BaseModel):
     node_states: dict[str, Any]
     edge_history: list[tuple[str, str]]
     conversation_memory: Any = None
+    execution_progress: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Map of node_id to execution status: pending, running, completed, failed"
+        ),
+    )
+    checkpoint_reason: str = Field(
+        default="interruption",
+        description=(
+            "Reason for checkpoint: node_completion, interruption, flow_end, error"
+        ),
+    )
+    checkpoint_node_id: str | None = Field(
+        default=None,
+        description=(
+            "ID of node that just completed (for node_completion checkpoints)"
+        ),
+    )
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

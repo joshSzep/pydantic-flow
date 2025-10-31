@@ -8,6 +8,7 @@ progress as its primary interface, with non-streaming results produced by
 consuming the stream internally.
 """
 
+from pydantic_flow.core import DurabilityMode
 from pydantic_flow.core import FlowTimeoutError
 from pydantic_flow.core import RecursionLimitError
 from pydantic_flow.core import Route
@@ -129,6 +130,7 @@ __all__ = [
     "CyclicDependencyError",
     "DelimitedParser",
     "Document",
+    "DurabilityMode",
     "EmbeddingNode",
     "EmbeddingProvider",
     "ExecutionMode",

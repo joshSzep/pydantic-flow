@@ -317,6 +317,64 @@ class S3CheckpointStore(BaseCheckpointStore):
         await client.head_bucket(Bucket=self.config.bucket)
         return True
 
+    async def _do_count_checkpoints(self, run_id: RunId) -> int:
+        """Count checkpoints for a run in S3.
+
+        Args:
+            run_id: The run identifier.
+
+        Returns:
+            Number of checkpoints for the run.
+
+        """
+        client = await self._get_client()
+        prefix = f"{self.config.key_prefix}/runs/{run_id}/"
+
+        count = 0
+        paginator = client.get_paginator("list_objects_v2")
+        async for page in paginator.paginate(Bucket=self.config.bucket, Prefix=prefix):
+            if "Contents" in page:
+                count += len(page["Contents"])
+
+        return count
+
+    async def _do_get_checkpoint_history(
+        self, run_id: RunId, limit: int
+    ) -> list[CheckpointEnvelope]:
+        """Get checkpoint history from S3, newest first.
+
+        Args:
+            run_id: The run identifier.
+            limit: Maximum number of checkpoints to return.
+
+        Returns:
+            List of checkpoint envelopes, sorted by creation time (newest first).
+
+        """
+        client = await self._get_client()
+        prefix = f"{self.config.key_prefix}/runs/{run_id}/"
+
+        objects = []
+        paginator = client.get_paginator("list_objects_v2")
+        async for page in paginator.paginate(Bucket=self.config.bucket, Prefix=prefix):
+            if "Contents" in page:
+                objects.extend(page["Contents"])
+
+        objects.sort(key=lambda obj: obj["LastModified"], reverse=True)
+        objects = objects[:limit]
+
+        envelopes = []
+        for obj in objects:
+            response = await client.get_object(
+                Bucket=self.config.bucket, Key=obj["Key"]
+            )
+            body = await response["Body"].read()
+            json_str = body.decode("utf-8")
+            envelope = deserialize_checkpoint(json_str)
+            envelopes.append(envelope)
+
+        return envelopes
+
     def __repr__(self) -> str:
         """Return a string representation of the store."""
         return (

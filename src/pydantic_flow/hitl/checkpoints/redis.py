@@ -319,6 +319,50 @@ class RedisCheckpointStore(BaseCheckpointStore):
             raise RuntimeError(msg)
         return True
 
+    async def _do_count_checkpoints(self, run_id: RunId) -> int:
+        """Count checkpoints for a run in Redis.
+
+        Args:
+            run_id: The run identifier.
+
+        Returns:
+            Number of checkpoints for the run.
+
+        """
+        redis = await self._get_redis()
+        index_key = self._index_key(run_id)
+        count = await redis.zcard(index_key)
+        return count
+
+    async def _do_get_checkpoint_history(
+        self, run_id: RunId, limit: int
+    ) -> list[CheckpointEnvelope]:
+        """Get checkpoint history from Redis, newest first.
+
+        Args:
+            run_id: The run identifier.
+            limit: Maximum number of checkpoints to return.
+
+        Returns:
+            List of checkpoint envelopes, sorted by creation time (newest first).
+
+        """
+        redis = await self._get_redis()
+        index_key = self._index_key(run_id)
+
+        checkpoint_ids = await redis.zrevrange(index_key, 0, limit - 1)
+
+        envelopes = []
+        for checkpoint_id in checkpoint_ids:
+            checkpoint_key = self._checkpoint_key(run_id, CheckpointId(checkpoint_id))
+            json_bytes = await redis.get(checkpoint_key)
+            if json_bytes:
+                json_str = json_bytes.decode("utf-8")
+                envelope = deserialize_checkpoint(json_str)
+                envelopes.append(envelope)
+
+        return envelopes
+
     async def close(self) -> None:
         """Close the Redis connection."""
         if self._redis is not None:

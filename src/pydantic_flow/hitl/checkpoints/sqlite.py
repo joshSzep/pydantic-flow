@@ -351,6 +351,61 @@ class SQLiteCheckpointStore(BaseCheckpointStore):
             await db.execute("SELECT 1")
         return True
 
+    async def _do_count_checkpoints(self, run_id: RunId) -> int:
+        """Count checkpoints for a run in SQLite.
+
+        Args:
+            run_id: The run identifier.
+
+        Returns:
+            Number of checkpoints for the run.
+
+        """
+        await self._ensure_initialized()
+
+        async with aiosqlite.connect(self.config.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            await db.execute(f"PRAGMA busy_timeout={self.config.busy_timeout_ms}")
+
+            cursor = await db.execute(
+                "SELECT COUNT(*) as count FROM checkpoints WHERE run_id = ?",
+                (run_id,),
+            )
+            row = await cursor.fetchone()
+            return row["count"] if row else 0
+
+    async def _do_get_checkpoint_history(
+        self, run_id: RunId, limit: int
+    ) -> list[CheckpointEnvelope]:
+        """Get checkpoint history from SQLite, newest first.
+
+        Args:
+            run_id: The run identifier.
+            limit: Maximum number of checkpoints to return.
+
+        Returns:
+            List of checkpoint envelopes, sorted by creation time (newest first).
+
+        """
+        await self._ensure_initialized()
+
+        async with aiosqlite.connect(self.config.db_path) as db:
+            db.row_factory = aiosqlite.Row
+            await db.execute(f"PRAGMA busy_timeout={self.config.busy_timeout_ms}")
+
+            cursor = await db.execute(
+                """
+                SELECT envelope_json FROM checkpoints
+                WHERE run_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (run_id, limit),
+            )
+
+            rows = await cursor.fetchall()
+            return [deserialize_checkpoint(row["envelope_json"]) for row in rows]
+
     def __repr__(self) -> str:
         """Return a string representation of the store."""
         return f"SQLiteCheckpointStore(db_path={self.config.db_path})"

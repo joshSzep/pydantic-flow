@@ -1060,6 +1060,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - [pydantic-ai](https://ai.pydantic.dev/) - The foundational AI framework we build upon
 - [Pydantic](https://pydantic.dev/) - Data validation using Python type annotations
+- [LangChain + LangGraph](https://www.langchain.com) - Popular AI agent framework (see [comparison](docs/langchain-comparison.md))
 
 ---
 
@@ -1082,7 +1083,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 - **Tools**: HTTP, filesystem, vector operations out of the box
 - **Memory**: Persistent conversation history and context management
 - **Observability**: Built-in tracing with OpenTelemetry
-- **Durability**: State persistence and recovery mechanisms
+- **Durability**: Automatic crash recovery with ASYNC, SYNC, and EXIT checkpoint modes
 - **CLI**: Complete command-line interface for agent management
 
 ### 🔒 Type Safety First
@@ -1096,6 +1097,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 - Auto-discovery of plugins and tools
 - Fast-running comprehensive test suite
 - Rich terminal output and debugging
+- Flexible checkpointing for production reliability
 
 ### 🔌 Extensible
 - Plugin architecture inspired by pytest ecosystem

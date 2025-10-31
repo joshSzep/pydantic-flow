@@ -348,6 +348,56 @@ class PostgresCheckpointStore(BaseCheckpointStore):
             await conn.fetchval("SELECT 1")
         return True
 
+    async def _do_count_checkpoints(self, run_id: RunId) -> int:
+        """Count checkpoints for a run in Postgres.
+
+        Args:
+            run_id: The run identifier.
+
+        Returns:
+            Number of checkpoints for the run.
+
+        """
+        await self._ensure_initialized()
+
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            query = (
+                f"SELECT COUNT(*) FROM {self.config.schema_name}.checkpoints "
+                "WHERE run_id = $1"
+            )
+            count = await conn.fetchval(query, run_id)
+            return count
+
+    async def _do_get_checkpoint_history(
+        self, run_id: RunId, limit: int
+    ) -> list[CheckpointEnvelope]:
+        """Get checkpoint history from Postgres, newest first.
+
+        Args:
+            run_id: The run identifier.
+            limit: Maximum number of checkpoints to return.
+
+        Returns:
+            List of checkpoint envelopes, sorted by creation time (newest first).
+
+        """
+        await self._ensure_initialized()
+
+        pool = await self._get_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch(
+                f"""
+                SELECT envelope FROM {self.config.schema_name}.checkpoints
+                WHERE run_id = $1
+                ORDER BY created_at DESC
+                LIMIT $2
+                """,
+                run_id,
+                limit,
+            )
+            return [deserialize_checkpoint(row["envelope"]) for row in rows]
+
     async def close(self) -> None:
         """Close the connection pool."""
         if self._pool is not None:

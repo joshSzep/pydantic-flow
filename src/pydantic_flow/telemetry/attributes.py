@@ -76,6 +76,8 @@ class AttributeKey(StrEnum):
     CHECKPOINT_ID = "pflow.checkpoint.id"
     CHECKPOINT_KEY = "pflow.checkpoint.key"
     CHECKPOINT_IS_INTERRUPTED = "pflow.checkpoint.interrupted"
+    CHECKPOINT_DURABILITY_MODE = "pflow.checkpoint.durability_mode"
+    CHECKPOINT_SIZE_BYTES = "pflow.checkpoint.size_bytes"
 
     # LLM attributes (align with semantic conventions)
     LLM_MODEL = "llm.model.name"

@@ -216,6 +216,54 @@ class BaseCheckpointStore(ABC):
             msg = f"Healthcheck failed: {e}"
             raise CheckpointBackendError(msg, cause=e) from e
 
+    async def count_checkpoints(self, run_id: RunId) -> int:
+        """Count checkpoints for a specific run.
+
+        Args:
+            run_id: The run identifier.
+
+        Returns:
+            Number of checkpoints for the run.
+
+        Raises:
+            CheckpointBackendError: If storage operation fails.
+
+        """
+        try:
+            return await self._do_count_checkpoints(run_id)
+        except CheckpointBackendError:
+            raise
+        except Exception as e:
+            msg = f"Failed to count checkpoints for run {run_id}: {e}"
+            raise CheckpointBackendError(msg, cause=e) from e
+
+    async def get_checkpoint_history(
+        self, run_id: RunId, limit: int = 10
+    ) -> list[CheckpointEnvelope]:
+        """Get checkpoint history for a specific run, newest first.
+
+        Args:
+            run_id: The run identifier.
+            limit: Maximum number of checkpoints to return.
+
+        Returns:
+            List of checkpoint envelopes, sorted by creation time (newest first).
+
+        Raises:
+            CheckpointBackendError: If storage operation fails.
+
+        """
+        try:
+            envelopes = await self._do_get_checkpoint_history(run_id, limit)
+            for envelope in envelopes:
+                self._verify_saved_envelope(envelope)
+            return envelopes
+        except CheckpointBackendError:
+            raise
+        except Exception as e:
+            msg = f"Failed to get checkpoint history for run {run_id}: {e}"
+            raise CheckpointBackendError(msg, cause=e) from e
+
     def _validate_and_prepare_envelope(
         self, envelope: CheckpointEnvelope
     ) -> CheckpointEnvelope:
@@ -369,6 +417,41 @@ class BaseCheckpointStore(ABC):
 
         Returns:
             True if healthy.
+
+        Raises:
+            Exception: Any backend-specific errors (will be wrapped).
+
+        """
+        ...
+
+    @abstractmethod
+    async def _do_count_checkpoints(self, run_id: RunId) -> int:
+        """Backend-specific implementation for counting checkpoints.
+
+        Args:
+            run_id: The run identifier.
+
+        Returns:
+            Number of checkpoints for the run.
+
+        Raises:
+            Exception: Any backend-specific errors (will be wrapped).
+
+        """
+        ...
+
+    @abstractmethod
+    async def _do_get_checkpoint_history(
+        self, run_id: RunId, limit: int
+    ) -> list[CheckpointEnvelope]:
+        """Backend-specific implementation for getting checkpoint history.
+
+        Args:
+            run_id: The run identifier.
+            limit: Maximum number of checkpoints to return.
+
+        Returns:
+            List of checkpoint envelopes, sorted by creation time (newest first).
 
         Raises:
             Exception: Any backend-specific errors (will be wrapped).

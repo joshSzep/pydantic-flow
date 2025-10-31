@@ -17,6 +17,27 @@ Comprehensive overview dashboard showing:
 - **Checkpoint Operations**: Read/write rates for checkpoints
 - **Node Duration Heatmap**: Distribution of node execution times
 
+### Durability & Checkpoints (`dashboards/durability.json`)
+
+Deep-dive dashboard for checkpoint operations and durability system:
+
+- **Checkpoint Write Rate by Mode**: Track ASYNC/SYNC/EXIT checkpoint frequency
+- **Checkpoint Write Latency**: P50/P95/P99 persistence latency with alerts
+- **Checkpoint Writes by Node**: Identify nodes generating most checkpoints
+- **Checkpoint Size Distribution**: Monitor checkpoint size trends
+- **SYNC vs ASYNC Comparison**: Compare mode performance side-by-side
+- **Durability Mode Distribution**: Pie chart of mode usage
+- **Checkpoint Failure Rate**: Track and alert on write failures
+- **Background Queue Size**: Monitor async checkpoint backlog
+- **Latency by Node Table**: Detailed breakdown of checkpoint overhead per node
+
+**Use Cases:**
+- Optimize checkpoint performance
+- Detect checkpoint store bottlenecks
+- Compare durability mode tradeoffs
+- Debug background checkpoint issues
+- Monitor production checkpoint health
+
 ### Importing Dashboards
 
 #### Via Grafana UI
@@ -80,8 +101,12 @@ See `alerts.md` for Prometheus alert rules and response playbooks.
 
 - `pflow_checkpoint_reads_total`: Checkpoint reads (counter)
 - `pflow_checkpoint_writes_total`: Checkpoint writes (counter)
+  - Labels: `node_id`, `checkpoint_durability_mode`, `checkpoint_size_bytes`
 - `pflow_checkpoint_read_duration_ms`: Read latency (histogram)
 - `pflow_checkpoint_write_duration_ms`: Write latency (histogram)
+  - Labels: `node_id`, `checkpoint_durability_mode`
+- `pflow_checkpoint_errors_total`: Checkpoint operation failures (counter)
+- `pflow_background_checkpoint_tasks`: Active async checkpoint tasks (gauge)
 
 ### HITL Metrics
 
@@ -122,6 +147,24 @@ rate(pflow_node_executions_total[1m]) * 60
 
 ```promql
 histogram_quantile(0.99, rate(pflow_node_duration_ms_bucket[5m])) by (pflow_node_type)
+```
+
+### Checkpoint Write Rate by Durability Mode
+
+```promql
+rate(pflow_checkpoint_writes_total[5m]) by (checkpoint_durability_mode)
+```
+
+### P95 Checkpoint Latency by Node
+
+```promql
+histogram_quantile(0.95, rate(pflow_checkpoint_write_duration_ms_bucket[5m])) by (node_id)
+```
+
+### Background Checkpoint Queue Depth
+
+```promql
+pflow_background_checkpoint_tasks
 ```
 
 ## Customization

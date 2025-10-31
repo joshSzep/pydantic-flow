@@ -228,6 +228,39 @@ class CheckpointStore(Protocol):
         """
         ...
 
+    async def count_checkpoints(self, run_id: RunId) -> int:
+        """Count checkpoints for a specific run.
+
+        Args:
+            run_id: The run identifier.
+
+        Returns:
+            Number of checkpoints for the run.
+
+        Raises:
+            CheckpointBackendError: If storage operation fails.
+
+        """
+        ...
+
+    async def get_checkpoint_history(
+        self, run_id: RunId, limit: int = 10
+    ) -> list[CheckpointEnvelope]:
+        """Get checkpoint history for a specific run, newest first.
+
+        Args:
+            run_id: The run identifier.
+            limit: Maximum number of checkpoints to return.
+
+        Returns:
+            List of checkpoint envelopes, sorted by creation time (newest first).
+
+        Raises:
+            CheckpointBackendError: If storage operation fails.
+
+        """
+        ...
+
 
 class CheckpointStoreError(Exception):
     """Base exception for checkpoint store errors."""

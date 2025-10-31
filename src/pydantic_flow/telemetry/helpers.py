@@ -368,3 +368,45 @@ async def traced_cache_write(
         measure_duration_async(MetricName.CACHE_WRITE_DURATION, attributes=attrs),
     ):
         yield
+
+
+@asynccontextmanager
+async def instrument_checkpoint_write(
+    node_id: str,
+    durability_mode: str,
+    checkpoint_size: int | None = None,
+):
+    """Instrument checkpoint write operation with telemetry.
+
+    Args:
+        node_id: Node identifier for the checkpoint.
+        durability_mode: Durability mode (SYNC, ASYNC, EXIT).
+        checkpoint_size: Optional size of checkpoint in bytes.
+
+    Yields:
+        Context manager for checkpoint write span.
+
+    """
+    if not is_enabled():
+        yield
+        return
+
+    from pydantic_flow.telemetry.attributes import AttributeKey
+    from pydantic_flow.telemetry.attributes import MetricName
+    from pydantic_flow.telemetry.attributes import SpanKind
+
+    attrs = {
+        str(AttributeKey.NODE_ID): node_id,
+        str(AttributeKey.CHECKPOINT_DURABILITY_MODE): durability_mode,
+    }
+
+    if checkpoint_size is not None:
+        attrs[str(AttributeKey.CHECKPOINT_SIZE_BYTES)] = str(checkpoint_size)
+
+    record_counter(MetricName.CHECKPOINT_WRITES, attributes=attrs)
+
+    async with (
+        create_span_async(SpanKind.CHECKPOINT_WRITE, attributes=attrs),
+        measure_duration_async(MetricName.CHECKPOINT_WRITE_DURATION, attributes=attrs),
+    ):
+        yield

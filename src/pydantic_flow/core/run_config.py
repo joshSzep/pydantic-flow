@@ -12,6 +12,8 @@ from typing import Any
 from pydantic import BaseModel
 from pydantic import Field
 
+from pydantic_flow.core.durability import DurabilityMode
+
 if TYPE_CHECKING:
     pass
 
@@ -28,10 +30,22 @@ class RunConfig(BaseModel):
             observability. Default is True.
         recent_events_count: Number of recent iterations to include in
             RecursionLimitError messages for debugging. Default is 3.
+        durability_mode: Controls checkpoint frequency. Options:
+            - ASYNC: Background checkpoint after each node (default, recommended)
+            - SYNC: Synchronous checkpoint before next node starts
+            - EXIT: Checkpoint only on flow completion or error
+
+        Note: HITL (Human-in-the-Loop) interruptions create their own checkpoints
+        independently of this setting. This mode controls automatic crash recovery.
+
         checkpoint_store: Optional checkpoint store for persistence.
-            If provided, checkpoints are saved on interruption.
+            If provided, checkpoints are saved according to durability_mode.
         run_id: Optional run identifier for checkpoint correlation.
             If not provided, a new UUID will be generated.
+        max_checkpoint_size_mb: Maximum checkpoint size in MB. Larger checkpoints
+            emit warnings but don't fail. Default is 100 MB.
+        checkpoint_compression: Enable gzip compression for node_states to reduce
+            storage size. Default is True.
 
     """
 
@@ -48,6 +62,10 @@ class RunConfig(BaseModel):
             "Number of recent iterations to include in RecursionLimitError messages"
         ),
     )
+    durability_mode: DurabilityMode = Field(
+        default=DurabilityMode.ASYNC,
+        description="Checkpoint frequency mode for crash recovery",
+    )
     checkpoint_store: Any | None = Field(
         default=None,
         description="Optional checkpoint store for persistence",
@@ -55,4 +73,16 @@ class RunConfig(BaseModel):
     run_id: str | None = Field(
         default=None,
         description="Optional run identifier for checkpoint correlation",
+    )
+    max_checkpoint_size_mb: int = Field(
+        default=100,
+        ge=1,
+        description=(
+            "Maximum checkpoint size in MB. "
+            "Larger checkpoints will emit warning but not fail."
+        ),
+    )
+    checkpoint_compression: bool = Field(
+        default=True,
+        description="Enable gzip compression for checkpoint node_states",
     )

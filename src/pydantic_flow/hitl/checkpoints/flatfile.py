@@ -370,6 +370,65 @@ class FlatFileCheckpointStore(BaseCheckpointStore):
         await anyio.Path(test_file).unlink()
         return True
 
+    async def _do_count_checkpoints(self, run_id: RunId) -> int:
+        """Count checkpoints for a run from index.
+
+        Args:
+            run_id: The run identifier.
+
+        Returns:
+            Number of checkpoints for the run.
+
+        """
+        index_path = self._get_index_path(run_id)
+        if not await anyio.Path(index_path).exists():
+            return 0
+
+        count = 0
+        async with await anyio.open_file(index_path, "r") as f:
+            async for _ in f:
+                count += 1
+        return count
+
+    async def _do_get_checkpoint_history(
+        self, run_id: RunId, limit: int
+    ) -> list[CheckpointEnvelope]:
+        """Get checkpoint history from flat files, newest first.
+
+        Args:
+            run_id: The run identifier.
+            limit: Maximum number of checkpoints to return.
+
+        Returns:
+            List of checkpoint envelopes, sorted by creation time (newest first).
+
+        """
+        index_path = self._get_index_path(run_id)
+        if not await anyio.Path(index_path).exists():
+            return []
+
+        entries: list[IndexEntry] = []
+        async with await anyio.open_file(index_path, "r") as f:
+            async for line in f:
+                entry = IndexEntry.model_validate_json(line)
+                entries.append(entry)
+
+        entries.sort(key=lambda e: e.created_at, reverse=True)
+        entries = entries[:limit]
+
+        envelopes = []
+        for entry in entries:
+            checkpoint_path = self.config.base_path / entry.file_path
+            if await anyio.Path(checkpoint_path).exists():
+                async with await anyio.open_file(checkpoint_path, "r") as f:
+                    json_str = await f.read()
+                    if isinstance(json_str, bytes):
+                        json_str = json_str.decode("utf-8")
+                    envelope = deserialize_checkpoint(json_str)
+                    envelopes.append(envelope)
+
+        return envelopes
+
     def __repr__(self) -> str:
         """Return a string representation of the store."""
         return (

@@ -168,6 +168,7 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         self.flow_id: str = str(uuid.uuid4())
         self._interrupt_handlers: list[InterruptHandlerRegistration] = []
         self._edge_history: list[tuple[str, str]] = []
+        self._background_tasks: set[Any] = set()  # Track async checkpoint tasks
         self.memory_config = memory_config or MemoryConfig()
         self._cache_backend = cache_backend
         self._default_cache_policy = default_cache_policy
@@ -228,13 +229,21 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         return InterruptDecision.proceed()
 
     def _create_checkpoint(
-        self, interrupted_node_id: str, run_id: str
+        self,
+        interrupted_node_id: str,
+        run_id: str,
+        checkpoint_reason: str = "interruption",
+        checkpoint_node_id: str | None = None,
+        execution_progress: dict[str, str] | None = None,
     ) -> FlowCheckpoint:
         """Create a checkpoint for flow resumption.
 
         Args:
             interrupted_node_id: ID of the node where interruption occurred.
             run_id: Current run identifier.
+            checkpoint_reason: Reason for checkpoint creation.
+            checkpoint_node_id: ID of the node that just completed.
+            execution_progress: Map of node_id to execution status.
 
         Returns:
             FlowCheckpoint with captured state.
@@ -251,13 +260,17 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             node_states=self._results.copy(),
             edge_history=self._edge_history.copy(),
             conversation_memory=conversation_memory,
+            execution_progress=execution_progress or {},
+            checkpoint_reason=checkpoint_reason,
+            checkpoint_node_id=checkpoint_node_id,
         )
 
     async def _persist_checkpoint(
         self,
         checkpoint: FlowCheckpoint,
         store: CheckpointStore,
-        is_interrupted: bool = False,
+        *,
+        durability_mode: str | None = None,
         interrupt_reason: str | None = None,
         interrupt_metadata: dict[str, Any] | None = None,
     ) -> CheckpointEnvelope:
@@ -266,9 +279,9 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         Args:
             checkpoint: The checkpoint to persist.
             store: The checkpoint store to use.
-            is_interrupted: Whether this is an interrupt checkpoint.
-            interrupt_reason: Reason for the interruption if applicable.
-            interrupt_metadata: Additional interrupt metadata.
+            durability_mode: Optional durability mode for telemetry (HITL uses None).
+            interrupt_reason: Reason for HITL interruption (if applicable).
+            interrupt_metadata: Additional HITL metadata (if applicable).
 
         Returns:
             The persisted checkpoint envelope with ID.
@@ -283,6 +296,9 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         from pydantic_flow.hitl.checkpoints.interface import RunId
         from pydantic_flow.hitl.checkpoints.interface import generate_checkpoint_id
 
+        # Determine if this is an interrupt checkpoint (HITL) vs durability checkpoint
+        is_interrupted = interrupt_reason is not None or interrupt_metadata is not None
+
         envelope = CheckpointEnvelope(
             id=CheckpointId(generate_checkpoint_id()),
             run_id=RunId(checkpoint.run_id),
@@ -292,6 +308,17 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             interrupt_reason=interrupt_reason,
             interrupt_metadata=interrupt_metadata,
         )
+
+        # Add telemetry for checkpoint persistence
+        if durability_mode:
+            from pydantic_flow.telemetry.helpers import instrument_checkpoint_write
+
+            async with instrument_checkpoint_write(
+                node_id=checkpoint.interrupted_node_id or "unknown",
+                durability_mode=durability_mode,
+                checkpoint_size=None,  # Could calculate from envelope if needed
+            ):
+                return await store.save(envelope, overwrite=False)
 
         return await store.save(envelope, overwrite=False)
 
@@ -562,8 +589,15 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             if self._conversation_memory is not None:
                 token = _active_flow_memory.set(self._conversation_memory)
 
+            # Track execution progress for checkpointing
+            execution_progress: dict[str, str] = {}
+            for node in self._execution_order:
+                execution_progress[node.name] = "pending"
+
             try:
                 for node in self._execution_order:
+                    execution_progress[node.name] = "running"
+
                     # Determine input data for the node
                     if has_multiple_inputs(node):
                         # Multi-input node: gather all dependency results as tuple
@@ -617,16 +651,93 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                         result = await node.run(input_data)  # type: ignore[union-attr]
 
                     self._results[node.name] = result
+                    execution_progress[node.name] = "completed"
+
+                    # Checkpoint after node completion based on durability mode
+                    from pydantic_flow.core.durability import DurabilityMode
+
+                    if (
+                        config.checkpoint_store is not None
+                        and config.durability_mode != DurabilityMode.EXIT
+                    ):
+                        checkpoint = self._create_checkpoint(
+                            interrupted_node_id=node.name,
+                            run_id=run_id,
+                            checkpoint_reason="node_completion",
+                            checkpoint_node_id=node.name,
+                            execution_progress=execution_progress.copy(),
+                        )
+
+                        if config.durability_mode == DurabilityMode.SYNC:
+                            # SYNC: Checkpoint synchronously before next node
+                            await self._persist_checkpoint(
+                                checkpoint=checkpoint,
+                                store=config.checkpoint_store,
+                                durability_mode=config.durability_mode.value,
+                            )
+                        elif config.durability_mode == DurabilityMode.ASYNC:
+                            # ASYNC: Fire and forget checkpoint in background
+                            import asyncio
+
+                            task = asyncio.create_task(
+                                self._persist_checkpoint(
+                                    checkpoint=checkpoint,
+                                    store=config.checkpoint_store,
+                                    durability_mode=config.durability_mode.value,
+                                )
+                            )
+                            # Track task to prevent garbage collection
+                            self._background_tasks.add(task)
+                            task.add_done_callback(self._background_tasks.discard)
 
                 # Smart detection: If we have a single result that's already
                 # the output type, return it directly instead of trying to reconstruct
                 if len(self._results) == 1:
                     single_result = next(iter(self._results.values()))
                     if isinstance(single_result, self._output_type):
-                        return single_result  # type: ignore
+                        output = single_result  # type: ignore
+                    else:
+                        # Construct the output BaseModel from the results
+                        output = self._output_type(**self._results)
+                elif len(self._results) > 1 and self._execution_order:
+                    # Multiple results: Check if last executed node matches output
+                    last_node_result = self._results[self._execution_order[-1].name]
+                    if isinstance(last_node_result, self._output_type):
+                        output = last_node_result  # type: ignore
+                    else:
+                        # Construct the output BaseModel from the results
+                        output = self._output_type(**self._results)
+                else:
+                    # No results or empty flow: construct from results
+                    output = self._output_type(**self._results)
 
-                # Construct the output BaseModel from the results
-                return self._output_type(**self._results)
+                # EXIT mode: Checkpoint on successful completion
+                from pydantic_flow.core.durability import DurabilityMode
+
+                if (
+                    config.checkpoint_store is not None
+                    and config.durability_mode == DurabilityMode.EXIT
+                ):
+                    # Get the last executed node name
+                    last_node_name = (
+                        self._execution_order[-1].name
+                        if self._execution_order
+                        else "flow_complete"
+                    )
+                    checkpoint = self._create_checkpoint(
+                        interrupted_node_id=last_node_name,
+                        run_id=run_id,
+                        checkpoint_reason="flow_end",
+                        checkpoint_node_id=last_node_name,
+                        execution_progress=execution_progress.copy(),
+                    )
+                    await self._persist_checkpoint(
+                        checkpoint=checkpoint,
+                        store=config.checkpoint_store,
+                        durability_mode=config.durability_mode.value,
+                    )
+
+                return output
 
             except InterruptionRequested as e:
                 # Enhance checkpoint with flow-level information
@@ -646,12 +757,15 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                     if interrupt_metadata is not None and not interrupt_metadata:
                         interrupt_metadata = None
 
+                    # Add interrupt reason to metadata if metadata exists
+                    if interrupt_metadata is not None:
+                        interrupt_metadata["reason"] = interrupt_reason
+
                     envelope = await self._persist_checkpoint(
                         checkpoint=e.checkpoint,
                         store=config.checkpoint_store,
-                        is_interrupted=True,
-                        interrupt_reason=interrupt_reason,
                         interrupt_metadata=interrupt_metadata,
+                        interrupt_reason=interrupt_reason,
                     )
 
                     # Attach checkpoint ID to exception metadata
@@ -662,6 +776,49 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 raise
 
             except Exception as e:
+                # Mark current node as failed if we know which one
+                current_node_name = None
+                for node_name, status in execution_progress.items():
+                    if status == "running":
+                        execution_progress[node_name] = "failed"
+                        current_node_name = node_name
+                        break
+
+                # EXIT mode: Checkpoint on error
+                from pydantic_flow.core.durability import DurabilityMode
+
+                if (
+                    config.checkpoint_store is not None
+                    and config.durability_mode == DurabilityMode.EXIT
+                ):
+                    # Get the last executed node (may not be last in order if error)
+                    last_node_name = (
+                        list(self._results.keys())[-1]
+                        if self._results
+                        else "flow_error"
+                    )
+                    checkpoint = self._create_checkpoint(
+                        interrupted_node_id=last_node_name,
+                        run_id=run_id,
+                        checkpoint_reason="error",
+                        checkpoint_node_id=current_node_name,
+                        execution_progress=execution_progress.copy(),
+                    )
+                    # Use contextlib.suppress for cleaner error handling
+                    import contextlib
+
+                    with contextlib.suppress(Exception):
+                        # Don't fail the flow if checkpoint fails
+                        await self._persist_checkpoint(
+                            checkpoint=checkpoint,
+                            store=config.checkpoint_store,
+                            durability_mode=(
+                                config.durability_mode.value
+                                if config.durability_mode
+                                else None
+                            ),
+                        )
+
                 # Wrap any other exception in a FlowError for consistency
                 if isinstance(e, FlowError):
                     raise
@@ -672,6 +829,369 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 # Reset context variable if it was set
                 if token is not None:
                     _active_flow_memory.reset(token)
+
+    async def resume_from_checkpoint(
+        self,
+        checkpoint: FlowCheckpoint,
+        checkpoint_store: CheckpointStore,
+        config: RunConfig | None = None,
+    ) -> OutputT:
+        """Resume execution from a checkpoint.
+
+        Skips nodes already completed in the checkpoint, starts execution
+        from the first pending node.
+
+        Args:
+            checkpoint: Checkpoint to resume from.
+            checkpoint_store: Store for new checkpoints.
+            config: Optional new config (or use checkpoint's).
+
+        Returns:
+            Final output after resumption.
+
+        Raises:
+            FlowError: If resumption fails.
+            TypeError: If checkpoint flow_id doesn't match.
+
+        """
+        if checkpoint.flow_id != self.flow_id:
+            msg = (
+                f"Checkpoint flow_id mismatch: "
+                f"expected {self.flow_id}, got {checkpoint.flow_id}"
+            )
+            raise TypeError(msg)
+
+        config = config or RunConfig()
+        # Use checkpoint's run_id if config doesn't specify one
+        if config.run_id is None:
+            config = RunConfig(
+                **config.model_dump(exclude={"run_id", "checkpoint_store"}),
+                run_id=checkpoint.run_id,
+                checkpoint_store=checkpoint_store,
+            )
+
+        # Restore node states from checkpoint
+        self._results = checkpoint.node_states.copy()
+        self._edge_history = checkpoint.edge_history.copy()
+
+        # Note: Conversation memory restoration would require deserialization
+        # This is a Phase 3 enhancement
+
+        # Identify completed nodes from execution_progress
+        completed_nodes = {
+            node_id
+            for node_id, status in checkpoint.execution_progress.items()
+            if status == "completed"
+        }
+
+        # Create a modified execution order excluding completed nodes
+        remaining_nodes = [
+            node for node in self._execution_order if node.name not in completed_nodes
+        ]
+
+        # If no remaining nodes, just construct and return output
+        if not remaining_nodes:
+            if len(self._results) == 1:
+                single_result = next(iter(self._results.values()))
+                if isinstance(single_result, self._output_type):
+                    return single_result  # type: ignore
+            else:
+                # Multiple results: Check if last executed node matches output
+                last_node_result = self._results[self._execution_order[-1].name]
+                if isinstance(last_node_result, self._output_type):
+                    return last_node_result  # type: ignore
+            return self._output_type(**self._results)
+
+        # Execute remaining nodes using same logic as run()
+        # But skip the completed ones
+        token = None
+        if self._conversation_memory is not None:
+            token = _active_flow_memory.set(self._conversation_memory)
+
+        try:
+            for node in remaining_nodes:
+                # Determine input data for the node
+                if has_multiple_inputs(node):
+                    input_data: Any = tuple(
+                        self._results[dep.node.name] for dep in node.inputs
+                    )
+                elif has_input_dependency(node):
+                    input_node = node.input.node
+                    if input_node.name not in self._results:
+                        msg = f"Input node {input_node.name} has not been executed"
+                        raise FlowError(msg)
+                    input_data = self._results[input_node.name]
+                    self._edge_history.append((input_node.name, node.name))
+                else:
+                    # Reconstruct input from original checkpoint
+                    # This is tricky - we may need to store original input in checkpoint
+                    msg = "Cannot resume: checkpoint missing original input data"
+                    raise FlowError(msg)
+
+                # Execute node
+                result = await node.run(input_data)  # type: ignore
+                self._results[node.name] = result
+
+                # Checkpoint after node completion based on durability mode
+                from pydantic_flow.core.durability import DurabilityMode
+
+                if (
+                    config.checkpoint_store is not None
+                    and config.durability_mode != DurabilityMode.EXIT
+                ):
+                    new_checkpoint = self._create_checkpoint(
+                        interrupted_node_id=node.name,
+                        run_id=config.run_id or checkpoint.run_id,
+                        checkpoint_reason="node_completion",
+                        checkpoint_node_id=node.name,
+                        execution_progress=checkpoint.execution_progress.copy(),
+                    )
+                    # Mark this node as completed
+                    new_checkpoint.execution_progress[node.name] = "completed"
+
+                    if config.durability_mode == DurabilityMode.SYNC:
+                        await self._persist_checkpoint(
+                            checkpoint=new_checkpoint,
+                            store=config.checkpoint_store,
+                            durability_mode=config.durability_mode.value,
+                        )
+                    elif config.durability_mode == DurabilityMode.ASYNC:
+                        import asyncio
+
+                        task = asyncio.create_task(
+                            self._persist_checkpoint(
+                                checkpoint=new_checkpoint,
+                                store=config.checkpoint_store,
+                                durability_mode=config.durability_mode.value,
+                            )
+                        )
+                        self._background_tasks.add(task)
+                        task.add_done_callback(self._background_tasks.discard)
+
+            # Construct output
+            if len(self._results) == 1:
+                single_result = next(iter(self._results.values()))
+                if isinstance(single_result, self._output_type):
+                    return single_result  # type: ignore
+            else:
+                # Multiple results: Check if last executed node matches output
+                last_node_result = self._results[self._execution_order[-1].name]
+                if isinstance(last_node_result, self._output_type):
+                    return last_node_result  # type: ignore
+            return self._output_type(**self._results)
+
+        finally:
+            if token is not None:
+                _active_flow_memory.reset(token)
+
+    async def list_checkpoints(
+        self, run_id: str, checkpoint_store: CheckpointStore, limit: int = 10
+    ) -> list[CheckpointEnvelope]:
+        """List checkpoints for a run, newest first.
+
+        Convenience method that wraps checkpoint_store.get_checkpoint_history().
+
+        Args:
+            run_id: The run identifier to query.
+            checkpoint_store: The checkpoint store to query.
+            limit: Maximum number of checkpoints to return (default: 10).
+
+        Returns:
+            List of checkpoint envelopes, sorted by creation time (newest first).
+
+        Raises:
+            CheckpointBackendError: If storage operation fails.
+
+        """
+        from pydantic_flow.hitl.checkpoints.interface import RunId
+
+        return await checkpoint_store.get_checkpoint_history(RunId(run_id), limit)
+
+    async def replay_from_checkpoint(
+        self,
+        checkpoint: FlowCheckpoint,
+        checkpoint_store: CheckpointStore,
+        config: RunConfig | None = None,
+        *,
+        new_input: InputT | None = None,
+    ) -> OutputT:
+        """Replay execution from a checkpoint with optional new input.
+
+        Creates a new run_id to distinguish the replay from the original run.
+        This enables time-travel debugging where you can replay a failed run
+        with different configuration or input.
+
+        Args:
+            checkpoint: Checkpoint to replay from.
+            checkpoint_store: Store for new checkpoints.
+            config: Optional new config (or use checkpoint's config).
+            new_input: Optional new input for "what-if" analysis.
+                      If provided, replaces the checkpoint's input data.
+
+        Returns:
+            Final output after replay.
+
+        Raises:
+            FlowError: If replay fails.
+            TypeError: If checkpoint flow_id doesn't match.
+
+        Example:
+            ```python
+            # Original run failed
+            try:
+                result = await flow.run(
+                    input_data, config=config, checkpoint_store=store
+                )
+            except Exception:
+                pass
+
+            # Get the checkpoint
+            checkpoints = await flow.list_checkpoints(run_id, store)
+            checkpoint = checkpoints[0]
+
+            # Replay with different config
+            new_config = RunConfig(max_steps=100)
+            result = await flow.replay_from_checkpoint(
+                checkpoint, store, config=new_config
+            )
+            ```
+
+        """
+        # Generate new run_id for the replay
+        new_run_id = str(uuid.uuid4())
+
+        # Create modified config with new run_id
+        replay_config = config or RunConfig()
+        replay_config = RunConfig(
+            **replay_config.model_dump(exclude={"run_id", "checkpoint_store"}),
+            run_id=new_run_id,
+            checkpoint_store=checkpoint_store,
+        )
+
+        # If new_input provided, create modified checkpoint
+        if new_input is not None:
+            msg = (
+                "new_input parameter not yet fully supported - "
+                "requires checkpoint input storage"
+            )
+            raise NotImplementedError(msg)
+
+        # Resume from the checkpoint with new run_id
+        return await self.resume_from_checkpoint(
+            checkpoint, checkpoint_store, replay_config
+        )
+
+    async def fork_from_checkpoint(
+        self,
+        checkpoint: FlowCheckpoint,
+        checkpoint_store: CheckpointStore,
+        modifications: dict[str, Any],
+        config: RunConfig | None = None,
+    ) -> OutputT:
+        """Fork execution from a checkpoint with modified node states.
+
+        Creates a new run_id and modifies the checkpoint's node states before
+        resuming. This enables "what-if" analysis where you can explore how
+        different intermediate results affect the final output.
+
+        Args:
+            checkpoint: Checkpoint to fork from.
+            checkpoint_store: Store for new checkpoints.
+            modifications: Dict mapping node names to new output values.
+                          These replace the corresponding node states in the checkpoint.
+            config: Optional new config.
+
+        Returns:
+            Final output after forked execution.
+
+        Raises:
+            FlowError: If fork fails.
+            TypeError: If checkpoint flow_id doesn't match.
+            KeyError: If a modification references a non-existent node.
+
+        Example:
+            ```python
+            # Original run
+            result1 = await flow.run(input_data, config=config, checkpoint_store=store)
+
+            # Get checkpoint after node1 completed
+            checkpoints = await flow.list_checkpoints(run_id, store)
+            checkpoint = checkpoints[2]  # After node1
+
+            # Fork with modified node1 output
+            modified_output = SomeModel(value=42)
+            result2 = await flow.fork_from_checkpoint(
+                checkpoint,
+                store,
+                modifications={"node1": modified_output},
+            )
+
+            # Compare results
+            print(f"Original: {result1}")
+            print(f"Modified: {result2}")
+            ```
+
+        """
+        # Generate new run_id for the fork
+        new_run_id = str(uuid.uuid4())
+
+        # Create modified checkpoint
+        forked_checkpoint = checkpoint.model_copy(deep=True)
+        forked_checkpoint.run_id = new_run_id
+
+        # Apply modifications to node states
+        for node_name, new_value in modifications.items():
+            if node_name not in forked_checkpoint.node_states:
+                msg = f"Cannot modify node '{node_name}': not found in checkpoint"
+                raise KeyError(msg)
+            forked_checkpoint.node_states[node_name] = new_value
+
+            # Mark this node as completed in execution progress
+            if node_name in forked_checkpoint.execution_progress:
+                forked_checkpoint.execution_progress[node_name] = "completed"
+
+        # Mark all downstream dependent nodes as pending so they re-execute
+        # with the modified inputs, BUT skip nodes that were explicitly modified
+        originally_modified_nodes = set(modifications.keys())
+        modified_node_names = originally_modified_nodes.copy()
+        for node in self._execution_order:
+            # Skip nodes that were explicitly modified (they should stay completed)
+            if node.name in originally_modified_nodes:
+                continue
+
+            # Check if this node depends on any modified nodes
+            depends_on_modified = False
+            if has_input_dependency(node):
+                upstream_node_name = node.input.node.name
+                if upstream_node_name in modified_node_names:
+                    depends_on_modified = True
+            elif has_multiple_inputs(node):
+                for dep in node.inputs:
+                    if dep.node.name in modified_node_names:
+                        depends_on_modified = True
+                        break
+
+            if (
+                depends_on_modified
+                and node.name in forked_checkpoint.execution_progress
+            ):
+                forked_checkpoint.execution_progress[node.name] = "pending"
+                # Also add this node to the set of modified nodes so its
+                # downstream dependencies are also marked pending
+                modified_node_names.add(node.name)
+
+        # Create config with new run_id
+        fork_config = config or RunConfig()
+        fork_config = RunConfig(
+            **fork_config.model_dump(exclude={"run_id", "checkpoint_store"}),
+            run_id=new_run_id,
+            checkpoint_store=checkpoint_store,
+        )
+
+        # Resume from the forked checkpoint
+        return await self.resume_from_checkpoint(
+            forked_checkpoint, checkpoint_store, fork_config
+        )
 
     def get_execution_order(self) -> list[str]:
         """Get the names of nodes in execution order.
@@ -901,6 +1421,7 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 output_type=self._output_type,
                 cache_backend=self._cache_backend,
                 default_cache_policy=self._default_cache_policy,
+                flow_id=self.flow_id,
             )
             engine = StepperEngine(engine_config)
             return CompiledFlow(

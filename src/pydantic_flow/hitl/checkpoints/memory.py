@@ -191,6 +191,39 @@ class InMemoryCheckpointStore(BaseCheckpointStore):
         """
         return True
 
+    async def _do_count_checkpoints(self, run_id: RunId) -> int:
+        """Count checkpoints for a run in memory.
+
+        Args:
+            run_id: The run identifier.
+
+        Returns:
+            Number of checkpoints for the run.
+
+        """
+        async with self._lock:
+            return sum(1 for env in self._checkpoints.values() if env.run_id == run_id)
+
+    async def _do_get_checkpoint_history(
+        self, run_id: RunId, limit: int
+    ) -> list[CheckpointEnvelope]:
+        """Get checkpoint history from memory, newest first.
+
+        Args:
+            run_id: The run identifier.
+            limit: Maximum number of checkpoints to return.
+
+        Returns:
+            List of checkpoint envelopes, sorted by creation time (newest first).
+
+        """
+        async with self._lock:
+            candidates = [
+                env for env in self._checkpoints.values() if env.run_id == run_id
+            ]
+            candidates.sort(key=lambda e: e.created_at, reverse=True)
+            return candidates[:limit]
+
     def __repr__(self) -> str:
         """Return a string representation of the store."""
         return f"InMemoryCheckpointStore(checkpoints={len(self._checkpoints)})"
