@@ -72,8 +72,8 @@ class TestPromptNodeCoverage:
 
         assert checkpoint.run_id == "test-run-123"
         assert checkpoint.interrupted_node_id == "test_node"
-        assert checkpoint.node_states == {}
-        assert checkpoint.edge_history == []
+        assert checkpoint.wave_number == 0
+        assert checkpoint.reason == "hitl_interrupt"
 
     async def test_chat_template_rendering(self) -> None:
         """Test chat template message rendering path."""
@@ -125,7 +125,7 @@ class TestPromptNodeCoverage:
 
         assert isinstance(exc_info.value, InterruptionRequested)
         assert exc_info.value.decision.reason == "Testing"
-        assert exc_info.value.checkpoint.interrupted_node_id == "test_node"
+        assert exc_info.value.snapshot.interrupted_node_id == "test_node"
 
     async def test_interrupt_on_token_chunk(self) -> None:
         """Test interruption during token streaming."""

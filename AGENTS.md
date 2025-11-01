@@ -139,6 +139,40 @@ The node-reference approach provides:
 - Refactoring safety - rename detection across codebase
 - Clear error messages when nodes are not found
 
+### Unified Checkpoint System
+
+The framework implements a **unified checkpoint system** that serves both debugging and HITL use cases:
+
+**StateSnapshot as Universal Model:**
+- Single checkpoint type (`StateSnapshot`) for all scenarios: HITL interrupts, debugging, manual pauses, errors
+- Reason-based categorization via `SnapshotReason` enum (HITL_INTERRUPT, AUTOMATIC, MANUAL_PAUSE, ERROR, COMPLETION)
+- Full state preservation with optional delta compression for efficiency
+- Metadata support for custom interrupt context
+
+**Conversation Memory as Linked List:**
+- Append-only message chain with snapshots referencing HEAD pointer
+- Messages stored once, referenced by multiple snapshots
+- Enables conversation reconstruction at any snapshot point
+- Natural branching for forked execution paths
+
+**Query and Inspection APIs:**
+- `CheckpointInspector`: Read-only data access for interrupted runs, snapshots, and conversations
+- `CheckpointDebugger`: High-level workflows with Rich rendering
+- CLI commands: `list-interrupts`, `show-interrupt`, `resume-with-decision`
+
+**Universal Resume:**
+- Single `resume_from_snapshot()` method works for all snapshot types
+- Reconstructs state from deltas when needed
+- Restores conversation context automatically
+- Type-safe with full StateSnapshot object or ID-based lookup
+
+**Storage Backends:**
+- SQLite (local development), Postgres (production), S3/Filesystem (archival)
+- Conversation messages tracked separately with reference tables
+- Protected message identification prevents unsafe pruning
+
+This unified approach eliminates code duplication, enables powerful time-travel debugging of HITL sessions, and provides a consistent interface for all checkpoint operations.
+
 
 
 ## Goals

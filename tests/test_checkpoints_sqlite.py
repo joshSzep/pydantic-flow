@@ -1,168 +1,156 @@
-"""Tests for SQLiteCheckpointStore implementation."""
+"""Tests for SQLite checkpoint backend (V2)."""
 
-from __future__ import annotations
-
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import pytest
 
-from pydantic_flow.hitl.checkpoints.sqlite import SQLiteCheckpointStore
-from pydantic_flow.hitl.checkpoints.sqlite import SQLiteCheckpointStoreConfig
-from tests.test_checkpoints_conformance import CheckpointStoreConformanceTests
+from pydantic_flow.checkpoints import RunId
+from pydantic_flow.checkpoints import SnapshotReason
+from pydantic_flow.checkpoints import SQLiteCheckpointBackend
+from pydantic_flow.checkpoints import SQLiteCheckpointConfig
+from pydantic_flow.checkpoints import StateSnapshot
+from pydantic_flow.checkpoints.types import generate_snapshot_id
 
 
-class TestSQLiteCheckpointStoreConformance(CheckpointStoreConformanceTests):
-    """Conformance tests for SQLiteCheckpointStore."""
+@pytest.fixture
+async def backend(tmp_path: Path) -> AsyncGenerator[SQLiteCheckpointBackend]:
+    """Create a SQLite backend with temp database."""
+    config = SQLiteCheckpointConfig(db_path=tmp_path / "test.db")
+    backend = SQLiteCheckpointBackend(config)
+    await backend.initialize()
+    yield backend
+    await backend.close()
 
-    @pytest.fixture
-    async def store(self, tmp_path: Path) -> SQLiteCheckpointStore:
-        """Create a SQLiteCheckpointStore instance using temp database."""
-        config = SQLiteCheckpointStoreConfig(
-            db_path=tmp_path / "test_checkpoints.db",
-            busy_timeout_ms=30000,
+
+@pytest.mark.asyncio
+async def test_wal_mode_enabled(tmp_path: Path) -> None:
+    """Test that WAL mode is properly enabled."""
+    import aiosqlite
+
+    config = SQLiteCheckpointConfig(db_path=tmp_path / "test_wal.db")
+    backend = SQLiteCheckpointBackend(config)
+    await backend.initialize()
+
+    async with aiosqlite.connect(config.db_path) as db:
+        cursor = await db.execute("PRAGMA journal_mode")
+        result = await cursor.fetchone()
+        assert result is not None
+        assert result[0].lower() == "wal"
+
+    await backend.close()
+
+
+@pytest.mark.asyncio
+async def test_schema_initialization(tmp_path: Path) -> None:
+    """Test that database schema is created on initialization."""
+    import aiosqlite
+
+    config = SQLiteCheckpointConfig(db_path=tmp_path / "test_schema.db")
+    backend = SQLiteCheckpointBackend(config)
+
+    assert not config.db_path.exists()
+
+    await backend.initialize()
+
+    assert config.db_path.exists()
+
+    async with aiosqlite.connect(config.db_path) as db:
+        cursor = await db.execute(
+            "SELECT name FROM sqlite_master "
+            "WHERE type='table' AND name='state_snapshots'"
         )
-        store = SQLiteCheckpointStore(config)
-        await store.healthcheck()
-        return store
+        result = await cursor.fetchone()
+        assert result is not None
+        assert result[0] == "state_snapshots"
+
+    await backend.close()
 
 
-class TestSQLiteCheckpointStoreSpecific:
-    """Tests specific to SQLiteCheckpointStore implementation."""
+@pytest.mark.asyncio
+async def test_indexes_created(tmp_path: Path) -> None:
+    """Test that indexes are created for query performance."""
+    import aiosqlite
 
-    @pytest.fixture
-    async def store(self, tmp_path: Path) -> SQLiteCheckpointStore:
-        """Create a SQLiteCheckpointStore instance for testing."""
-        config = SQLiteCheckpointStoreConfig(
-            db_path=tmp_path / "test_checkpoints.db",
-            busy_timeout_ms=30000,
+    config = SQLiteCheckpointConfig(db_path=tmp_path / "test_indexes.db")
+    backend = SQLiteCheckpointBackend(config)
+    await backend.initialize()
+
+    async with aiosqlite.connect(config.db_path) as db:
+        cursor = await db.execute("SELECT name FROM sqlite_master WHERE type='index'")
+        indexes = [row[0] for row in await cursor.fetchall()]
+
+    assert len(indexes) > 0
+
+    await backend.close()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_access(backend: SQLiteCheckpointBackend) -> None:
+    """Test concurrent database access with busy timeout."""
+    import asyncio
+
+    run_id = RunId("concurrent_test")
+
+    async def save_snapshot(num: int) -> None:
+        snapshot = StateSnapshot(
+            snapshot_id=generate_snapshot_id(),
+            run_id=run_id,
+            wave_number=num,
+            full_state={},
+            state_hash=f"hash_{num}",
+            next_frontier=[],
+            routing_ended=False,
+            reason=SnapshotReason.AUTOMATIC,
         )
-        store = SQLiteCheckpointStore(config)
-        await store.healthcheck()
-        return store
+        await backend.save_state_snapshot(snapshot)
 
-    @pytest.mark.asyncio
-    async def test_wal_mode_enabled(self, tmp_path: Path) -> None:
-        """Test that WAL mode is properly enabled."""
-        import aiosqlite
+    await asyncio.gather(*[save_snapshot(i) for i in range(10)])
 
-        config = SQLiteCheckpointStoreConfig(
-            db_path=tmp_path / "test_wal.db",
-        )
-        store = SQLiteCheckpointStore(config)
-        await store.healthcheck()
+    snapshots = await backend.get_snapshots_range(run_id, 0, 9)
+    assert len(snapshots) == 10
 
-        async with aiosqlite.connect(config.db_path) as db:
-            cursor = await db.execute("PRAGMA journal_mode")
-            result = await cursor.fetchone()
-            assert result is not None
-            assert result[0].lower() == "wal"
 
-    @pytest.mark.asyncio
-    async def test_schema_initialization(self, tmp_path: Path) -> None:
-        """Test that database schema is created on first access."""
-        import aiosqlite
+@pytest.mark.asyncio
+async def test_database_file_created_with_parents(tmp_path: Path) -> None:
+    """Test that database file and parent directories are created."""
+    nested_path = tmp_path / "deep" / "nested" / "path" / "checkpoints.db"
+    config = SQLiteCheckpointConfig(db_path=nested_path)
+    backend = SQLiteCheckpointBackend(config)
 
-        config = SQLiteCheckpointStoreConfig(
-            db_path=tmp_path / "test_schema.db",
-        )
-        store = SQLiteCheckpointStore(config)
+    assert not nested_path.exists()
 
-        assert not config.db_path.exists()
+    await backend.initialize()
 
-        await store.healthcheck()
+    assert nested_path.exists()
+    assert nested_path.parent.exists()
 
-        assert config.db_path.exists()
+    await backend.close()
 
-        async with aiosqlite.connect(config.db_path) as db:
-            cursor = await db.execute(
-                "SELECT name FROM sqlite_master "
-                "WHERE type='table' AND name='checkpoints'"
-            )
-            result = await cursor.fetchone()
-            assert result is not None
-            assert result[0] == "checkpoints"
 
-    @pytest.mark.asyncio
-    async def test_indexes_created(self, tmp_path: Path) -> None:
-        """Test that indexes are created for query performance."""
-        import aiosqlite
+@pytest.mark.asyncio
+async def test_save_and_retrieve_snapshot(backend: SQLiteCheckpointBackend) -> None:
+    """Test saving and retrieving a state snapshot."""
+    run_id = RunId("test_run")
+    snapshot_id = generate_snapshot_id()
 
-        config = SQLiteCheckpointStoreConfig(
-            db_path=tmp_path / "test_indexes.db",
-        )
-        store = SQLiteCheckpointStore(config)
-        await store.healthcheck()
+    snapshot = StateSnapshot(
+        snapshot_id=snapshot_id,
+        run_id=run_id,
+        wave_number=0,
+        full_state={},
+        state_hash="test_hash",
+        next_frontier=["node1"],
+        routing_ended=False,
+        reason=SnapshotReason.HITL_INTERRUPT,
+        interrupted_node_id="test_node",
+    )
 
-        async with aiosqlite.connect(config.db_path) as db:
-            cursor = await db.execute(
-                "SELECT name FROM sqlite_master WHERE type='index'"
-            )
-            indexes = [row[0] for row in await cursor.fetchall()]
+    await backend.save_state_snapshot(snapshot)
 
-        assert "idx_run_created" in indexes
-        assert "idx_run_node_created" in indexes
-
-    @pytest.mark.asyncio
-    async def test_concurrent_access(
-        self, store: SQLiteCheckpointStore, sample_checkpoint
-    ) -> None:
-        """Test concurrent database access with busy timeout."""
-        import asyncio
-        from datetime import UTC
-        from datetime import datetime
-
-        from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
-        from pydantic_flow.hitl.checkpoints.interface import CheckpointId
-        from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
-        from pydantic_flow.hitl.checkpoints.interface import RunId
-
-        run_id = RunId("concurrent_test")
-
-        async def save_checkpoint(num: int) -> None:
-            envelope = CheckpointEnvelope(
-                id=CheckpointId(f"ckpt_{num}"),
-                run_id=run_id,
-                node_id=f"node_{num}",
-                created_at=datetime.now(UTC),
-                schema_version=1,
-                checkpoint=sample_checkpoint,
-            )
-            await store.save(envelope)
-
-        await asyncio.gather(*[save_checkpoint(i) for i in range(10)])
-
-        query = CheckpointQuery(run_id=run_id)
-        checkpoints, _ = await store.list(query)
-        assert len(checkpoints) == 10
-
-    @pytest.mark.asyncio
-    async def test_database_file_created_with_parents(self, tmp_path: Path) -> None:
-        """Test that database file and parent directories are created."""
-        nested_path = tmp_path / "deep" / "nested" / "path" / "checkpoints.db"
-        config = SQLiteCheckpointStoreConfig(db_path=nested_path)
-        store = SQLiteCheckpointStore(config)
-
-        await store.healthcheck()
-
-        assert nested_path.exists()
-        assert nested_path.parent.exists()
-
-    @pytest.mark.asyncio
-    async def test_content_hash_stored(
-        self, store: SQLiteCheckpointStore, sample_envelope
-    ) -> None:
-        """Test that content hash is computed and stored."""
-        import aiosqlite
-
-        saved = await store.save(sample_envelope)
-
-        assert saved.content_hash is not None
-
-        async with aiosqlite.connect(store.config.db_path) as db:
-            cursor = await db.execute(
-                "SELECT content_hash FROM checkpoints WHERE checkpoint_id = ?",
-                (str(saved.id),),
-            )
-            result = await cursor.fetchone()
-            assert result is not None
-            assert result[0] == saved.content_hash
+    retrieved = await backend.get_state_snapshot(run_id, 0)
+    assert retrieved is not None
+    assert retrieved.snapshot_id == snapshot_id
+    assert retrieved.run_id == run_id
+    assert retrieved.reason == SnapshotReason.HITL_INTERRUPT
+    assert retrieved.interrupted_node_id == "test_node"

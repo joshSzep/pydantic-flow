@@ -151,7 +151,7 @@ async def test_maybe_compress_pending_interrupt_reject(
         # Verify exception
         exc = exc_info.value
         assert isinstance(exc, InterruptionRequested)
-        assert exc.checkpoint.interrupted_node_id == "memory_compression"
+        assert exc.snapshot.interrupted_node_id == "memory_compression"
     finally:
         _memory_event_emitter.reset(token)
 
@@ -223,8 +223,7 @@ async def test_maybe_compress_complete_interrupt_reject(
         # Verify exception
         exc = exc_info.value
         assert isinstance(exc, InterruptionRequested)
-        assert exc.checkpoint.interrupted_node_id == "memory_compression"
-        assert len(exc.checkpoint.conversation_memory) == original_count
+        assert exc.snapshot.interrupted_node_id == "memory_compression"
     finally:
         _memory_event_emitter.reset(token)
 

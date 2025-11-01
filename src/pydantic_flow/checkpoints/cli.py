@@ -513,5 +513,169 @@ def vacuum_policy(  # noqa: PLR0913
     asyncio.run(_vacuum_policy())
 
 
+@app.command()
+def list_interrupts(
+    db_path: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to checkpoint database",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = Path("checkpoints.db"),
+    limit: Annotated[
+        int, typer.Option("--limit", "-n", help="Maximum number of runs to show")
+    ] = 50,
+):
+    """List all runs awaiting human decision."""
+
+    async def _list_interrupts():
+        debugger = get_debugger(db_path)
+        try:
+            await debugger.backend.initialize()
+            await debugger.show_interrupted_runs()
+        finally:
+            await debugger.backend.close()
+
+    asyncio.run(_list_interrupts())
+
+
+@app.command()
+def show_interrupt(
+    run_id: Annotated[str, typer.Argument(help="Run ID to show interrupt context for")],
+    db_path: Annotated[
+        Path,
+        typer.Option(
+            "--db",
+            help="Path to checkpoint database",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = Path("checkpoints.db"),
+):
+    """Show detailed context at interrupt point."""
+
+    async def _show_interrupt():
+        debugger = get_debugger(db_path)
+        try:
+            await debugger.backend.initialize()
+            await debugger.show_interrupt_context(run_id=cast(RunId, run_id))
+        except ValueError as e:
+            console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(code=1) from None
+        finally:
+            await debugger.backend.close()
+
+    asyncio.run(_show_interrupt())
+
+
+@app.command()
+def resume_with_decision(
+    run_id: Annotated[str, typer.Argument(help="Run ID to resume")],
+    decision_json: Annotated[
+        str,
+        typer.Option(
+            "--decision",
+            "-d",
+            help="Human decision as JSON string",
+        ),
+    ],
+    db_path: Annotated[
+        Path,
+        typer.Option(
+            "--db",
+            help="Path to checkpoint database",
+            exists=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = Path("checkpoints.db"),
+):
+    """Resume interrupted run with human decision.
+
+    Example:
+        pydantic-flow debug resume-with-decision abc123 --decision '{"approved": true}'
+
+    """
+    import json
+
+    async def _resume_with_decision():
+        debugger = get_debugger(db_path)
+        try:
+            await debugger.backend.initialize()
+
+            # Parse decision JSON
+            try:
+                decision = json.loads(decision_json)
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Invalid JSON:[/red] {e}")
+                raise typer.Exit(code=1) from None
+
+            # Get interrupt snapshot
+            snapshot = await debugger.inspector.get_interrupt_snapshot(
+                cast(RunId, run_id)
+            )
+            if not snapshot:
+                console.print(f"[red]No interrupt snapshot found for {run_id}[/red]")
+                raise typer.Exit(code=1) from None
+
+            console.print(
+                f"\n[bold]Resuming run {run_id[:12]}...[/bold]\n"
+                f"Snapshot ID: {snapshot.snapshot_id}\n"
+                f"Wave: {snapshot.wave_number}\n"
+                f"Decision: {decision}\n"
+            )
+
+            console.print(
+                "[yellow]Note: This command prepares the resume context. "
+                "You'll need to call Flow.resume_from_snapshot() "
+                "in your code to actually resume execution.[/yellow]"
+            )
+
+            # Show how to use the snapshot
+            console.print("\n[bold]Example code:[/bold]")
+            console.print(
+                f"""
+from pathlib import Path
+from pydantic_flow.checkpoints.backends.sqlite import (
+    SQLiteCheckpointBackend,
+    SQLiteCheckpointConfig,
+)
+from pydantic_flow.checkpoints.types import RunId
+from pydantic_flow import RunConfig
+
+# Initialize backend
+config = SQLiteCheckpointConfig(db_path=Path("{db_path}"))
+backend = SQLiteCheckpointBackend(config=config)
+await backend.initialize()
+
+# Get snapshot
+snapshot = await backend.get_state_snapshot(
+    RunId("{run_id}"),
+    wave_number={snapshot.wave_number}
+)
+
+# Resume flow
+run_config = RunConfig(checkpoint_backend=backend)
+result = await flow.resume_from_snapshot(
+    snapshot=snapshot,
+    inputs=original_inputs,
+    config=run_config,
+    human_decision={decision_json}
+)
+"""
+            )
+
+        except ValueError as e:
+            console.print(f"[red]Error:[/red] {e}")
+            raise typer.Exit(code=1) from None
+        finally:
+            await debugger.backend.close()
+
+    asyncio.run(_resume_with_decision())
+
+
 if __name__ == "__main__":
     app()

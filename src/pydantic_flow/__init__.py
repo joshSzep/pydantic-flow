@@ -21,7 +21,6 @@ from pydantic_flow.flow import ExecutionMode
 from pydantic_flow.flow import Flow
 from pydantic_flow.flow import FlowError
 from pydantic_flow.hitl import ApprovalNode
-from pydantic_flow.hitl import FlowCheckpoint
 from pydantic_flow.hitl import HandlerPriority
 from pydantic_flow.hitl import HumanInputRequest
 from pydantic_flow.hitl import HumanNode
@@ -136,7 +135,6 @@ __all__ = [
     "ExecutionMode",
     "FSLoader",
     "Flow",
-    "FlowCheckpoint",
     "FlowError",
     "FlowNode",
     "FlowTimeoutError",

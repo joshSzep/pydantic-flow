@@ -16,7 +16,6 @@ from pydantic import Field
 from pydantic import model_validator
 
 from pydantic_flow.cache.middleware import maybe_cached_execute
-from pydantic_flow.core.durability import DurabilityMode
 from pydantic_flow.core.errors import FlowError
 from pydantic_flow.core.errors import FlowTimeoutError
 from pydantic_flow.core.errors import RecursionLimitError
@@ -24,18 +23,12 @@ from pydantic_flow.core.errors import RoutingError
 from pydantic_flow.core.routing import Route
 from pydantic_flow.core.routing import T_Route
 from pydantic_flow.core.run_config import RunConfig
-from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
-from pydantic_flow.hitl.checkpoints.interface import CheckpointStore
-from pydantic_flow.hitl.checkpoints.interface import RunId
-from pydantic_flow.hitl.checkpoints.interface import generate_checkpoint_id
-from pydantic_flow.hitl.interrupts import FlowCheckpoint
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes.protocols import NodeWithInput
 from pydantic_flow.nodes.protocols import NodeWithInputs
 from pydantic_flow.nodes.protocols import has_input_dependency
 from pydantic_flow.nodes.protocols import has_multiple_inputs
 from pydantic_flow.streaming import ToolResult
-from pydantic_flow.telemetry.helpers import instrument_checkpoint_write
 
 if TYPE_CHECKING:
     pass
@@ -167,78 +160,6 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
         self.flow_id = config.flow_id
         self._background_tasks: set[Any] = set()
 
-    def _create_checkpoint(
-        self,
-        last_frontier: list[str],
-        results: dict[str, Any],
-        run_id: str,
-        checkpoint_reason: str = "interruption",
-        checkpoint_node_id: str | None = None,
-        execution_progress: dict[str, str] | None = None,
-    ) -> FlowCheckpoint:
-        """Create a checkpoint for flow resumption.
-
-        Args:
-            last_frontier: Nodes in the last executed frontier.
-            results: Current node execution results.
-            run_id: Current run identifier.
-            checkpoint_reason: Reason for checkpoint creation.
-            checkpoint_node_id: ID of the node that just completed.
-            execution_progress: Map of node_id to execution status.
-
-        Returns:
-            FlowCheckpoint with captured state.
-
-        """
-        interrupted_node_id = last_frontier[-1] if last_frontier else "unknown"
-        return FlowCheckpoint(
-            flow_id=self.flow_id or "stepper_engine",
-            run_id=run_id,
-            interrupted_node_id=interrupted_node_id,
-            node_states=results.copy(),
-            edge_history=[],
-            conversation_memory=None,
-            execution_progress=execution_progress or {},
-            checkpoint_reason=checkpoint_reason,
-            checkpoint_node_id=checkpoint_node_id,
-        )
-
-    async def _persist_checkpoint(
-        self,
-        checkpoint: FlowCheckpoint,
-        store: CheckpointStore,
-        durability_mode: str | None = None,
-    ) -> CheckpointEnvelope:
-        """Persist a checkpoint to the configured store.
-
-        Args:
-            checkpoint: The checkpoint to persist.
-            store: The checkpoint store to use.
-            durability_mode: Optional durability mode for telemetry.
-
-        Returns:
-            CheckpointEnvelope with persisted checkpoint details.
-
-        """
-        checkpoint_id = generate_checkpoint_id()
-        envelope = CheckpointEnvelope(
-            id=checkpoint_id,
-            run_id=RunId(checkpoint.run_id),
-            node_id=checkpoint.interrupted_node_id,
-            checkpoint=checkpoint,
-        )
-
-        # Add telemetry for checkpoint persistence
-        if durability_mode:
-            async with instrument_checkpoint_write(
-                node_id=checkpoint.interrupted_node_id or "unknown",
-                durability_mode=durability_mode,
-                checkpoint_size=None,  # Could calculate from envelope if needed
-            ):
-                return await store.save(envelope)
-
-        return await store.save(envelope)
-
     async def _maybe_checkpoint_after_frontier(
         self,
         config: RunConfig,
@@ -249,6 +170,9 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
     ) -> None:
         """Create checkpoint after frontier execution if durability mode requires it.
 
+        Note: V1 checkpoint logic removed. V2 CheckpointManager handles all
+        checkpointing automatically during flow execution.
+
         Args:
             config: Run configuration with checkpoint store and durability mode.
             current_frontier: Nodes that were just executed.
@@ -257,34 +181,8 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
             execution_progress: Optional execution progress tracking.
 
         """
-        if config.checkpoint_store is None:
-            return
-        if config.durability_mode == DurabilityMode.EXIT:
-            return
-
-        checkpoint = self._create_checkpoint(
-            last_frontier=current_frontier,
-            results=results,
-            run_id=run_id,
-            checkpoint_reason="node_completion",
-            checkpoint_node_id=(current_frontier[-1] if current_frontier else None),
-            execution_progress=execution_progress,
-        )
-        if config.durability_mode == DurabilityMode.SYNC:
-            await self._persist_checkpoint(
-                checkpoint,
-                config.checkpoint_store,
-                durability_mode=config.durability_mode.value,
-            )
-        elif config.durability_mode == DurabilityMode.ASYNC:
-            coro = self._persist_checkpoint(
-                checkpoint,
-                config.checkpoint_store,
-                durability_mode=config.durability_mode.value,
-            )
-            task = asyncio.create_task(coro)
-            self._background_tasks.add(task)
-            task.add_done_callback(self._background_tasks.discard)
+        # V1 checkpoint code removed - V2 CheckpointManager handles this
+        pass
 
     async def _checkpoint_on_exit(
         self,
@@ -297,6 +195,9 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
     ) -> None:
         """Create checkpoint on flow exit if EXIT durability mode is enabled.
 
+        Note: V1 checkpoint logic removed. V2 CheckpointManager handles all
+        checkpointing automatically during flow execution.
+
         Args:
             config: Run configuration with checkpoint store and durability mode.
             current_frontier: Last executed frontier.
@@ -306,23 +207,8 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
             checkpoint_reason: Reason for checkpoint (flow_end or error).
 
         """
-        if (
-            config.checkpoint_store is not None
-            and config.durability_mode == DurabilityMode.EXIT
-        ):
-            checkpoint = self._create_checkpoint(
-                last_frontier=current_frontier,
-                results=results,
-                run_id=run_id,
-                checkpoint_reason=checkpoint_reason,
-                checkpoint_node_id=(current_frontier[-1] if current_frontier else None),
-                execution_progress=execution_progress,
-            )
-            await self._persist_checkpoint(
-                checkpoint,
-                config.checkpoint_store,
-                durability_mode=config.durability_mode.value,
-            )
+        # V1 checkpoint code removed - V2 CheckpointManager handles this
+        pass
 
     async def invoke(  # noqa: PLR0912, PLR0915
         self,
@@ -363,23 +249,42 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
         for node_name in self.nodes_by_name:
             execution_progress[node_name] = "pending"
 
-        # Initialize checkpoint v2 manager if configured
-        checkpoint_manager = None
-        if config.checkpoint_v2_backend is not None:
+        # Initialize checkpoint manager (creates default in-memory backend if needed)
+        backend = config.checkpoint_backend
+        backend_created_by_us = False
+
+        # Create default in-memory SQLite backend if none provided
+        if backend is None:
+            backend_created_by_us = True
             # isort: off
-            from pydantic_flow.checkpoints import CheckpointConfig  # noqa: PLC0415
-            from pydantic_flow.checkpoints import CheckpointManager  # noqa: PLC0415
-            from pydantic_flow.checkpoints.types import RunId as V2RunId  # noqa: PLC0415
+            from pathlib import Path  # noqa: PLC0415
+
+            from pydantic_flow.checkpoints.backends.sqlite import (  # noqa: PLC0415
+                SQLiteCheckpointBackend,
+            )
+            from pydantic_flow.checkpoints.backends.sqlite import SQLiteCheckpointConfig  # noqa: PLC0415
             # isort: on
 
-            v2_config = config.checkpoint_v2_config or CheckpointConfig()
-            checkpoint_manager = CheckpointManager(
-                config=v2_config,
-                storage=config.checkpoint_v2_backend,
-                flow_id=self.flow_id or "stepper_engine",
-                run_id=V2RunId(run_id),
+            backend = SQLiteCheckpointBackend(
+                config=SQLiteCheckpointConfig(db_path=Path(":memory:"))
             )
-            await checkpoint_manager.initialize_run()
+            await backend.initialize()
+
+        # Always create checkpoint manager for HITL support
+        # isort: off
+        from pydantic_flow.checkpoints import CheckpointConfig  # noqa: PLC0415
+        from pydantic_flow.checkpoints import CheckpointManager  # noqa: PLC0415
+        from pydantic_flow.checkpoints.types import RunId as CheckpointRunId  # noqa: PLC0415
+        # isort: on
+
+        checkpoint_cfg = config.checkpoint_config or CheckpointConfig()
+        checkpoint_manager = CheckpointManager(
+            config=checkpoint_cfg,
+            storage=backend,
+            flow_id=self.flow_id or "stepper_engine",
+            run_id=CheckpointRunId(run_id),
+        )
+        await checkpoint_manager.initialize_run()
 
         try:
             while frontier:
@@ -489,6 +394,10 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
 
             msg = f"Flow execution failed: {e}"
             raise FlowError(msg) from e
+        finally:
+            # Clean up auto-created backend to prevent hanging
+            if backend_created_by_us and backend is not None:
+                await backend.close()
 
     def _validate_input_type(self, inputs: InputT) -> None:
         """Validate input type matches expected type."""
@@ -575,7 +484,7 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
                 # Stream through node execution to capture events
                 result = None
                 async for item in node.astream(input_data):
-                    await event_log.append_event(item)
+                    await event_log.append(item)
                     # Extract result from ToolResult if available
                     if isinstance(item, ToolResult) and item.result is not None:
                         result = item.result
@@ -583,9 +492,6 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
                 # If no result extracted from stream, call run() to get it
                 if result is None:
                     result = await node.run(input_data)
-
-                # Flush events to storage
-                await event_log.flush()
             else:
                 # Direct execution without event capture
                 result = await node.run(input_data)

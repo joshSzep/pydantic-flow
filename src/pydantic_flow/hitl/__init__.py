@@ -28,7 +28,6 @@ Example:
 
 from pydantic_flow.hitl.decisions import InterruptCallback
 from pydantic_flow.hitl.decisions import InterruptDecision
-from pydantic_flow.hitl.interrupts import FlowCheckpoint
 from pydantic_flow.hitl.interrupts import HandlerPriority
 from pydantic_flow.hitl.interrupts import InterruptHandlerRegistration
 from pydantic_flow.hitl.interrupts import InterruptionRequested
@@ -39,7 +38,6 @@ from pydantic_flow.hitl.nodes import HumanResponse
 
 __all__ = [
     "ApprovalNode",
-    "FlowCheckpoint",
     "HandlerPriority",
     "HumanInputRequest",
     "HumanNode",

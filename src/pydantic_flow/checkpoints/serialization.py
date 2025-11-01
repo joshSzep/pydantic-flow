@@ -148,6 +148,10 @@ class TypedSerializer:
             Hex-encoded SHA-256 hash of schema.
 
         """
+        # Handle BaseModel itself (no schema available)
+        if model_class is BaseModel:
+            return "basemodel_generic"
+
         schema_json = model_class.model_json_schema()
         canonical = json.dumps(schema_json, sort_keys=True)
         return hashlib.sha256(canonical.encode()).hexdigest()

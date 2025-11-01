@@ -1,20 +1,24 @@
-"""Simple Human-in-the-Loop (HITL) example.
+"""Simple Human-in-the-Loop (HITL) example with unified checkpoint system.
 
-This example demonstrates interrupt handlers with checkpoint persistence and resumption.
+This example demonstrates:
+1. Interrupt handlers with checkpoint persistence
+2. Querying interrupted runs using CheckpointInspector
+3. Viewing interrupt context with CheckpointDebugger
 """
 
 import asyncio
+from pathlib import Path
 
 from pydantic import BaseModel
 
 from pydantic_flow import Flow
 from pydantic_flow import PromptConfig
 from pydantic_flow import PromptNode
+from pydantic_flow.checkpoints.backends.sqlite import SQLiteCheckpointBackend
+from pydantic_flow.checkpoints.backends.sqlite import SQLiteCheckpointConfig
+from pydantic_flow.checkpoints.debugger import CheckpointDebugger
+from pydantic_flow.checkpoints.inspection import CheckpointInspector
 from pydantic_flow.core.run_config import RunConfig
-from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
-from pydantic_flow.hitl.checkpoints.interface import RunId
-from pydantic_flow.hitl.checkpoints.interface import list_interrupted
-from pydantic_flow.hitl.checkpoints.memory import InMemoryCheckpointStore
 from pydantic_flow.hitl.decisions import InterruptDecision
 from pydantic_flow.hitl.interrupts import HandlerPriority
 from pydantic_flow.hitl.interrupts import InterruptionRequested
@@ -46,11 +50,14 @@ async def example_no_review(flow: Flow, input_data: ContentInput) -> None:
         print("✅ Workflow completed without interruption")
         print(f"   Result: {result.text}\n")
     except InterruptionRequested as exc:
-        print(f"Unexpected interruption: {exc.checkpoint}\n")
+        print(f"Unexpected interruption: {exc.snapshot}\n")
 
 
 async def example_with_persistence(
-    flow: Flow, input_data: ContentInput, store: InMemoryCheckpointStore, run_id: str
+    flow: Flow,
+    input_data: ContentInput,
+    backend: SQLiteCheckpointBackend,
+    run_id: str,
 ) -> None:
     """Example 2: Interrupt with checkpoint persistence."""
     print("=" * 60)
@@ -68,78 +75,109 @@ async def example_with_persistence(
 
     flow.register_interrupt_handler(always_review, priority=HandlerPriority.HIGH)
 
-    # Configure run with checkpoint store
-    config = RunConfig(checkpoint_store=store, run_id=run_id)
+    # Configure run with checkpoint backend
+    config = RunConfig(checkpoint_backend=backend, run_id=run_id)
 
     try:
         result = await flow.run(input_data, config=config)
         print(f"Unexpected success: {result}\n")
     except InterruptionRequested as exc:
-        checkpoint = exc.checkpoint
+        snapshot = exc.snapshot
         print("✋ Workflow interrupted for human review")
-        print(f"   Flow ID: {checkpoint.flow_id}")
-        print(f"   Interrupted at node: {checkpoint.interrupted_node_id}")
-        print(f"   Checkpoint ID: {checkpoint.metadata.get('checkpoint_id')}")
-        print("\n📦 Checkpoint automatically saved to store")
+        print(f"   Run ID: {snapshot.run_id}")
+        print(f"   Snapshot ID: {snapshot.snapshot_id}")
+        print(f"   Interrupted at node: {snapshot.interrupted_node_id}")
+        print(f"   Wave number: {snapshot.wave_number}")
+        print("\n📦 Checkpoint automatically saved to V2 backend")
         print("   Interrupt reason: Final review required")
-        print(f"   Node state captured: {'processor' in checkpoint.node_states}")
+        state_count = len(snapshot.full_state) if snapshot.full_state else 0
+        print(f"   State captured: {state_count} nodes")
 
 
-async def example_query_checkpoints(
-    store: InMemoryCheckpointStore, run_id: str
+async def example_query_interrupted_runs(
+    inspector: CheckpointInspector,
+    debugger: CheckpointDebugger,
 ) -> None:
-    """Example 3: Query interrupted checkpoints."""
+    """Example 3: Query interrupted runs using V2 APIs."""
     print("\n=" * 60)
-    print("Example 3: Query interrupted checkpoints")
+    print("Example 3: Query interrupted runs (V2 APIs)")
     print("=" * 60 + "\n")
 
-    query = CheckpointQuery(run_id=RunId(run_id))
-    interrupted_checkpoints, _ = await list_interrupted(store, query)
+    # List all interrupted runs
+    interrupted_runs = await inspector.list_interrupted_runs(limit=10)
 
-    print(f"📋 Found {len(interrupted_checkpoints)} interrupted checkpoint(s)")
-    for envelope in interrupted_checkpoints:
-        print(f"   - ID: {envelope.id}")
-        print(f"   - Reason: {envelope.interrupt_reason}")
-        print(f"   - Metadata: {envelope.interrupt_metadata}")
-        print(f"   - Node: {envelope.node_id}")
-        print(f"   - Created: {envelope.created_at}")
+    print(f"📋 Found {len(interrupted_runs)} interrupted run(s)")
+
+    if interrupted_runs:
+        # Show details for the first interrupted run
+        run = interrupted_runs[0]
+        print(f"\n🔍 Inspecting run: {run.run_id}")
+        print(f"   Flow ID: {run.flow_id}")
+        print(f"   Status: {run.status}")
+        print(f"   Started: {run.started_at}")
+        print(f"   Total waves: {run.total_waves}")
+
+        # Get the interrupt snapshot
+        snapshot = await inspector.get_interrupt_snapshot(run.run_id)
+        if snapshot:
+            print("\n📸 Interrupt snapshot found:")
+            print(f"   Snapshot ID: {snapshot.snapshot_id}")
+            print(f"   Wave: {snapshot.wave_number}")
+            print(f"   Reason: {snapshot.reason}")
+            print(f"   Metadata: {snapshot.metadata}")
+
+        # Show rich formatted context
+        print("\n" + "=" * 60)
+        print("Rich formatted interrupt context:")
+        print("=" * 60)
+        await debugger.show_interrupt_context(run.run_id)
 
     print("\n💡 In production, you would:")
-    print("   1. Present the checkpoint to a reviewer UI")
-    print("   2. Wait for human approval/rejection")
-    print("   3. Resume execution with flow.resume_from_store()")
-    print("   4. Or implement custom approval workflows")
+    print("   1. Use CheckpointInspector to find interrupted runs")
+    print("   2. Present the snapshot to a reviewer UI")
+    print("   3. Wait for human approval/rejection")
+    print("   4. Resume with flow.resume_from_snapshot()")
 
 
-async def main():
-    """Run simple HITL workflow with checkpoint persistence."""
-    # Create a processing node
-    processor = PromptNode[ContentInput, Summary](
-        prompt="Summarize this text: {input.text}",
-        config=PromptConfig(model="openai:gpt-4"),
-        name="processor",
-    )
+async def main() -> None:
+    """Run simple HITL workflow with V2 checkpoint persistence."""
+    # Create V2 checkpoint backend (in-memory SQLite)
+    config = SQLiteCheckpointConfig(db_path=Path(":memory:"))
+    backend = SQLiteCheckpointBackend(config)
+    await backend.initialize()
 
-    # Build flow
-    flow = Flow(input_type=ContentInput, output_type=Summary)
-    flow.add_nodes(processor)
+    # Create inspector and debugger for querying
+    inspector = CheckpointInspector(backend)
+    debugger = CheckpointDebugger(backend)
 
-    # Create checkpoint store for persistence
-    store = InMemoryCheckpointStore()
+    try:
+        # Create a processing node
+        processor = PromptNode[ContentInput, Summary](
+            prompt="Summarize this text: {text}",
+            config=PromptConfig(model="openai:gpt-4"),
+            name="processor",
+        )
 
-    # Run examples
-    await example_no_review(
-        flow, ContentInput(text="The sky is blue.", requires_review=False)
-    )
+        # Build flow
+        flow = Flow(input_type=ContentInput, output_type=Summary)
+        flow.add_nodes(processor)
 
-    await example_with_persistence(
-        flow,
-        ContentInput(text="Important company announcement.", requires_review=True),
-        store,
-        run_id="review_run_001",
-    )
+        # Run examples
+        await example_no_review(
+            flow, ContentInput(text="The sky is blue.", requires_review=False)
+        )
 
-    await example_query_checkpoints(store, "review_run_001")
+        await example_with_persistence(
+            flow,
+            ContentInput(text="Important company announcement.", requires_review=True),
+            backend,
+            run_id="review_run_001",
+        )
+
+        await example_query_interrupted_runs(inspector, debugger)
+
+    finally:
+        await backend.close()
 
 
 if __name__ == "__main__":

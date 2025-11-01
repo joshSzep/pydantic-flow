@@ -16,10 +16,13 @@ import aiosqlite
 from pydantic import BaseModel
 from pydantic import Field
 
+from pydantic_flow.checkpoints.conversation import ConversationMessage
+from pydantic_flow.checkpoints.types import ConversationMessageId
 from pydantic_flow.checkpoints.types import ExecutionTrace
 from pydantic_flow.checkpoints.types import NodeExecutionTrace
 from pydantic_flow.checkpoints.types import RunId
 from pydantic_flow.checkpoints.types import RunMetadata
+from pydantic_flow.checkpoints.types import SnapshotReason
 from pydantic_flow.checkpoints.types import StateSnapshot
 
 
@@ -127,12 +130,17 @@ class SQLiteCheckpointBackend:
             state_hash TEXT NOT NULL,
             trace_id TEXT,
             created_at TIMESTAMP NOT NULL,
+            reason TEXT NOT NULL DEFAULT 'automatic',
+            interrupted_node_id TEXT,
+            conversation_head_id TEXT,
             UNIQUE(run_id, wave_number)
         );
         CREATE INDEX IF NOT EXISTS idx_snapshots_run_wave
             ON state_snapshots(run_id, wave_number);
         CREATE INDEX IF NOT EXISTS idx_snapshots_created
             ON state_snapshots(created_at);
+        CREATE INDEX IF NOT EXISTS idx_snapshots_reason
+            ON state_snapshots(run_id, reason);
 
         -- Execution traces (Track 2: Debugging)
         CREATE TABLE IF NOT EXISTS execution_traces (
@@ -175,12 +183,46 @@ class SQLiteCheckpointBackend:
             status TEXT NOT NULL,
             total_waves INTEGER NOT NULL,
             error_json TEXT,
-            created_at TIMESTAMP NOT NULL
+            created_at TIMESTAMP NOT NULL,
+            interrupted_at_wave INTEGER,
+            interrupt_snapshot_id TEXT,
+            awaiting_human_decision INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_runs_started
             ON run_metadata(started_at DESC);
         CREATE INDEX IF NOT EXISTS idx_runs_status
             ON run_metadata(status);
+
+        -- Conversation messages (linked list)
+        CREATE TABLE IF NOT EXISTS conversation_messages (
+            message_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            previous_message_id TEXT,
+            created_at TIMESTAMP NOT NULL,
+            data_compressed BLOB NOT NULL,
+            FOREIGN KEY (previous_message_id)
+                REFERENCES conversation_messages(message_id) ON DELETE SET NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_messages_run
+            ON conversation_messages(run_id);
+        CREATE INDEX IF NOT EXISTS idx_messages_created
+            ON conversation_messages(created_at);
+
+        -- Snapshot-to-conversation references (for safe pruning)
+        -- Tracks which snapshots reference which conversation head
+        -- Messages in a chain up to a referenced head are protected from pruning
+        CREATE TABLE IF NOT EXISTS snapshot_conversation_refs (
+            snapshot_id TEXT NOT NULL,
+            conversation_head_id TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL,
+            PRIMARY KEY (snapshot_id, conversation_head_id),
+            FOREIGN KEY (snapshot_id)
+                REFERENCES state_snapshots(snapshot_id) ON DELETE CASCADE,
+            FOREIGN KEY (conversation_head_id)
+                REFERENCES conversation_messages(message_id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_snapshot_conv_refs_head
+            ON snapshot_conversation_refs(conversation_head_id);
         """
 
         await self.db.executescript(schema)
@@ -198,13 +240,17 @@ class SQLiteCheckpointBackend:
             """
             INSERT INTO run_metadata
                 (run_id, flow_id, started_at, completed_at, status,
-                 total_waves, error_json, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                 total_waves, error_json, created_at, interrupted_at_wave,
+                 interrupt_snapshot_id, awaiting_human_decision)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?)
             ON CONFLICT(run_id) DO UPDATE SET
                 completed_at = excluded.completed_at,
                 status = excluded.status,
                 total_waves = excluded.total_waves,
-                error_json = excluded.error_json
+                error_json = excluded.error_json,
+                interrupted_at_wave = excluded.interrupted_at_wave,
+                interrupt_snapshot_id = excluded.interrupt_snapshot_id,
+                awaiting_human_decision = excluded.awaiting_human_decision
             """,
             (
                 metadata.run_id,
@@ -214,6 +260,9 @@ class SQLiteCheckpointBackend:
                 metadata.status.value,
                 metadata.total_waves,
                 error_json,
+                metadata.interrupted_at_wave,
+                metadata.interrupt_snapshot_id,
+                1 if metadata.awaiting_human_decision else 0,
             ),
         )
         await self.db.commit()
@@ -246,8 +295,9 @@ class SQLiteCheckpointBackend:
             """
             INSERT INTO state_snapshots
                 (snapshot_id, run_id, wave_number, data_compressed,
-                 state_hash, trace_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                 state_hash, trace_id, created_at, reason,
+                 interrupted_node_id, conversation_head_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(snapshot_id) DO UPDATE SET
                 trace_id = excluded.trace_id
             """,
@@ -259,8 +309,28 @@ class SQLiteCheckpointBackend:
                 snapshot.state_hash,
                 snapshot.trace_id,
                 snapshot.created_at.isoformat(),
+                snapshot.reason.value,
+                snapshot.interrupted_node_id,
+                snapshot.conversation_head_id,
             ),
         )
+
+        # Track snapshot→conversation reference for safe pruning
+        if snapshot.conversation_head_id:
+            await self.db.execute(
+                """
+                INSERT INTO snapshot_conversation_refs
+                    (snapshot_id, conversation_head_id, created_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(snapshot_id, conversation_head_id) DO NOTHING
+                """,
+                (
+                    snapshot.snapshot_id,
+                    snapshot.conversation_head_id,
+                    snapshot.created_at.isoformat(),
+                ),
+            )
+
         await self.db.commit()
 
     async def get_state_snapshot(
@@ -544,7 +614,154 @@ class SQLiteCheckpointBackend:
                 "DELETE FROM state_snapshots WHERE run_id = ?", (run_id,)
             )
 
+        # Delete conversation messages
+        await self.db.execute(
+            "DELETE FROM conversation_messages WHERE run_id = ?", (run_id,)
+        )
+
         await self.db.commit()
+
+    async def save_conversation_message(self, message: ConversationMessage) -> None:
+        """Save conversation message."""
+        if not self.db:
+            msg = "Database not initialized"
+            raise RuntimeError(msg)
+
+        data_compressed = message.serialize()
+
+        await self.db.execute(
+            """
+            INSERT INTO conversation_messages
+                (message_id, run_id, previous_message_id, created_at,
+                 data_compressed)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                message.message_id,
+                message.run_id,
+                message.previous_message_id,
+                message.created_at.isoformat(),
+                data_compressed,
+            ),
+        )
+        await self.db.commit()
+
+    async def get_conversation_message(
+        self, message_id: ConversationMessageId
+    ) -> ConversationMessage | None:
+        """Retrieve conversation message."""
+        if not self.db:
+            msg = "Database not initialized"
+            raise RuntimeError(msg)
+
+        cursor = await self.db.execute(
+            """
+            SELECT data_compressed
+            FROM conversation_messages
+            WHERE message_id = ?
+            """,
+            (message_id,),
+        )
+        row = await cursor.fetchone()
+
+        if not row:
+            return None
+
+        return ConversationMessage.deserialize(row["data_compressed"])
+
+    async def get_conversation_history(
+        self,
+        head_id: ConversationMessageId,
+        limit: int | None = None,
+    ) -> list[ConversationMessage]:
+        """Retrieve conversation history by walking linked list."""
+        if not self.db:
+            msg = "Database not initialized"
+            raise RuntimeError(msg)
+
+        messages = []
+        current_id: ConversationMessageId | None = head_id
+
+        while current_id and (limit is None or len(messages) < limit):
+            message = await self.get_conversation_message(current_id)
+            if not message:
+                break
+            messages.append(message)
+            current_id = message.previous_message_id
+
+        return messages
+
+    async def get_snapshots_by_reason(
+        self,
+        run_id: RunId,
+        reason: SnapshotReason,
+        limit: int | None = None,
+    ) -> list[StateSnapshot]:
+        """Query snapshots by reason."""
+        if not self.db:
+            msg = "Database not initialized"
+            raise RuntimeError(msg)
+
+        query = """
+            SELECT data_compressed
+            FROM state_snapshots
+            WHERE run_id = ? AND reason = ?
+            ORDER BY created_at DESC
+        """
+        params: list[str | int] = [run_id, reason.value]
+
+        if limit:
+            query += " LIMIT ?"
+            params.append(limit)
+
+        cursor = await self.db.execute(query, params)
+        rows = await cursor.fetchall()
+
+        return [StateSnapshot.deserialize(row["data_compressed"]) for row in rows]
+
+    async def get_protected_conversation_messages(
+        self,
+        run_id: RunId,
+    ) -> set[ConversationMessageId]:
+        """Get conversation message IDs protected by snapshots.
+
+        Uses recursive CTE to walk backward from all snapshot conversation
+        heads to build the complete set of protected messages.
+        """
+        if not self.db:
+            msg = "Database not initialized"
+            raise RuntimeError(msg)
+
+        cursor = await self.db.execute(
+            """
+            WITH RECURSIVE protected_messages AS (
+                -- Start with all conversation heads referenced by snapshots
+                SELECT DISTINCT conversation_head_id as message_id
+                FROM state_snapshots
+                WHERE run_id = ?
+                  AND conversation_head_id IS NOT NULL
+
+                UNION
+
+                -- Walk backward through the linked list
+                SELECT cm.previous_message_id as message_id
+                FROM protected_messages pm
+                JOIN conversation_messages cm
+                  ON pm.message_id = cm.message_id
+                WHERE cm.previous_message_id IS NOT NULL
+            )
+            SELECT message_id FROM protected_messages
+            WHERE message_id IS NOT NULL
+            """,
+            (run_id,),
+        )
+        rows = await cursor.fetchall()
+
+        return {
+            ConversationMessageId(row["message_id"])
+            for row in rows
+            if row["message_id"]
+        }
 
     async def append_events_batch(
         self,

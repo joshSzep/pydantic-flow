@@ -9,10 +9,8 @@ from pydantic_flow import ExecutionMode
 from pydantic_flow import Flow
 from pydantic_flow import MergeParserNode
 from pydantic_flow import MergeToolNode
-from pydantic_flow.core.errors import FlowError
 from pydantic_flow.core.routing import Route
 from pydantic_flow.hitl.decisions import InterruptDecision
-from pydantic_flow.hitl.interrupts import FlowCheckpoint
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import IfNode
 from pydantic_flow.nodes import ParserNode
@@ -345,76 +343,6 @@ async def test_flow_run_type_mismatch():
 
     with pytest.raises(TypeError, match="Input type mismatch"):
         await flow.run(WrongInput(wrong="test"))  # type: ignore
-
-
-# Test resume checkpoint validation (flow.py lines 177-191)
-@pytest.mark.asyncio
-async def test_flow_resume_checkpoint_mismatch():
-    """Test resume fails with mismatched flow_id."""
-    node = SimpleNode(name="node")
-    flow = Flow(
-        input_type=SimpleState,
-        output_type=SimpleState,
-    )
-    flow.add_nodes(node)
-
-    # Create checkpoint with different flow_id
-    checkpoint = FlowCheckpoint(
-        flow_id="different-flow-id",
-        run_id="test-run",
-        interrupted_node_id="node",
-        node_states={},
-        edge_history=[],
-    )
-
-    with pytest.raises(FlowError, match="Checkpoint flow_id mismatch"):
-        await flow.resume(checkpoint, SimpleState(value=0))
-
-
-@pytest.mark.asyncio
-async def test_flow_resume_missing_interrupted_node():
-    """Test resume fails when interrupted node not found."""
-    node = SimpleNode(name="node")
-    flow = Flow(
-        input_type=SimpleState,
-        output_type=SimpleState,
-    )
-    flow.add_nodes(node)
-
-    # Create checkpoint with non-existent interrupted node
-    checkpoint = FlowCheckpoint(
-        flow_id=flow.flow_id,
-        run_id="test-run",
-        interrupted_node_id="nonexistent",
-        node_states={},
-        edge_history=[],
-    )
-
-    with pytest.raises(FlowError, match="Interrupted node nonexistent not found"):
-        await flow.resume(checkpoint, SimpleState(value=0))
-
-
-# Test flow checkpoint creation (flow.py lines 141-158)
-def test_flow_create_checkpoint():
-    """Test that _create_checkpoint works correctly."""
-    node = SimpleNode(name="node1")
-    flow = Flow(
-        input_type=SimpleState,
-        output_type=SimpleState,
-    )
-    flow.add_nodes(node)
-
-    # Manually set up some state
-    flow._results = {"node1": SimpleState(value=42)}
-    flow._edge_history = [("node1", "node2")]
-
-    checkpoint = flow._create_checkpoint("node1", "run-123")
-
-    assert checkpoint.flow_id == flow.flow_id
-    assert checkpoint.run_id == "run-123"
-    assert checkpoint.interrupted_node_id == "node1"
-    assert checkpoint.node_states == {"node1": SimpleState(value=42)}
-    assert checkpoint.edge_history == [("node1", "node2")]
 
 
 # Test flow compile with ExecutionMode (flow.py lines 443-449)

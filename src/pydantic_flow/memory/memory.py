@@ -13,7 +13,10 @@ from typing import TYPE_CHECKING
 from typing import Protocol
 from typing import runtime_checkable
 
-from pydantic_flow.hitl.interrupts import FlowCheckpoint
+from pydantic_flow.checkpoints.types import SnapshotReason
+from pydantic_flow.checkpoints.types import StateSnapshot
+from pydantic_flow.checkpoints.types import generate_run_id
+from pydantic_flow.checkpoints.types import generate_snapshot_id
 from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.memory.events import MemoryCompressionComplete
 from pydantic_flow.memory.events import MemoryCompressionPending
@@ -229,13 +232,16 @@ class ConversationMemory:
                     # Recursively try with new compressor
                     return await self.maybe_compress()
                 # No replacement - create checkpoint and abort
-                checkpoint = FlowCheckpoint(
-                    flow_id="memory_compression",
-                    run_id="memory_compression",
+                checkpoint = StateSnapshot(
+                    snapshot_id=generate_snapshot_id(),
+                    run_id=generate_run_id(),
+                    wave_number=0,
+                    state_hash="",
+                    next_frontier=[],
+                    routing_ended=False,
+                    reason=SnapshotReason.HITL_INTERRUPT,
                     interrupted_node_id="memory_compression",
-                    node_states={},
-                    edge_history=[],
-                    conversation_memory=self._messages.copy(),
+                    metadata={"compression_rejected": True},
                 )
                 raise InterruptionRequested(checkpoint, decision)
 
@@ -282,13 +288,16 @@ class ConversationMemory:
                     return metrics
                 # No replacement - rollback to original
                 self._messages = original_messages
-                checkpoint = FlowCheckpoint(
-                    flow_id="memory_compression",
-                    run_id="memory_compression",
+                checkpoint = StateSnapshot(
+                    snapshot_id=generate_snapshot_id(),
+                    run_id=generate_run_id(),
+                    wave_number=0,
+                    state_hash="",
+                    next_frontier=[],
+                    routing_ended=False,
+                    reason=SnapshotReason.HITL_INTERRUPT,
                     interrupted_node_id="memory_compression",
-                    node_states={},
-                    edge_history=[],
-                    conversation_memory=original_messages,
+                    metadata={"compression_rejected": True, "rollback": True},
                 )
                 raise InterruptionRequested(checkpoint, decision)
 

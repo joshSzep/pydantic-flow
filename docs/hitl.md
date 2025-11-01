@@ -2,6 +2,30 @@
 
 Pydantic-flow provides comprehensive Human-in-the-Loop functionality, allowing workflows to pause execution, request human intervention, and resume with human-provided input. This enables review workflows, approval processes, and interactive decision-making.
 
+## Unified Checkpoint System
+
+HITL interruptions use the unified checkpoint system (`StateSnapshot`) providing:
+
+- **Unified architecture**: HITL interrupts use the same checkpoint system as debugging/time-travel
+- **Conversation preservation**: Full conversation history maintained at interrupt points
+- **Query tools**: CLI and API methods to list and inspect interrupted workflows
+- **Time-travel debugging**: Debug interrupted workflows using the same tools as regular execution
+- **Persistent snapshots**: All interrupts automatically create `reason=HITL_INTERRUPT` snapshots
+
+**CLI Tools:**
+```bash
+# List all runs awaiting human decisions
+pydantic-flow debug list-interrupts checkpoints.db
+
+# Show detailed context at interrupt point (state, conversation, metadata)
+pydantic-flow debug show-interrupt <run_id> --db checkpoints.db
+
+# Resume with human decision
+pydantic-flow debug resume-with-decision <run_id> --decision '{"approved": true}'
+```
+
+---
+
 ## Core Concepts
 
 ### Three-Layer Interruption Model

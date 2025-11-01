@@ -34,14 +34,18 @@ class RunConfig(BaseModel):
         Note: HITL (Human-in-the-Loop) interruptions create their own checkpoints
         independently of this setting. This mode controls automatic crash recovery.
 
-        checkpoint_store: Optional checkpoint store for persistence.
-            If provided, checkpoints are saved according to durability_mode.
         run_id: Optional run identifier for checkpoint correlation.
             If not provided, a new UUID will be generated.
         max_checkpoint_size_mb: Maximum checkpoint size in MB. Larger checkpoints
             emit warnings but don't fail. Default is 100 MB.
         checkpoint_compression: Enable gzip compression for node_states to reduce
             storage size. Default is True.
+        checkpoint_backend: Checkpoint storage backend for unified
+            checkpoint system (HITL, debugging, time-travel).
+            If None, an in-memory SQLite backend is automatically created
+            to enable HITL functionality out of the box.
+        checkpoint_config: Checkpoint configuration for trace sampling
+            and full snapshot frequency.
 
     """
 
@@ -62,10 +66,6 @@ class RunConfig(BaseModel):
         default=DurabilityMode.ASYNC,
         description="Checkpoint frequency mode for crash recovery",
     )
-    checkpoint_store: Any | None = Field(
-        default=None,
-        description="Optional checkpoint store for persistence",
-    )
     run_id: str | None = Field(
         default=None,
         description="Optional run identifier for checkpoint correlation",
@@ -83,16 +83,18 @@ class RunConfig(BaseModel):
         description="Enable gzip compression for checkpoint node_states",
     )
 
-    # Checkpoint v2 (time-travel debugging)
-    checkpoint_v2_backend: Any | None = Field(
+    # Unified checkpoint system
+    checkpoint_backend: Any | None = Field(
         default=None,
         description=(
-            "Optional checkpoint v2 storage backend for time-travel debugging"
+            "Optional checkpoint storage backend. "
+            "If None, an in-memory SQLite backend is created automatically "
+            "to enable HITL interrupts out of the box."
         ),
     )
-    checkpoint_v2_config: Any | None = Field(
+    checkpoint_config: Any | None = Field(
         default=None,
         description=(
-            "Optional checkpoint v2 configuration for trace sampling and full snapshots"
+            "Optional checkpoint configuration for trace sampling and full snapshots"
         ),
     )

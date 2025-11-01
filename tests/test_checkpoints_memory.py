@@ -1,58 +1,57 @@
-"""Tests for InMemoryCheckpointStore implementation."""
+"""Tests for in-memory checkpoint backend (V2)."""
+
+from pathlib import Path
 
 import pytest
 
-from pydantic_flow.hitl.checkpoints.memory import InMemoryCheckpointStore
-from tests.test_checkpoints_conformance import CheckpointStoreConformanceTests
+from pydantic_flow.checkpoints import CheckpointInspector
+from pydantic_flow.checkpoints import RunId
+from pydantic_flow.checkpoints import SnapshotReason
+from pydantic_flow.checkpoints import SQLiteCheckpointBackend
+from pydantic_flow.checkpoints import SQLiteCheckpointConfig
+from pydantic_flow.checkpoints import StateSnapshot
+from pydantic_flow.checkpoints.types import generate_snapshot_id
 
 
-class TestInMemoryCheckpointStore(CheckpointStoreConformanceTests):
-    """Run conformance tests against InMemoryCheckpointStore."""
+@pytest.mark.asyncio
+async def test_memory_backend_is_empty_initially():
+    """Test that a new in-memory backend is empty."""
+    config = SQLiteCheckpointConfig(db_path=Path(":memory:"))
+    backend = SQLiteCheckpointBackend(config)
+    await backend.initialize()
+    inspector = CheckpointInspector(backend)
 
-    @pytest.fixture
-    def store(self):
-        """Provide InMemoryCheckpointStore instance."""
-        return InMemoryCheckpointStore()
+    runs = await inspector.list_interrupted_runs()
+    assert len(runs) == 0
 
-    @pytest.mark.asyncio
-    async def test_store_is_empty_initially(self):
-        """Test that a new store is empty."""
-        from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
-        from pydantic_flow.hitl.checkpoints.interface import RunId
+    await backend.close()
 
-        store = InMemoryCheckpointStore()
 
-        query = CheckpointQuery(run_id=RunId("any_run"))
-        results, cursor = await store.list(query)
-        assert len(results) == 0
-        assert cursor is None
+@pytest.mark.asyncio
+async def test_memory_backend_isolation():
+    """Test that different in-memory backend instances don't share data."""
+    config1 = SQLiteCheckpointConfig(db_path=Path(":memory:"))
+    config2 = SQLiteCheckpointConfig(db_path=Path(":memory:"))
+    backend1 = SQLiteCheckpointBackend(config1)
+    backend2 = SQLiteCheckpointBackend(config2)
+    await backend1.initialize()
+    await backend2.initialize()
 
-    @pytest.mark.asyncio
-    async def test_store_isolation(self):
-        """Test that different store instances don't share data."""
-        from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
-        from pydantic_flow.hitl.checkpoints.interface import CheckpointId
-        from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
-        from pydantic_flow.hitl.checkpoints.interface import RunId
-        from pydantic_flow.hitl.interrupts import FlowCheckpoint
+    snapshot = StateSnapshot(
+        snapshot_id=generate_snapshot_id(),
+        run_id=RunId("run1"),
+        wave_number=0,
+        full_state={},
+        state_hash="test_hash",
+        next_frontier=[],
+        routing_ended=False,
+        reason=SnapshotReason.HITL_INTERRUPT,
+    )
+    await backend1.save_state_snapshot(snapshot)
 
-        store1 = InMemoryCheckpointStore()
-        store2 = InMemoryCheckpointStore()
+    inspector2 = CheckpointInspector(backend2)
+    runs = await inspector2.list_interrupted_runs()
+    assert len(runs) == 0
 
-        # Save to store1
-        checkpoint = FlowCheckpoint(
-            flow_id="test",
-            run_id="run1",
-            interrupted_node_id="node1",
-            node_states={},
-            edge_history=[],
-        )
-        envelope = CheckpointEnvelope(
-            id=CheckpointId("cp1"), run_id=RunId("run1"), checkpoint=checkpoint
-        )
-        await store1.save(envelope)
-
-        # Verify store2 is empty
-        query = CheckpointQuery(run_id=RunId("run1"))
-        results, _ = await store2.list(query)
-        assert len(results) == 0
+    await backend1.close()
+    await backend2.close()

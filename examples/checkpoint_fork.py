@@ -76,8 +76,8 @@ async def run_initial_flow(
     )
 
     run_config = RunConfig(
-        checkpoint_v2_backend=backend,
-        checkpoint_v2_config=checkpoint_config,
+        checkpoint_backend=backend,
+        checkpoint_config=checkpoint_config,
     )
 
     query = Query(text="Optimize database performance")

@@ -11,7 +11,7 @@ from pydantic_flow import HumanNode
 from pydantic_flow import HumanResponse
 from pydantic_flow import InterruptDecision
 from pydantic_flow import InterruptionRequested
-from pydantic_flow.hitl.interrupts import FlowCheckpoint
+from pydantic_flow.checkpoints.types import StateSnapshot
 from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamStart
@@ -60,25 +60,29 @@ def test_interrupt_decision_interrupt():
     assert decision.metadata == {"key": "value"}
 
 
-# Test FlowCheckpoint
+# Test StateSnapshot
 
 
 def test_flow_checkpoint_creation():
-    """Test creating a flow checkpoint."""
-    checkpoint = FlowCheckpoint(
-        flow_id="test-flow-123",
-        run_id="run-456",
+    """Test creating a StateSnapshot."""
+    from pydantic_flow.checkpoints.types import SnapshotReason
+    from pydantic_flow.checkpoints.types import generate_run_id
+    from pydantic_flow.checkpoints.types import generate_snapshot_id
+
+    checkpoint = StateSnapshot(
+        snapshot_id=generate_snapshot_id(),
+        run_id=generate_run_id(),
+        wave_number=1,
+        state_hash="test-hash",
+        next_frontier=["node-2"],
+        routing_ended=False,
+        reason=SnapshotReason.HITL_INTERRUPT,
         interrupted_node_id="node-1",
-        node_states={"node-1": {"key": "value"}},
-        edge_history=[("node-1", "node-2")],
         metadata={"test": "data"},
     )
-    assert checkpoint.flow_id == "test-flow-123"
-    assert checkpoint.run_id == "run-456"
     assert checkpoint.interrupted_node_id == "node-1"
-    assert checkpoint.node_states == {"node-1": {"key": "value"}}
-    assert checkpoint.edge_history == [("node-1", "node-2")]
     assert checkpoint.metadata == {"test": "data"}
+    assert checkpoint.reason == SnapshotReason.HITL_INTERRUPT
 
 
 # Test Node-Level Interrupt Handlers
@@ -228,21 +232,6 @@ def test_flow_clear_interrupt_handlers():
     assert len(flow._interrupt_handlers) == 0
 
 
-def test_flow_create_checkpoint():
-    """Test flow checkpoint creation."""
-    flow = Flow(input_type=SimpleInput, output_type=SimpleOutput)
-    flow._results = {"node1": "result1"}
-    flow._edge_history = [("node1", "node2")]
-
-    checkpoint = flow._create_checkpoint("node2", "run-123")
-
-    assert checkpoint.flow_id == flow.flow_id
-    assert checkpoint.run_id == "run-123"
-    assert checkpoint.interrupted_node_id == "node2"
-    assert checkpoint.node_states == {"node1": "result1"}
-    assert checkpoint.edge_history == [("node1", "node2")]
-
-
 # Test HumanNode
 
 
@@ -261,7 +250,7 @@ async def test_human_node_always_interrupts():
             pass
 
     exc: InterruptionRequested = exc_info.value  # type: ignore
-    assert exc.checkpoint.interrupted_node_id == "human_review"
+    assert exc.snapshot.interrupted_node_id == "human_review"
     assert "Human input required" in exc.decision.reason
 
 

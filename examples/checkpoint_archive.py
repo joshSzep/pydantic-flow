@@ -61,8 +61,8 @@ async def create_checkpoint_session(
     )
 
     run_config = RunConfig(
-        checkpoint_v2_backend=backend,
-        checkpoint_v2_config=checkpoint_config,
+        checkpoint_backend=backend,
+        checkpoint_config=checkpoint_config,
     )
 
     await backend.initialize()

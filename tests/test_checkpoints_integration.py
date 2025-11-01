@@ -1,17 +1,22 @@
 """Integration tests for checkpoint persistence with Flow execution."""
 
+from pathlib import Path
+
 from pydantic import BaseModel
 import pytest
 
 from pydantic_flow import Flow
 from pydantic_flow import PromptNode
+from pydantic_flow.checkpoints import CheckpointInspector
+from pydantic_flow.checkpoints import SnapshotReason
+from pydantic_flow.checkpoints import SQLiteCheckpointBackend
+from pydantic_flow.checkpoints import SQLiteCheckpointConfig
+from pydantic_flow.checkpoints.types import RunId
 from pydantic_flow.core.run_config import RunConfig
-from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
-from pydantic_flow.hitl.checkpoints.interface import RunId
-from pydantic_flow.hitl.checkpoints.memory import InMemoryCheckpointStore
 from pydantic_flow.hitl.decisions import InterruptDecision
 from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import StreamEnd
 
 
 class SimpleInput(BaseModel):
@@ -29,136 +34,179 @@ class SimpleOutput(BaseModel):
 @pytest.mark.asyncio
 async def test_checkpoint_persisted_on_interruption():
     """Test that checkpoints are persisted when flow is interrupted."""
-    # Create flow
-    flow = Flow(input_type=SimpleInput, output_type=SimpleOutput)
-    node = PromptNode[SimpleInput, SimpleOutput](
-        name="processor", prompt="Process: {value}"
-    )
-    flow.add_nodes(node)
+    config = SQLiteCheckpointConfig(db_path=Path(":memory:"))
+    backend = SQLiteCheckpointBackend(config)
+    await backend.initialize()
 
-    # Create checkpoint store
-    store = InMemoryCheckpointStore()
-    run_id = "test_run_001"
-    config = RunConfig(checkpoint_store=store, run_id=run_id)
+    try:
+        inspector = CheckpointInspector(backend)
 
-    # Register interrupt handler
-    async def always_interrupt(item: ProgressItem) -> InterruptDecision:
-        return InterruptDecision(should_interrupt=True, reason="Test interrupt")
+        # Create flow
+        flow = Flow(input_type=SimpleInput, output_type=SimpleOutput)
+        node = PromptNode[SimpleInput, SimpleOutput](
+            name="processor",
+            prompt="Process: {value}",
+            output_type=SimpleOutput,
+        )
+        flow.add_nodes(node)
 
-    flow.register_interrupt_handler(callback=always_interrupt, priority=0)
+        run_id = RunId("test_run_001")
+        run_config = RunConfig(checkpoint_backend=backend, run_id=run_id)
 
-    # Run flow - should be interrupted
-    with pytest.raises(InterruptionRequested) as exc_info:
-        await flow.run(SimpleInput(value="test"), config=config)
+        # Register interrupt handler
+        async def always_interrupt(item: ProgressItem) -> InterruptDecision:
+            if isinstance(item, StreamEnd):
+                return InterruptDecision.interrupt(reason="Test interrupt")
+            return InterruptDecision.proceed()
 
-    # Verify checkpoint was persisted
-    exception: InterruptionRequested = exc_info.value  # type: ignore[assignment]
-    checkpoint = exception.checkpoint
-    assert checkpoint.metadata is not None
-    assert "checkpoint_id" in checkpoint.metadata
-    assert "run_id" in checkpoint.metadata
+        flow.register_interrupt_handler(callback=always_interrupt, priority=0)
 
-    # Verify checkpoint in store
-    query = CheckpointQuery(run_id=RunId(run_id))
-    checkpoints, _ = await store.list(query)
-    assert len(checkpoints) == 1
-    assert checkpoints[0].run_id == RunId(run_id)
+        # Run flow - should be interrupted
+        with pytest.raises(InterruptionRequested) as exc_info:
+            await flow.run(SimpleInput(value="test"), run_config)
+
+        # Verify snapshot was created
+        exception = exc_info.value
+        assert isinstance(exception, InterruptionRequested)
+        assert exception.snapshot is not None
+        assert exception.snapshot.reason == SnapshotReason.HITL_INTERRUPT
+        assert exception.snapshot.run_id == run_id
+
+        # Verify checkpoint in storage
+        interrupted_runs = await inspector.list_interrupted_runs()
+        assert len(interrupted_runs) == 1
+        assert interrupted_runs[0].run_id == run_id
+
+        snapshot = await inspector.get_interrupt_snapshot(run_id)
+        assert snapshot is not None
+        assert snapshot.reason == SnapshotReason.HITL_INTERRUPT
+    finally:
+        await backend.close()
 
 
 @pytest.mark.asyncio
-async def test_checkpoint_not_persisted_without_store():
-    """Test that checkpoints are not persisted when no store configured."""
-    # Create flow
+async def test_checkpoint_not_persisted_without_backend():
+    """Test that flow works without checkpoint backend configured."""
+    # Create flow without checkpoint backend
     flow = Flow(input_type=SimpleInput, output_type=SimpleOutput)
     node = PromptNode[SimpleInput, SimpleOutput](
-        name="processor", prompt="Process: {value}"
+        name="processor",
+        prompt="Process: {value}",
+        output_type=SimpleOutput,
     )
     flow.add_nodes(node)
 
-    # No checkpoint store configured
+    # No checkpoint backend configured
     config = RunConfig(run_id="test_run_002")
 
     # Register interrupt handler
     async def always_interrupt(item: ProgressItem) -> InterruptDecision:
-        return InterruptDecision(should_interrupt=True, reason="Test interrupt")
+        if isinstance(item, StreamEnd):
+            return InterruptDecision.interrupt(reason="Test interrupt")
+        return InterruptDecision.proceed()
 
     flow.register_interrupt_handler(callback=always_interrupt, priority=0)
 
-    # Run flow - should be interrupted
-    with pytest.raises(InterruptionRequested) as exc_info:
-        await flow.run(SimpleInput(value="test"), config=config)
+    # Run flow - should be interrupted but with V1 exception
+    # (since no V2 backend is configured)
+    from pydantic_flow.hitl.interrupts import InterruptionRequested
 
-    # Verify no checkpoint_id in metadata (not persisted)
-    exception: InterruptionRequested = exc_info.value  # type: ignore[assignment]
-    checkpoint = exception.checkpoint
-    assert checkpoint.metadata is None or "checkpoint_id" not in checkpoint.metadata
+    with pytest.raises(InterruptionRequested):
+        await flow.run(SimpleInput(value="test"), config=config)
 
 
 @pytest.mark.asyncio
 async def test_run_id_generated_if_not_provided():
     """Test that run_id is auto-generated if not provided in config."""
-    # Create flow
-    flow = Flow(input_type=SimpleInput, output_type=SimpleOutput)
-    node = PromptNode[SimpleInput, SimpleOutput](
-        name="processor", prompt="Process: {value}"
-    )
-    flow.add_nodes(node)
+    config = SQLiteCheckpointConfig(db_path=Path(":memory:"))
+    backend = SQLiteCheckpointBackend(config)
+    await backend.initialize()
 
-    # Create checkpoint store but no run_id
-    store = InMemoryCheckpointStore()
-    config = RunConfig(checkpoint_store=store)  # run_id not provided
+    try:
+        inspector = CheckpointInspector(backend)
 
-    # Register interrupt handler
-    async def always_interrupt(item: ProgressItem) -> InterruptDecision:
-        return InterruptDecision(should_interrupt=True, reason="Test interrupt")
-
-    flow.register_interrupt_handler(callback=always_interrupt, priority=0)
-
-    # Run flow - should be interrupted
-    with pytest.raises(InterruptionRequested) as exc_info:
-        await flow.run(SimpleInput(value="test"), config=config)
-
-    # Verify run_id was generated and checkpoint persisted
-    exception: InterruptionRequested = exc_info.value  # type: ignore[assignment]
-    checkpoint = exception.checkpoint
-    assert checkpoint.metadata is not None
-    assert "run_id" in checkpoint.metadata
-    run_id = checkpoint.metadata["run_id"]
-    assert run_id is not None
-    assert len(run_id) > 0  # Generated UUID
-
-    # Verify checkpoint in store
-    query = CheckpointQuery(run_id=RunId(run_id))
-    checkpoints, _ = await store.list(query)
-    assert len(checkpoints) == 1
-
-
-@pytest.mark.asyncio
-async def test_multiple_checkpoints_same_run():
-    """Test that multiple interruptions create multiple checkpoints."""
-    # This would require resuming and interrupting again
-    # For now, just test that multiple flows with same run_id accumulate checkpoints
-    store = InMemoryCheckpointStore()
-    run_id = "test_run_multi"
-
-    for i in range(3):
+        # Create flow
         flow = Flow(input_type=SimpleInput, output_type=SimpleOutput)
         node = PromptNode[SimpleInput, SimpleOutput](
-            name=f"processor_{i}", prompt="Process: {value}"
+            name="processor",
+            prompt="Process: {value}",
+            output_type=SimpleOutput,
         )
         flow.add_nodes(node)
 
-        config = RunConfig(checkpoint_store=store, run_id=run_id)
+        # Checkpoint backend but no run_id (will be auto-generated)
+        run_config = RunConfig(checkpoint_backend=backend)
 
+        # Register interrupt handler
         async def always_interrupt(item: ProgressItem) -> InterruptDecision:
-            return InterruptDecision(should_interrupt=True, reason="Test")
+            if isinstance(item, StreamEnd):
+                return InterruptDecision.interrupt(reason="Test interrupt")
+            return InterruptDecision.proceed()
 
         flow.register_interrupt_handler(callback=always_interrupt, priority=0)
 
-        with pytest.raises(InterruptionRequested):
-            await flow.run(SimpleInput(value=f"test_{i}"), config=config)
+        # Run flow - should be interrupted
+        with pytest.raises(InterruptionRequested) as exc_info:
+            await flow.run(SimpleInput(value="test"), run_config)
 
-    # Verify all checkpoints were saved
-    query = CheckpointQuery(run_id=RunId(run_id))
-    checkpoints, _ = await store.list(query)
-    assert len(checkpoints) == 3
+        # Verify run_id was generated
+        exception = exc_info.value
+        assert isinstance(exception, InterruptionRequested)
+        assert exception.snapshot is not None
+        generated_run_id = exception.snapshot.run_id
+        assert generated_run_id is not None
+        assert len(str(generated_run_id)) > 0
+
+        # Verify checkpoint in storage
+        interrupted_runs = await inspector.list_interrupted_runs()
+        assert len(interrupted_runs) == 1
+        assert interrupted_runs[0].run_id == generated_run_id
+    finally:
+        await backend.close()
+
+
+@pytest.mark.asyncio
+async def test_multiple_interrupts_same_backend():
+    """Test that multiple flows with same backend create separate runs."""
+    config = SQLiteCheckpointConfig(db_path=Path(":memory:"))
+    backend = SQLiteCheckpointBackend(config)
+    await backend.initialize()
+
+    try:
+        inspector = CheckpointInspector(backend)
+
+        run_ids = []
+        for i in range(3):
+            flow = Flow(input_type=SimpleInput, output_type=SimpleOutput)
+            node = PromptNode[SimpleInput, SimpleOutput](
+                name=f"processor_{i}",
+                prompt="Process: {value}",
+                output_type=SimpleOutput,
+            )
+            flow.add_nodes(node)
+
+            run_id = RunId(f"test_run_multi_{i}")
+            run_ids.append(run_id)
+            run_config = RunConfig(checkpoint_backend=backend, run_id=run_id)
+
+            async def always_interrupt(item: ProgressItem) -> InterruptDecision:
+                if isinstance(item, StreamEnd):
+                    return InterruptDecision.interrupt(reason="Test")
+                return InterruptDecision.proceed()
+
+            flow.register_interrupt_handler(callback=always_interrupt, priority=0)
+
+            with pytest.raises(InterruptionRequested):
+                await flow.run(SimpleInput(value=f"test_{i}"), run_config)
+
+        # Verify all runs were saved as interrupted
+        interrupted_runs = await inspector.list_interrupted_runs()
+        assert len(interrupted_runs) == 3
+
+        # Verify each run has its snapshot
+        for run_id in run_ids:
+            snapshot = await inspector.get_interrupt_snapshot(run_id)
+            assert snapshot is not None
+            assert snapshot.reason == SnapshotReason.HITL_INTERRUPT
+    finally:
+        await backend.close()

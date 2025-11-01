@@ -87,8 +87,8 @@ async def test_flow_execution_with_checkpoints(temp_checkpoint_backend):
     )
 
     run_config = RunConfig(
-        checkpoint_v2_backend=temp_checkpoint_backend,
-        checkpoint_v2_config=checkpoint_config,
+        checkpoint_backend=temp_checkpoint_backend,
+        checkpoint_config=checkpoint_config,
         run_id="test_e2e_run",
     )
 
@@ -150,8 +150,8 @@ async def test_state_reconstruction_from_real_execution(temp_checkpoint_backend)
     )
 
     run_config = RunConfig(
-        checkpoint_v2_backend=temp_checkpoint_backend,
-        checkpoint_v2_config=checkpoint_config,
+        checkpoint_backend=temp_checkpoint_backend,
+        checkpoint_config=checkpoint_config,
         run_id="test_reconstruction_run",
     )
 
@@ -201,8 +201,8 @@ async def test_full_snapshot_every_nth_wave_with_real_flow(temp_checkpoint_backe
     )
 
     run_config = RunConfig(
-        checkpoint_v2_backend=temp_checkpoint_backend,
-        checkpoint_v2_config=checkpoint_config,
+        checkpoint_backend=temp_checkpoint_backend,
+        checkpoint_config=checkpoint_config,
         run_id="test_full_snapshot_run",
     )
 

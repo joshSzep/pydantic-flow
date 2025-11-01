@@ -11,6 +11,7 @@ from pydantic_flow.checkpoints.reconstructor import StateReconstructor
 from pydantic_flow.checkpoints.types import ExecutionTrace
 from pydantic_flow.checkpoints.types import RunId
 from pydantic_flow.checkpoints.types import RunMetadata
+from pydantic_flow.checkpoints.types import SnapshotReason
 from pydantic_flow.checkpoints.types import StateSnapshot
 
 
@@ -157,4 +158,73 @@ class CheckpointInspector:
         metadata = await self.get_run(run_id)
         return (
             metadata.total_waves - 1 if metadata and metadata.total_waves > 0 else None
+        )
+
+    async def list_interrupted_runs(
+        self,
+        limit: int = 50,
+    ) -> list[RunMetadata]:
+        """List all runs awaiting human decision.
+
+        Args:
+            limit: Maximum number of runs to return
+
+        Returns:
+            List of interrupted runs sorted by interrupt time (most recent first)
+
+        """
+        all_runs = await self.backend.list_runs(limit=limit)
+        return [
+            run
+            for run in all_runs
+            if run.status == RunMetadata.Status.INTERRUPTED
+            and run.awaiting_human_decision
+        ]
+
+    async def get_interrupt_snapshot(
+        self,
+        run_id: RunId,
+    ) -> StateSnapshot | None:
+        """Get the snapshot where HITL interrupt occurred.
+
+        Args:
+            run_id: Run identifier
+
+        Returns:
+            HITL interrupt snapshot if found, None otherwise
+
+        """
+        snapshots = await self.backend.get_snapshots_by_reason(
+            run_id=run_id,
+            reason=SnapshotReason.HITL_INTERRUPT,
+            limit=1,
+        )
+        return snapshots[0] if snapshots else None
+
+    async def get_conversation_at_interrupt(
+        self,
+        run_id: RunId,
+    ) -> list[Any]:
+        """Reconstruct conversation at the point of interrupt.
+
+        Args:
+            run_id: Run identifier
+
+        Returns:
+            List of conversation messages up to interrupt point
+
+        Raises:
+            ValueError: If no interrupt snapshot found for this run
+
+        """
+        snapshot = await self.get_interrupt_snapshot(run_id)
+        if snapshot is None:
+            msg = f"No interrupt snapshot found for run {run_id}"
+            raise ValueError(msg)
+
+        if snapshot.conversation_head_id is None:
+            return []
+
+        return await self.backend.get_conversation_history(
+            head_id=snapshot.conversation_head_id,
         )

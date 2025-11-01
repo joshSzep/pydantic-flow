@@ -95,7 +95,7 @@ class AgentNode[InputModel: BaseModel, OutputT](
             decision = await self._check_interrupt_handlers(item)
             if decision.should_interrupt:
                 raise InterruptionRequested(
-                    checkpoint=self._create_checkpoint(input_data, item),
+                    snapshot=self._create_checkpoint(input_data, item),
                     decision=decision,
                 )
             yield item
@@ -207,7 +207,7 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
         decision = await self._check_interrupt_handlers(start_item)
         if decision.should_interrupt:
             raise InterruptionRequested(
-                checkpoint=self._create_checkpoint(input_data, start_item),
+                snapshot=self._create_checkpoint(input_data, start_item),
                 decision=decision,
             )
         yield start_item
@@ -228,7 +228,7 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
                     decision = await self._check_interrupt_handlers(token_item)
                     if decision.should_interrupt:
                         raise InterruptionRequested(
-                            checkpoint=self._create_checkpoint(input_data, token_item),
+                            snapshot=self._create_checkpoint(input_data, token_item),
                             decision=decision,
                         )
                     yield token_item
@@ -250,7 +250,7 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
             decision = await self._check_interrupt_handlers(end_item)
             if decision.should_interrupt:
                 raise InterruptionRequested(
-                    checkpoint=self._create_checkpoint(input_data, end_item),
+                    snapshot=self._create_checkpoint(input_data, end_item),
                     decision=decision,
                 )
             yield end_item

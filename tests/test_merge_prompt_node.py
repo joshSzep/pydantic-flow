@@ -315,9 +315,10 @@ async def test_merge_prompt_node_create_checkpoint():
     checkpoint = merge_node._create_checkpoint(start_item)
 
     assert checkpoint.interrupted_node_id == "merge_checkpoint_test"
-    assert checkpoint.run_id == ""
-    assert checkpoint.node_states == {}
-    assert checkpoint.edge_history == []
+    # When StreamStart has no run_id, a new one is generated
+    assert checkpoint.run_id != ""
+    assert checkpoint.wave_number == 0
+    assert checkpoint.reason == "hitl_interrupt"
 
 
 @pytest.mark.asyncio

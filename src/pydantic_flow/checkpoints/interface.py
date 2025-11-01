@@ -11,10 +11,13 @@ from typing import Any
 from typing import Literal
 from typing import Protocol
 
+from pydantic_flow.checkpoints.conversation import ConversationMessage
+from pydantic_flow.checkpoints.types import ConversationMessageId
 from pydantic_flow.checkpoints.types import ExecutionTrace
 from pydantic_flow.checkpoints.types import NodeExecutionTrace
 from pydantic_flow.checkpoints.types import RunId
 from pydantic_flow.checkpoints.types import RunMetadata
+from pydantic_flow.checkpoints.types import SnapshotReason
 from pydantic_flow.checkpoints.types import StateSnapshot
 
 
@@ -288,6 +291,101 @@ class CheckpointStorageBackend(Protocol):
 
         Raises:
             Exception: If deletion operation fails.
+
+        """
+        ...
+
+    async def save_conversation_message(self, message: ConversationMessage) -> None:
+        """Save conversation message to linked list.
+
+        Args:
+            message: Conversation message to save.
+
+        Raises:
+            Exception: If save operation fails.
+
+        """
+        ...
+
+    async def get_conversation_message(
+        self, message_id: ConversationMessageId
+    ) -> ConversationMessage | None:
+        """Retrieve conversation message by ID.
+
+        Args:
+            message_id: Message identifier.
+
+        Returns:
+            Conversation message if found, None otherwise.
+
+        Raises:
+            Exception: If retrieval operation fails.
+
+        """
+        ...
+
+    async def get_conversation_history(
+        self,
+        head_id: ConversationMessageId,
+        limit: int | None = None,
+    ) -> list[ConversationMessage]:
+        """Retrieve conversation history by walking linked list backward.
+
+        Args:
+            head_id: Most recent message ID.
+            limit: Maximum number of messages to retrieve.
+
+        Returns:
+            List of messages in reverse chronological order (newest first).
+
+        Raises:
+            Exception: If retrieval operation fails.
+
+        """
+        ...
+
+    async def get_snapshots_by_reason(
+        self,
+        run_id: RunId,
+        reason: SnapshotReason,
+        limit: int | None = None,
+    ) -> list[StateSnapshot]:
+        """Query snapshots by reason.
+
+        Enables queries like "show all HITL interrupts" or "list all forks".
+
+        Args:
+            run_id: Run identifier.
+            reason: Snapshot reason to filter by.
+            limit: Maximum number of snapshots to return.
+
+        Returns:
+            List of snapshots matching reason, newest first.
+
+        Raises:
+            Exception: If query operation fails.
+
+        """
+        ...
+
+    async def get_protected_conversation_messages(
+        self,
+        run_id: RunId,
+    ) -> set[ConversationMessageId]:
+        """Get conversation message IDs protected by active snapshots.
+
+        Messages referenced by snapshots (and all their predecessors in the
+        linked list) should not be pruned. This method walks backward from
+        all snapshot conversation_head_ids to build the protected set.
+
+        Args:
+            run_id: Run identifier.
+
+        Returns:
+            Set of message IDs that must not be pruned.
+
+        Raises:
+            Exception: If query operation fails.
 
         """
         ...

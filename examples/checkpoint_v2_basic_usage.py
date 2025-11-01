@@ -45,15 +45,15 @@ async def run_flow_with_checkpoints() -> tuple[Answer, Path, SQLiteCheckpointBac
     )
     flow.add_nodes(node1)
 
-    # Set up checkpoint v2 backend
-    db_path = Path("checkpoints_v2.db")
+    # Set up checkpoint backend
+    db_path = Path("checkpoints.db")
     backend = SQLiteCheckpointBackend(config=SQLiteCheckpointConfig(db_path=db_path))
     await backend.initialize()
 
-    # Configure checkpoint v2
+    # Configure checkpoint
     config = RunConfig(
-        checkpoint_v2_backend=backend,
-        checkpoint_v2_config=CheckpointConfig(
+        checkpoint_backend=backend,
+        checkpoint_config=CheckpointConfig(
             enabled=True,
             storage_backend=backend,
             save_full_snapshot_every=5,

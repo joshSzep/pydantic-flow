@@ -1,23 +1,23 @@
-"""Checkpoint persistence integration example.
+"""Checkpoint persistence integration example with unified checkpoint system.
 
 This example demonstrates:
-1. Flow.run() accepts a RunConfig with checkpoint_store
+1. Flow.run() accepts a RunConfig with checkpoint_backend
 2. Checkpoints are automatically persisted when InterruptionRequested is raised
-3. The checkpoint ID and run ID are attached to the exception metadata
-4. Checkpoints can be retrieved from the store after interruption
+3. The snapshot ID and run ID are available in the exception
+4. Snapshots can be queried from the backend after interruption
 """
 
 import asyncio
+from pathlib import Path
 
 from pydantic import BaseModel
 
 from pydantic_flow import Flow
 from pydantic_flow import PromptNode
+from pydantic_flow.checkpoints.backends.sqlite import SQLiteCheckpointBackend
+from pydantic_flow.checkpoints.backends.sqlite import SQLiteCheckpointConfig
+from pydantic_flow.checkpoints.inspection import CheckpointInspector
 from pydantic_flow.core.run_config import RunConfig
-from pydantic_flow.hitl.checkpoints.interface import CheckpointId
-from pydantic_flow.hitl.checkpoints.interface import CheckpointQuery
-from pydantic_flow.hitl.checkpoints.interface import RunId
-from pydantic_flow.hitl.checkpoints.memory import InMemoryCheckpointStore
 from pydantic_flow.hitl.decisions import InterruptDecision
 from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.streaming.base import ProgressItem
@@ -36,63 +36,66 @@ class Response(BaseModel):
 
 
 async def main() -> None:
-    """Test checkpoint persistence on interruption."""
-    # Create a simple flow with a prompt node
-    flow = Flow(input_type=Query, output_type=Response)
+    """Test V2 checkpoint persistence on interruption."""
+    # Create V2 checkpoint backend
+    config = SQLiteCheckpointConfig(db_path=Path(":memory:"))
+    backend = SQLiteCheckpointBackend(config)
+    await backend.initialize()
 
-    prompt_node = PromptNode[Query, Response](
-        name="answer",
-        prompt="Answer this question briefly: {question}",
-    )
-    flow.add_nodes(prompt_node)
-
-    # Create checkpoint store
-    store = InMemoryCheckpointStore()
-
-    # Create run config with store
-    config = RunConfig(checkpoint_store=store, run_id="test_run_123")
-
-    # Register an interrupt handler that always interrupts
-    async def interrupt_handler(item: ProgressItem) -> InterruptDecision:
-        # Interrupt on any progress item
-        return InterruptDecision(should_interrupt=True, reason="Test interruption")
-
-    flow.register_interrupt_handler(callback=interrupt_handler, priority=0)
-
-    # Run flow - should trigger interruption
     try:
-        await flow.run(Query(question="What is 2+2?"), config=config)
-        print("ERROR: Flow should have been interrupted!")
-    except InterruptionRequested as e:
-        print("✅ Flow interrupted as expected")
+        # Create a simple flow with a prompt node
+        flow = Flow(input_type=Query, output_type=Response)
 
-        # Verify checkpoint metadata
-        checkpoint_id = e.checkpoint.metadata.get("checkpoint_id")
-        run_id_str = e.checkpoint.metadata.get("run_id")
+        prompt_node = PromptNode[Query, Response](
+            name="answer",
+            prompt="Answer this question briefly: {question}",
+        )
+        flow.add_nodes(prompt_node)
 
-        if checkpoint_id and run_id_str:
-            print(f"✅ Checkpoint ID attached: {checkpoint_id}")
-            print(f"✅ Run ID attached: {run_id_str}")
+        # Create run config with backend
+        run_config = RunConfig(checkpoint_backend=backend, run_id="test_run_123")
 
-            # Verify checkpoint in store
-            stored = await store.get(
-                run_id=RunId(run_id_str), checkpoint_id=CheckpointId(checkpoint_id)
+        # Register an interrupt handler that always interrupts
+        async def interrupt_handler(item: ProgressItem) -> InterruptDecision:
+            # Interrupt on any progress item
+            return InterruptDecision.interrupt(
+                reason="Test interruption", metadata={"test": True}
             )
-            if stored:
-                print("✅ Checkpoint persisted to store")
-                print(f"   - Envelope ID: {stored.id}")
-                print(f"   - Run ID: {stored.run_id}")
-                print(f"   - Node ID: {stored.node_id}")
-                print(f"   - Created at: {stored.created_at}")
 
-                # List all checkpoints for this run
-                query = CheckpointQuery(run_id=RunId(run_id_str))
-                all_checkpoints, _ = await store.list(query)
-                print(f"✅ Total checkpoints in store for run: {len(all_checkpoints)}")
+        flow.register_interrupt_handler(callback=interrupt_handler, priority=0)
+
+        # Run flow - should trigger interruption
+        try:
+            await flow.run(Query(question="What is 2+2?"), config=run_config)
+            print("ERROR: Flow should have been interrupted!")
+        except InterruptionRequested as e:
+            print("✅ Flow interrupted as expected")
+
+            # Verify snapshot details
+            snapshot = e.snapshot
+            print(f"✅ Snapshot ID: {snapshot.snapshot_id}")
+            print(f"✅ Run ID: {snapshot.run_id}")
+            print(f"✅ Wave number: {snapshot.wave_number}")
+            print(f"✅ Interrupt reason: {snapshot.reason}")
+
+            # Query the snapshot from backend
+            inspector = CheckpointInspector(backend)
+            stored_snapshot = await inspector.get_interrupt_snapshot(snapshot.run_id)
+            if stored_snapshot:
+                print("✅ Snapshot persisted to backend")
+                print(f"   - Snapshot ID: {stored_snapshot.snapshot_id}")
+                print(f"   - Run ID: {stored_snapshot.run_id}")
+                print(f"   - Node: {stored_snapshot.interrupted_node_id}")
+                print(f"   - Metadata: {stored_snapshot.metadata}")
+
+                # List all interrupted runs
+                interrupted_runs = await inspector.list_interrupted_runs(limit=10)
+                print(f"✅ Total interrupted runs in backend: {len(interrupted_runs)}")
             else:
-                print("❌ Checkpoint not found in store")
-        else:
-            print("❌ Missing checkpoint ID or run ID in metadata")
+                print("❌ Snapshot not found in backend")
+
+    finally:
+        await backend.close()
 
 
 if __name__ == "__main__":

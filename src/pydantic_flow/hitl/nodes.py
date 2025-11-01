@@ -13,8 +13,11 @@ from typing import Any
 from pydantic import BaseModel
 from pydantic import Field
 
+from pydantic_flow.checkpoints.types import SnapshotReason
+from pydantic_flow.checkpoints.types import StateSnapshot
+from pydantic_flow.checkpoints.types import generate_run_id
+from pydantic_flow.checkpoints.types import generate_snapshot_id
 from pydantic_flow.hitl.decisions import InterruptDecision
-from pydantic_flow.hitl.interrupts import FlowCheckpoint
 from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.base import NodeWithInput
@@ -175,12 +178,15 @@ class HumanNode[InputModel: BaseModel, OutputModel: BaseModel](
 
         input_request = self._create_input_request(input_data)
 
-        checkpoint = FlowCheckpoint(
-            flow_id="",
-            run_id=actual_run_id,
+        checkpoint = StateSnapshot(
+            snapshot_id=generate_snapshot_id(),
+            run_id=generate_run_id(),
+            wave_number=0,
+            state_hash="",
+            next_frontier=[],
+            routing_ended=False,
+            reason=SnapshotReason.HITL_INTERRUPT,
             interrupted_node_id=self.name,
-            node_states={},
-            edge_history=[],
             metadata=input_request.model_dump(),
         )
 
@@ -190,7 +196,7 @@ class HumanNode[InputModel: BaseModel, OutputModel: BaseModel](
             metadata={"request": input_request.model_dump()},
         )
 
-        raise InterruptionRequested(checkpoint=checkpoint, decision=decision)
+        raise InterruptionRequested(snapshot=checkpoint, decision=decision)
 
     def parse_response(self, response: HumanResponse) -> OutputModel:
         """Parse human response into the output model.
@@ -280,12 +286,15 @@ class ApprovalNode[InputModel: BaseModel](NodeWithInput[InputModel, HumanRespons
             metadata={"node_id": self.name, "run_id": actual_run_id},
         )
 
-        checkpoint = FlowCheckpoint(
-            flow_id="",
-            run_id=actual_run_id,
+        checkpoint = StateSnapshot(
+            snapshot_id=generate_snapshot_id(),
+            run_id=generate_run_id(),
+            wave_number=0,
+            state_hash="",
+            next_frontier=[],
+            routing_ended=False,
+            reason=SnapshotReason.HITL_INTERRUPT,
             interrupted_node_id=self.name,
-            node_states={},
-            edge_history=[],
             metadata=input_request.model_dump(),
         )
 
@@ -295,4 +304,4 @@ class ApprovalNode[InputModel: BaseModel](NodeWithInput[InputModel, HumanRespons
             metadata={"request": input_request.model_dump()},
         )
 
-        raise InterruptionRequested(checkpoint=checkpoint, decision=decision)
+        raise InterruptionRequested(snapshot=checkpoint, decision=decision)

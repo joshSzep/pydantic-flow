@@ -8,7 +8,10 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from pydantic_flow.cache import CachePolicy
-from pydantic_flow.hitl.interrupts import FlowCheckpoint
+from pydantic_flow.checkpoints.types import RunId
+from pydantic_flow.checkpoints.types import SnapshotReason
+from pydantic_flow.checkpoints.types import StateSnapshot
+from pydantic_flow.checkpoints.types import generate_snapshot_id
 from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.base import NodeWithInput
@@ -58,6 +61,7 @@ class PromptNode[InputModel: BaseModel, OutputT](
         ),
         *,
         config: PromptConfig | None = None,
+        output_type: type[OutputT] | None = None,
         output_parser: OutputParser[OutputT] | None = None,
         input: NodeOutput[InputModel] | None = None,
         name: str | None = None,
@@ -71,6 +75,7 @@ class PromptNode[InputModel: BaseModel, OutputT](
                 config.template_format for rendering) or a PromptTemplate/
                 ChatPromptTemplate object with embedded format
             config: Configuration for the LLM (model, system prompt, etc.)
+            output_type: Expected output type - if BaseModel, enables structured output
             output_parser: Optional parser for structured output extraction
             input: Optional input from another node's output
             name: Optional unique identifier for this node
@@ -82,6 +87,7 @@ class PromptNode[InputModel: BaseModel, OutputT](
         self.cache_policy = cache_policy
         self.config = config or PromptConfig()
         self.output_parser = output_parser
+        self._explicit_output_type = output_type
 
         # Handle different prompt types
         if isinstance(prompt, (PromptTemplate, ChatPromptTemplate)):
@@ -94,11 +100,26 @@ class PromptNode[InputModel: BaseModel, OutputT](
 
         # Create internal pydantic-ai agent
         instructions = self.config.system_prompt or "Be helpful and concise."
-        if self.config.result_type:
+
+        # Determine result_type: prefer explicit output_type, fall back to config
+        result_type = None
+        if output_type is not None:
+            # Check if output_type is a BaseModel subclass
+            try:
+                if isinstance(output_type, type) and issubclass(output_type, BaseModel):
+                    result_type = output_type
+            except TypeError:
+                # output_type might not be a class, ignore
+                pass
+
+        if result_type is None and self.config.result_type:
+            result_type = self.config.result_type
+
+        if result_type:
             self._agent = Agent(
                 self.config.model,
                 instructions=instructions,
-                output_type=self.config.result_type,
+                output_type=result_type,
             )
         else:
             self._agent = Agent(
@@ -106,25 +127,28 @@ class PromptNode[InputModel: BaseModel, OutputT](
                 instructions=instructions,
             )  # type: ignore[assignment]
 
-    def _create_checkpoint(self, run_id: str) -> FlowCheckpoint:
+    def _create_checkpoint(self, run_id: str) -> StateSnapshot:
         """Create a minimal checkpoint for interruption.
 
         Args:
             run_id: The current run ID.
 
         Returns:
-            FlowCheckpoint instance.
+            StateSnapshot instance.
 
         """
-        return FlowCheckpoint(
-            flow_id="",  # Will be set by Flow in Phase 3
-            run_id=run_id,
+        return StateSnapshot(
+            snapshot_id=generate_snapshot_id(),
+            run_id=RunId(run_id),
+            wave_number=0,
+            state_hash="",
+            next_frontier=[],
+            routing_ended=False,
+            reason=SnapshotReason.HITL_INTERRUPT,
             interrupted_node_id=self.name,
-            node_states={},
-            edge_history=[],
         )
 
-    async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:  # noqa: PLR0912
+    async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:  # noqa: PLR0912, PLR0915
         """Stream progress items while executing the LLM call.
 
         Yields:
@@ -161,7 +185,7 @@ class PromptNode[InputModel: BaseModel, OutputT](
         decision = await self._check_interrupt_handlers(start_item)
         if decision.should_interrupt:
             raise InterruptionRequested(
-                checkpoint=self._create_checkpoint(actual_run_id),
+                snapshot=self._create_checkpoint(actual_run_id),
                 decision=decision,
             )
         yield start_item
@@ -169,25 +193,35 @@ class PromptNode[InputModel: BaseModel, OutputT](
         try:
             # Stream from agent
             async with self._agent.run_stream(formatted_prompt) as stream:
-                token_index = 0
-                async for chunk in stream.stream_text():
-                    token_item = TokenChunk(
-                        text=chunk,
-                        token_index=token_index,
-                        run_id=actual_run_id,
-                        node_id=self.name,
-                    )
-                    decision = await self._check_interrupt_handlers(token_item)
-                    if decision.should_interrupt:
-                        raise InterruptionRequested(
-                            checkpoint=self._create_checkpoint(actual_run_id),
-                            decision=decision,
+                # Check if we're using structured output
+                # (when result_type is set, stream_text() is not available)
+                if (
+                    self.config.result_type is not None
+                    or self._explicit_output_type is not None
+                ):
+                    # Structured output: just get the result without streaming tokens
+                    result = await stream.get_output()
+                else:
+                    # Text output: stream tokens
+                    token_index = 0
+                    async for chunk in stream.stream_text():
+                        token_item = TokenChunk(
+                            text=chunk,
+                            token_index=token_index,
+                            run_id=actual_run_id,
+                            node_id=self.name,
                         )
-                    yield token_item
-                    token_index += 1
+                        decision = await self._check_interrupt_handlers(token_item)
+                        if decision.should_interrupt:
+                            raise InterruptionRequested(
+                                snapshot=self._create_checkpoint(actual_run_id),
+                                decision=decision,
+                            )
+                        yield token_item
+                        token_index += 1
 
-                # Get final result
-                result = await stream.get_output()
+                    # Get final result
+                    result = await stream.get_output()
 
             # Apply output parser if configured
             if self.output_parser is not None:
@@ -207,7 +241,7 @@ class PromptNode[InputModel: BaseModel, OutputT](
             decision = await self._check_interrupt_handlers(tool_item)
             if decision.should_interrupt:
                 raise InterruptionRequested(
-                    checkpoint=self._create_checkpoint(actual_run_id),
+                    snapshot=self._create_checkpoint(actual_run_id),
                     decision=decision,
                 )
             yield tool_item
@@ -227,7 +261,7 @@ class PromptNode[InputModel: BaseModel, OutputT](
             decision = await self._check_interrupt_handlers(end_item)
             if decision.should_interrupt:
                 raise InterruptionRequested(
-                    checkpoint=self._create_checkpoint(actual_run_id),
+                    snapshot=self._create_checkpoint(actual_run_id),
                     decision=decision,
                 )
             yield end_item

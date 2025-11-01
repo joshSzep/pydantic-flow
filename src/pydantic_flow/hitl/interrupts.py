@@ -15,6 +15,10 @@ from typing import Any
 from pydantic import BaseModel
 from pydantic import Field
 
+from pydantic_flow.checkpoints.types import RunId
+from pydantic_flow.checkpoints.types import SnapshotId
+from pydantic_flow.checkpoints.types import StateSnapshot
+
 if TYPE_CHECKING:
     pass
 
@@ -56,75 +60,54 @@ class InterruptHandlerRegistration(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
-class FlowCheckpoint(BaseModel):
-    """Serializable checkpoint for resuming interrupted flows.
-
-    Attributes:
-        flow_id: Unique identifier for the flow instance.
-        run_id: Unique identifier for this execution run.
-        interrupted_node_id: ID of the node where interruption occurred.
-        node_states: Captured state of all nodes at interruption time.
-        edge_history: Sequence of edges traversed before interruption.
-        conversation_memory: Optional serialized conversation memory state.
-        execution_progress: Map of node_id to execution status
-            (pending/running/completed/failed).
-        checkpoint_reason: Reason for checkpoint creation
-            (node_completion/interruption/flow_end/error).
-        checkpoint_node_id: ID of the node that just completed
-            (if reason is node_completion).
-        metadata: Additional context about the checkpoint.
-
-    """
-
-    flow_id: str
-    run_id: str
-    interrupted_node_id: str
-    node_states: dict[str, Any]
-    edge_history: list[tuple[str, str]]
-    conversation_memory: Any = None
-    execution_progress: dict[str, str] = Field(
-        default_factory=dict,
-        description=(
-            "Map of node_id to execution status: pending, running, completed, failed"
-        ),
-    )
-    checkpoint_reason: str = Field(
-        default="interruption",
-        description=(
-            "Reason for checkpoint: node_completion, interruption, flow_end, error"
-        ),
-    )
-    checkpoint_node_id: str | None = Field(
-        default=None,
-        description=(
-            "ID of node that just completed (for node_completion checkpoints)"
-        ),
-    )
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
 class InterruptionRequested(Exception):
-    """Raised when a HITL interrupt callback requests execution halt.
+    """Raised when a HITL interrupt occurs using unified checkpoint system.
 
-    This exception carries the checkpoint and decision information needed
-    to resume execution after human intervention.
+    This exception uses the unified checkpoint system, enabling time-travel,
+    forking, and universal resume for HITL interrupts.
 
     Attributes:
-        checkpoint: Serializable state for resuming the flow.
+        snapshot: The complete StateSnapshot that was saved at interrupt point.
         decision: The interrupt decision that triggered this exception.
+        metadata: Additional context about the interrupt.
 
     """
 
-    def __init__(self, checkpoint: FlowCheckpoint, decision: Any) -> None:
+    def __init__(
+        self,
+        snapshot: StateSnapshot,
+        decision: Any,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
         """Initialize the interruption exception.
 
         Args:
-            checkpoint: Serializable state for resuming.
+            snapshot: Complete StateSnapshot at interrupt point
+                (includes run_id, snapshot_id, wave_number).
             decision: InterruptDecision that triggered the interrupt.
+            metadata: Additional interrupt context.
 
         """
-        self.checkpoint = checkpoint
+        self.snapshot = snapshot
         self.decision = decision
+        self.metadata = metadata or {}
         super().__init__(
-            f"Execution interrupted at node {checkpoint.interrupted_node_id}"
+            f"Execution interrupted at node {snapshot.interrupted_node_id} "
+            f"(run: {snapshot.run_id}, wave: {snapshot.wave_number}, "
+            f"snapshot: {snapshot.snapshot_id})"
         )
+
+    @property
+    def snapshot_id(self) -> SnapshotId:
+        """Snapshot ID for convenient access."""
+        return self.snapshot.snapshot_id
+
+    @property
+    def run_id(self) -> RunId:
+        """Run ID for convenient access."""
+        return self.snapshot.run_id
+
+    @property
+    def interrupted_node_id(self) -> str:
+        """Interrupted node ID for convenient access."""
+        return self.snapshot.interrupted_node_id or "unknown"

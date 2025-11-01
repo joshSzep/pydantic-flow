@@ -872,14 +872,28 @@ except InterruptionRequested as exc:
 
 **Key Features:**
 - **Automatic checkpoint persistence**: Interrupted flows are saved to configured CheckpointStore
+- **Unified V2 checkpoint system**: HITL interrupts use the same StateSnapshot system as debugging
+- **Query interrupted runs**: CLI and API methods to list and inspect interrupted workflows
 - **Interrupt metadata**: Track reason, metadata, and node state at interruption
 - **Three-layer interruption**: Event-level, node-level, and flow-level handlers
 - **Priority-based handlers**: Control execution order (0-100, lower executes first)
 - **Multiple storage backends**: InMemory, SQLite, Redis, Postgres, S3, FlatFile
-- **Query interrupted checkpoints**: Filter and list checkpoints by interrupt status
 - **HumanNode**: Always interrupts for human input with dynamic prompts and options
 - **ApprovalNode**: Specialized node for yes/no decisions
 - **Conditional interruption**: Only interrupt when specific criteria are met
+- **Conversation preservation**: Full conversation history maintained at interrupt points
+
+**CLI Tools for Interrupted Workflows:**
+```bash
+# List all interrupted runs awaiting decisions
+pydantic-flow debug list-interrupts checkpoints.db
+
+# Show detailed context at interrupt point
+pydantic-flow debug show-interrupt <run_id> --db checkpoints.db
+
+# Resume with human decision
+pydantic-flow debug resume-with-decision <run_id> --decision '{"approved": true}'
+```
 
 **See [docs/hitl.md](docs/hitl.md) for complete HITL documentation.**
 

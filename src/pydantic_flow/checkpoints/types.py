@@ -24,6 +24,29 @@ from pydantic_flow.checkpoints.serialization import compress
 from pydantic_flow.checkpoints.serialization import decompress
 
 
+class SnapshotReason(StrEnum):
+    """Why this snapshot was created (immutable creation intent).
+
+    Categorizes snapshots by their original purpose at creation time.
+    This value is set once and never changes, even if the snapshot is
+    later used for other purposes (forking, resume, time-travel, etc.).
+
+    Creation reason is independent from usage patterns. For example:
+    - An AUTOMATIC snapshot can be used as a fork point
+    - A HITL_INTERRUPT can be used for time-travel debugging
+    - Any snapshot can be a resume point
+
+    To track usage patterns (like forking), use metadata or separate
+    tracking tables rather than changing the creation reason.
+    """
+
+    AUTOMATIC = "automatic"
+    HITL_INTERRUPT = "hitl_interrupt"
+    MANUAL_PAUSE = "manual_pause"
+    ERROR = "error"
+    COMPLETION = "completion"
+
+
 class CheckpointId(str):
     """Unique identifier for a checkpoint."""
 
@@ -57,6 +80,17 @@ class SnapshotId(str):
         )
 
 
+class ConversationMessageId(str):
+    """Unique identifier for a conversation message."""
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        """Tell Pydantic to treat ConversationMessageId as a string."""
+        return core_schema.no_info_after_validator_function(
+            cls, core_schema.str_schema()
+        )
+
+
 def generate_checkpoint_id() -> CheckpointId:
     """Generate a unique checkpoint ID.
 
@@ -85,6 +119,16 @@ def generate_snapshot_id() -> SnapshotId:
 
     """
     return SnapshotId(secrets.token_urlsafe(16))
+
+
+def generate_message_id() -> ConversationMessageId:
+    """Generate a unique conversation message ID.
+
+    Returns:
+        New conversation message ID.
+
+    """
+    return ConversationMessageId(secrets.token_urlsafe(16))
 
 
 def generate_trace_id() -> str:
@@ -131,6 +175,10 @@ class StateSnapshot(BaseModel):
         routing_ended: Whether routing ended with Route.END.
         trace_id: Reference to associated execution trace.
         created_at: Timestamp of snapshot creation.
+        reason: Why this snapshot was created.
+        interrupted_node_id: Node ID that triggered HITL interrupt.
+        conversation_head_id: Reference to most recent conversation message.
+        metadata: Additional snapshot metadata.
 
     """
 
@@ -146,6 +194,10 @@ class StateSnapshot(BaseModel):
     routing_ended: bool
     trace_id: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    reason: SnapshotReason = SnapshotReason.AUTOMATIC
+    interrupted_node_id: str | None = None
+    conversation_head_id: ConversationMessageId | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     def serialize(self) -> bytes:
         """Serialize with type preservation and compression.
@@ -181,8 +233,19 @@ class StateSnapshot(BaseModel):
             Hex-encoded SHA-256 hash.
 
         """
+
+        # Convert each value to JSON-serializable dict
+        def to_json_dict(v: Any) -> Any:
+            if isinstance(v, BaseModel):
+                return v.model_dump(mode="json")
+            elif isinstance(v, dict):
+                return v
+            else:
+                # Fallback for other types
+                return str(v)
+
         canonical_json = json.dumps(
-            {k: v.model_dump(mode="json") for k, v in complete_state.items()},
+            {k: to_json_dict(v) for k, v in complete_state.items()},
             sort_keys=True,
         )
         return hashlib.sha256(canonical_json.encode()).hexdigest()
@@ -327,6 +390,9 @@ class RunMetadata(BaseModel):
         status: Current run status.
         total_waves: Total number of waves executed.
         error: Error details (if failed).
+        interrupted_at_wave: Wave number where HITL interrupt occurred.
+        interrupt_snapshot_id: Snapshot ID for resume after interrupt.
+        awaiting_human_decision: Whether flow is paused for human input.
 
     """
 
@@ -336,6 +402,7 @@ class RunMetadata(BaseModel):
         RUNNING = "running"
         COMPLETED = "completed"
         FAILED = "failed"
+        INTERRUPTED = "interrupted"
 
     run_id: RunId
     flow_id: str
@@ -344,3 +411,6 @@ class RunMetadata(BaseModel):
     status: Status = Status.RUNNING
     total_waves: int = 0
     error: ExecutionError | None = None
+    interrupted_at_wave: int | None = None
+    interrupt_snapshot_id: SnapshotId | None = None
+    awaiting_human_decision: bool = False

@@ -6,7 +6,11 @@ import uuid
 
 from pydantic_ai import Agent
 
-from pydantic_flow.hitl.interrupts import FlowCheckpoint
+from pydantic_flow.checkpoints.types import RunId
+from pydantic_flow.checkpoints.types import SnapshotReason
+from pydantic_flow.checkpoints.types import StateSnapshot
+from pydantic_flow.checkpoints.types import generate_run_id
+from pydantic_flow.checkpoints.types import generate_snapshot_id
 from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.nodes.base import MergeNode
 from pydantic_flow.nodes.base import NodeOutput
@@ -113,22 +117,28 @@ class MergePromptNode[*InputTs, OutputT](MergeNode[*InputTs, OutputT]):
         # Fallback: concatenate inputs as strings, return raw
         return "\n\n".join(str(val) for val in input_data)
 
-    def _create_checkpoint(self, item: ProgressItem) -> FlowCheckpoint:
+    def _create_checkpoint(self, item: ProgressItem) -> StateSnapshot:
         """Create a checkpoint for resumption.
 
         Args:
             item: Progress item at interruption point.
 
         Returns:
-            FlowCheckpoint for resuming execution.
+            StateSnapshot for resuming execution.
 
         """
-        return FlowCheckpoint(
-            flow_id="",  # Will be set by flow orchestrator
-            run_id=self.run_id or "",
+        # Extract run_id from item if available
+        run_id_str = getattr(item, "run_id", None) or ""
+
+        return StateSnapshot(
+            snapshot_id=generate_snapshot_id(),
+            run_id=RunId(run_id_str) if run_id_str else generate_run_id(),
+            wave_number=0,
+            state_hash="",
+            next_frontier=[],
+            routing_ended=False,
+            reason=SnapshotReason.HITL_INTERRUPT,
             interrupted_node_id=self.name,
-            node_states={},
-            edge_history=[],
         )
 
     async def astream(self, input_data: tuple[Any, ...]) -> AsyncIterator[ProgressItem]:
@@ -153,7 +163,7 @@ class MergePromptNode[*InputTs, OutputT](MergeNode[*InputTs, OutputT]):
         decision = await self._check_interrupt_handlers(start_item)
         if decision.should_interrupt:
             raise InterruptionRequested(
-                checkpoint=self._create_checkpoint(start_item),
+                snapshot=self._create_checkpoint(start_item),
                 decision=decision,
             )
         yield start_item
@@ -171,7 +181,7 @@ class MergePromptNode[*InputTs, OutputT](MergeNode[*InputTs, OutputT]):
                 decision = await self._check_interrupt_handlers(item)
                 if decision.should_interrupt:
                     raise InterruptionRequested(
-                        checkpoint=self._create_checkpoint(item),
+                        snapshot=self._create_checkpoint(item),
                         decision=decision,
                     )
                 yield item

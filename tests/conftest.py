@@ -2,10 +2,11 @@
 
 import pytest
 
-from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
-from pydantic_flow.hitl.checkpoints.interface import CheckpointId
-from pydantic_flow.hitl.checkpoints.interface import RunId
-from pydantic_flow.hitl.interrupts import FlowCheckpoint
+# V1 checkpoint imports commented out - V1 system deprecated
+# from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope
+# from pydantic_flow.hitl.checkpoints.interface import CheckpointId
+# from pydantic_flow.hitl.checkpoints.interface import RunId
+# from pydantic_flow.hitl.interrupts import FlowCheckpoint
 
 
 @pytest.fixture(autouse=True)
@@ -21,25 +22,26 @@ def _disable_telemetry_exports(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("PFLOW_TELEMETRY_ENABLED", "false")
 
 
-@pytest.fixture
-def sample_checkpoint() -> FlowCheckpoint:
-    """Create a sample checkpoint for testing."""
-    return FlowCheckpoint(
-        flow_id="test_flow",
-        run_id="test_run_123",
-        interrupted_node_id="node_1",
-        node_states={"node_1": {"value": 42}},
-        edge_history=[("start", "node_1")],
-        metadata={"test": "data"},
-    )
-
-
-@pytest.fixture
-def sample_envelope(sample_checkpoint: FlowCheckpoint) -> CheckpointEnvelope:
-    """Create a sample checkpoint envelope for testing."""
-    return CheckpointEnvelope(
-        id=CheckpointId("checkpoint_001"),
-        run_id=RunId("test_run_123"),
-        node_id="node_1",
-        checkpoint=sample_checkpoint,
-    )
+# V1 checkpoint fixtures commented out - these tests need migration to V2
+# @pytest.fixture
+# def sample_checkpoint() -> FlowCheckpoint:
+#     """Create a sample checkpoint for testing."""
+#     return FlowCheckpoint(
+#         flow_id="test_flow",
+#         run_id="test_run_123",
+#         interrupted_node_id="node_1",
+#         node_states={"node_1": {"value": 42}},
+#         edge_history=[("start", "node_1")],
+#         metadata={"test": "data"},
+#     )
+#
+#
+# @pytest.fixture
+# def sample_envelope(sample_checkpoint: FlowCheckpoint) -> CheckpointEnvelope:
+#     """Create a sample checkpoint envelope for testing."""
+#     return CheckpointEnvelope(
+#         id=CheckpointId("checkpoint_001"),
+#         run_id=RunId("test_run_123"),
+#         node_id="node_1",
+#         checkpoint=sample_checkpoint,
+#     )

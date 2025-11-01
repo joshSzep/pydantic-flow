@@ -4,6 +4,8 @@ This module provides convenient workflows that compose the inspection
 and rendering layers for common debugging tasks.
 """
 
+import contextlib
+
 from pydantic import BaseModel
 from rich.console import Console
 
@@ -513,3 +515,130 @@ class CheckpointDebugger:
             "snapshot_count": snapshot_count,
             "metadata": metadata,
         }
+
+    async def show_interrupted_runs(self) -> None:
+        """Show all runs awaiting human decision.
+
+        Displays interrupted runs in a formatted table with interrupt details.
+        """
+        runs = await self.inspector.list_interrupted_runs()
+        if not runs:
+            self.renderer.console.print("[yellow]No interrupted runs found[/yellow]")
+            return
+
+        from rich.table import Table
+
+        table = Table(title="Interrupted Runs Awaiting Human Decision")
+        table.add_column("Run ID", style="cyan")
+        table.add_column("Flow ID", style="green")
+        table.add_column("Started", style="blue")
+        table.add_column("Interrupted At", style="yellow")
+        table.add_column("Wave", style="magenta")
+
+        for run in runs:
+            run_id_short = run.run_id[:12] + "..."
+            started = run.started_at.strftime("%Y-%m-%d %H:%M:%S")
+            interrupted_at = (
+                run.completed_at.strftime("%Y-%m-%d %H:%M:%S")
+                if run.completed_at
+                else "N/A"
+            )
+            wave = str(run.interrupted_at_wave) if run.interrupted_at_wave else "N/A"
+
+            table.add_row(
+                run_id_short,
+                run.flow_id,
+                started,
+                interrupted_at,
+                wave,
+            )
+
+        self.renderer.console.print(table)
+
+    async def show_interrupt_context(
+        self,
+        run_id: RunId,
+    ) -> None:
+        """Show full context at interrupt point.
+
+        Displays:
+        - Run metadata
+        - Interrupt snapshot details
+        - Reconstructed state at interrupt
+        - Conversation history up to interrupt
+
+        Args:
+            run_id: Run identifier
+
+        """
+        from rich.panel import Panel
+        from rich.syntax import Syntax
+
+        # Get run metadata
+        metadata = await self.inspector.get_run(run_id)
+        if not metadata:
+            self.renderer.console.print(f"[red]Run {run_id} not found[/red]")
+            return
+
+        if metadata.status != metadata.Status.INTERRUPTED:
+            self.renderer.console.print(
+                f"[yellow]Run {run_id} is not interrupted[/yellow]"
+            )
+            return
+
+        # Get interrupt snapshot
+        snapshot = await self.inspector.get_interrupt_snapshot(run_id)
+        if not snapshot:
+            self.renderer.console.print(
+                f"[red]No interrupt snapshot found for {run_id}[/red]"
+            )
+            return
+
+        # Reconstruct state at interrupt
+        state = await self.inspector.reconstruct_state(run_id, snapshot.wave_number)
+
+        # Get conversation history
+        conversation = []
+        with contextlib.suppress(ValueError):
+            conversation = await self.inspector.get_conversation_at_interrupt(run_id)
+
+        # Display information
+        self.renderer.console.print(
+            Panel(
+                f"[bold]Run:[/bold] {run_id}\n"
+                f"[bold]Flow:[/bold] {metadata.flow_id}\n"
+                f"[bold]Started:[/bold] {metadata.started_at}\n"
+                f"[bold]Interrupted at wave:[/bold] {snapshot.wave_number}\n"
+                f"[bold]Interrupted node:[/bold] {snapshot.interrupted_node_id}",
+                title="Interrupt Context",
+                border_style="yellow",
+            )
+        )
+
+        # Show state
+        self.renderer.console.print("\n[bold]State at Interrupt:[/bold]")
+        state_repr = {k: type(v).__name__ for k, v in state.items()}
+        state_json = __import__("json").dumps(state_repr, indent=2)
+        syntax = Syntax(state_json, "json", theme="monokai")
+        self.renderer.console.print(syntax)
+
+        # Show conversation
+        if conversation:
+            self.renderer.console.print(
+                f"\n[bold]Conversation History ({len(conversation)} messages):[/bold]"
+            )
+            for i, msg in enumerate(conversation[-5:], 1):  # Show last 5 messages
+                msg_type = type(msg).__name__
+                self.renderer.console.print(f"  {i}. [{msg_type}]")
+
+        # Show next frontier
+        self.renderer.console.print("\n[bold]Next Frontier:[/bold]")
+        for node in snapshot.next_frontier:
+            self.renderer.console.print(f"  - {node}")
+
+        # Show metadata
+        if snapshot.metadata:
+            self.renderer.console.print("\n[bold]Interrupt Metadata:[/bold]")
+            metadata_json = __import__("json").dumps(snapshot.metadata, indent=2)
+            syntax = Syntax(metadata_json, "json", theme="monokai")
+            self.renderer.console.print(syntax)
