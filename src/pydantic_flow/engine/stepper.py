@@ -7,6 +7,7 @@ conditional routing, and dynamic control flow.
 import asyncio
 from collections.abc import Callable
 import time
+from typing import TYPE_CHECKING
 from typing import Any
 from typing import cast
 
@@ -33,7 +34,11 @@ from pydantic_flow.nodes.protocols import NodeWithInput
 from pydantic_flow.nodes.protocols import NodeWithInputs
 from pydantic_flow.nodes.protocols import has_input_dependency
 from pydantic_flow.nodes.protocols import has_multiple_inputs
+from pydantic_flow.streaming import ToolResult
 from pydantic_flow.telemetry.helpers import instrument_checkpoint_write
+
+if TYPE_CHECKING:
+    pass
 
 
 class IterationEvent(BaseModel):
@@ -319,7 +324,7 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
                 durability_mode=config.durability_mode.value,
             )
 
-    async def invoke(
+    async def invoke(  # noqa: PLR0912, PLR0915
         self,
         inputs: InputT,
         config: RunConfig | None = None,
@@ -358,6 +363,24 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
         for node_name in self.nodes_by_name:
             execution_progress[node_name] = "pending"
 
+        # Initialize checkpoint v2 manager if configured
+        checkpoint_manager = None
+        if config.checkpoint_v2_backend is not None:
+            # isort: off
+            from pydantic_flow.checkpoints import CheckpointConfig  # noqa: PLC0415
+            from pydantic_flow.checkpoints import CheckpointManager  # noqa: PLC0415
+            from pydantic_flow.checkpoints.types import RunId as V2RunId  # noqa: PLC0415
+            # isort: on
+
+            v2_config = config.checkpoint_v2_config or CheckpointConfig()
+            checkpoint_manager = CheckpointManager(
+                config=v2_config,
+                storage=config.checkpoint_v2_backend,
+                flow_id=self.flow_id or "stepper_engine",
+                run_id=V2RunId(run_id),
+            )
+            await checkpoint_manager.initialize_run()
+
         try:
             while frontier:
                 self._check_limits(iteration, config, start_time, events)
@@ -366,13 +389,25 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
                 frontier = set()
 
                 await self._execute_frontier(
-                    current_frontier, inputs, results, execution_progress
+                    current_frontier,
+                    inputs,
+                    results,
+                    execution_progress,
+                    checkpoint_manager,
                 )
                 next_frontier, ended = await self._route_next(current_frontier, results)
 
                 await self._maybe_checkpoint_after_frontier(
                     config, current_frontier, results, run_id, execution_progress
                 )
+
+                # Save checkpoint v2 after wave execution
+                if checkpoint_manager is not None:
+                    await checkpoint_manager.save_wave_checkpoint(
+                        current_state=results,
+                        next_frontier=list(next_frontier),
+                        routing_ended=ended,
+                    )
 
                 elapsed_ms = (time.time() - start_time) * 1000
                 if config.trace_iterations:
@@ -400,6 +435,15 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
                 execution_progress,
                 checkpoint_reason="flow_end",
             )
+
+            # Finalize checkpoint v2 run
+            if checkpoint_manager is not None:
+                from pydantic_flow.checkpoints.types import RunMetadata  # noqa: PLC0415
+
+                await checkpoint_manager.finalize_run(
+                    status=RunMetadata.Status.COMPLETED
+                )
+
             return output
 
         except FlowError:
@@ -415,6 +459,13 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
                 execution_progress,
                 checkpoint_reason="error",
             )
+
+            # Finalize checkpoint v2 run as failed
+            if checkpoint_manager is not None:
+                from pydantic_flow.checkpoints.types import RunMetadata  # noqa: PLC0415
+
+                await checkpoint_manager.finalize_run(status=RunMetadata.Status.FAILED)
+
             raise
         except Exception as e:
             # Mark failed nodes
@@ -429,6 +480,13 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
                 execution_progress,
                 checkpoint_reason="error",
             )
+
+            # Finalize checkpoint v2 run as failed
+            if checkpoint_manager is not None:
+                from pydantic_flow.checkpoints.types import RunMetadata  # noqa: PLC0415
+
+                await checkpoint_manager.finalize_run(status=RunMetadata.Status.FAILED)
+
             msg = f"Flow execution failed: {e}"
             raise FlowError(msg) from e
 
@@ -473,6 +531,7 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
         inputs: InputT,
         results: dict[str, Any],
         execution_progress: dict[str, str] | None = None,
+        checkpoint_manager: Any = None,
     ) -> None:
         """Execute all nodes in the current frontier in parallel.
 
@@ -481,6 +540,7 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
             inputs: Flow inputs.
             results: Current execution results.
             execution_progress: Optional execution progress tracking.
+            checkpoint_manager: Optional checkpoint v2 manager for event logging.
 
         """
 
@@ -491,6 +551,11 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
 
             node = self.nodes_by_name[node_name]
             input_data = self._get_node_input(node, inputs, results)
+
+            # Create event log for this node if trace sampling enabled
+            event_log = None
+            if checkpoint_manager is not None:
+                event_log = checkpoint_manager.create_event_log(node_id=node_name)
 
             # Check if node supports caching
             node_cache_policy = getattr(node, "cache_policy", None)
@@ -506,8 +571,23 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
                     policy=effective_policy,
                     context=None,
                 )
+            elif event_log is not None:
+                # Stream through node execution to capture events
+                result = None
+                async for item in node.astream(input_data):
+                    await event_log.append_event(item)
+                    # Extract result from ToolResult if available
+                    if isinstance(item, ToolResult) and item.result is not None:
+                        result = item.result
+
+                # If no result extracted from stream, call run() to get it
+                if result is None:
+                    result = await node.run(input_data)
+
+                # Flush events to storage
+                await event_log.flush()
             else:
-                # Direct execution without caching
+                # Direct execution without event capture
                 result = await node.run(input_data)
 
             if execution_progress is not None:

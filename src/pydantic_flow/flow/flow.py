@@ -594,6 +594,22 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             for node in self._execution_order:
                 execution_progress[node.name] = "pending"
 
+            # Initialize checkpoint v2 manager if configured
+            checkpoint_manager: Any = None
+            if config.checkpoint_v2_backend is not None:
+                from pydantic_flow.checkpoints import CheckpointConfig
+                from pydantic_flow.checkpoints import CheckpointManager
+                from pydantic_flow.checkpoints.types import RunId as V2RunId
+
+                v2_config = config.checkpoint_v2_config or CheckpointConfig()
+                checkpoint_manager = CheckpointManager(
+                    config=v2_config,
+                    storage=config.checkpoint_v2_backend,
+                    flow_id=self.flow_id,
+                    run_id=V2RunId(run_id),
+                )
+                await checkpoint_manager.initialize_run()
+
             try:
                 for node in self._execution_order:
                     execution_progress[node.name] = "running"
@@ -623,8 +639,19 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                     tool_result: Any = None
                     stream_items: list[ProgressItem] = []
 
+                    # Create event log for this node if trace sampling enabled
+                    event_log = None
+                    if checkpoint_manager is not None:
+                        event_log = checkpoint_manager.create_event_log(
+                            node_id=node.name
+                        )
+
                     async for item in node.astream(input_data):  # type: ignore[union-attr]
                         stream_items.append(item)
+
+                        # Log event if trace sampling enabled
+                        if event_log is not None:
+                            await event_log.append(item)
 
                         # Extract result using same logic as BaseNode.run()
                         if isinstance(item, ToolResult) and item.result is not None:
@@ -652,6 +679,14 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
                     self._results[node.name] = result
                     execution_progress[node.name] = "completed"
+
+                    # Save checkpoint v2 after node execution
+                    if checkpoint_manager is not None:
+                        await checkpoint_manager.save_wave_checkpoint(
+                            current_state=self._results.copy(),
+                            next_frontier=[],
+                            routing_ended=False,
+                        )
 
                     # Checkpoint after node completion based on durability mode
                     from pydantic_flow.core.durability import DurabilityMode
@@ -737,6 +772,14 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                         durability_mode=config.durability_mode.value,
                     )
 
+                # Finalize checkpoint v2 run on success
+                if checkpoint_manager is not None:
+                    from pydantic_flow.checkpoints.types import RunMetadata
+
+                    await checkpoint_manager.finalize_run(
+                        status=RunMetadata.Status.COMPLETED
+                    )
+
                 return output
 
             except InterruptionRequested as e:
@@ -772,6 +815,14 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                     e.checkpoint.metadata = e.checkpoint.metadata or {}
                     e.checkpoint.metadata["checkpoint_id"] = envelope.id
                     e.checkpoint.metadata["run_id"] = run_id
+
+                # Finalize checkpoint v2 run as interrupted
+                if checkpoint_manager is not None:
+                    from pydantic_flow.checkpoints.types import RunMetadata
+
+                    await checkpoint_manager.finalize_run(
+                        status=RunMetadata.Status.FAILED
+                    )
 
                 raise
 
@@ -821,8 +872,24 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
                 # Wrap any other exception in a FlowError for consistency
                 if isinstance(e, FlowError):
+                    # Finalize checkpoint v2 run as failed
+                    if checkpoint_manager is not None:
+                        from pydantic_flow.checkpoints.types import RunMetadata
+
+                        await checkpoint_manager.finalize_run(
+                            status=RunMetadata.Status.FAILED
+                        )
                     raise
                 msg = f"Flow execution failed: {e}"
+
+                # Finalize checkpoint v2 run as failed
+                if checkpoint_manager is not None:
+                    from pydantic_flow.checkpoints.types import RunMetadata
+
+                    await checkpoint_manager.finalize_run(
+                        status=RunMetadata.Status.FAILED
+                    )
+
                 raise FlowError(msg) from e
 
             finally:
@@ -1777,7 +1844,7 @@ class CompiledFlow[InputT: BaseModel, OutputT: BaseModel]:
                     if token is not None:
                         _active_flow_memory.reset(token)
         if self.flow is not None:
-            return await self.flow.run(inputs)
+            return await self.flow.run(inputs, config)
         msg = "CompiledFlow has neither flow nor engine configured"
         raise FlowError(msg)
 

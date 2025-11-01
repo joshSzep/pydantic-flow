@@ -6,16 +6,12 @@ recursion limits, timeouts, observability settings, and checkpoint persistence.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
 from typing import Any
 
 from pydantic import BaseModel
 from pydantic import Field
 
 from pydantic_flow.core.durability import DurabilityMode
-
-if TYPE_CHECKING:
-    pass
 
 
 class RunConfig(BaseModel):
@@ -85,4 +81,18 @@ class RunConfig(BaseModel):
     checkpoint_compression: bool = Field(
         default=True,
         description="Enable gzip compression for checkpoint node_states",
+    )
+
+    # Checkpoint v2 (time-travel debugging)
+    checkpoint_v2_backend: Any | None = Field(
+        default=None,
+        description=(
+            "Optional checkpoint v2 storage backend for time-travel debugging"
+        ),
+    )
+    checkpoint_v2_config: Any | None = Field(
+        default=None,
+        description=(
+            "Optional checkpoint v2 configuration for trace sampling and full snapshots"
+        ),
     )
