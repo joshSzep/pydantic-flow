@@ -180,7 +180,7 @@ async def test_flow_compile_passes_cache_to_stepper():
 
     compiled = flow.compile()
 
-    # Verify stepper engine has cache backend
-    if compiled.use_stepper and compiled.engine is not None:
+    # Verify engine has cache backend (always stepper now)
+    if compiled.engine is not None:
         assert compiled.engine.cache_backend is cache
         assert compiled.engine.default_cache_policy is policy

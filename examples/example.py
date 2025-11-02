@@ -13,6 +13,18 @@ from pydantic_flow import ParserNode
 from pydantic_flow import PromptNode
 from pydantic_flow import ToolNode
 
+
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 # Temperature thresholds for weather recommendations
 WARM_THRESHOLD = 25
 PLEASANT_THRESHOLD = 15
@@ -200,9 +212,6 @@ async def main():
     )
     llm_flow.add_nodes(llm_node, parser_node, summary_node_2)
 
-    print(f"✅ API Flow execution order: {api_flow.get_execution_order()}")
-    print(f"✅ LLM Flow execution order: {llm_flow.get_execution_order()}")
-
     # Test different locations
     locations = ["Paris", "London", "Tokyo", "Unknown City"]
 
@@ -214,7 +223,7 @@ async def main():
 
         # Run API-based flow
         print("📡 Running API-based workflow...")
-        api_results = await api_flow.run(query)
+        api_results = await extract_result_from_stream(api_flow.astream(query))
         api_summary = api_results.summary_generator
 
         print(f"   Summary: {api_summary.summary}")
@@ -223,7 +232,7 @@ async def main():
 
         # Run LLM-based flow
         print("🤖 Running LLM-based workflow...")
-        llm_results = await llm_flow.run(query)
+        llm_results = await extract_result_from_stream(llm_flow.astream(query))
         llm_summary = llm_results.summary_generator_2
 
         print(f"   Summary: {llm_summary.summary}")
@@ -235,7 +244,7 @@ async def main():
 
     # Show that outputs are properly typed
     query = WeatherQuery(location="Paris")
-    results = await api_flow.run(query)
+    results = await extract_result_from_stream(api_flow.astream(query))
 
     weather_info = results.weather_api
     summary = results.summary_generator

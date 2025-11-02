@@ -18,6 +18,16 @@ from pydantic_flow.cache import InMemoryCache
 from pydantic_flow.nodes import AgentNode
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Question(BaseModel):
     """Input model for questions."""
 
@@ -97,10 +107,10 @@ flow = Flow[Question, Answer](
 flow.add_nodes(cached_node)
 
 # First call - cache miss, executes node
-result1 = await flow.run(Question(text="What is 2+2?"))
+result1 = await extract_result_from_stream(flow.astream(Question(text="What is 2+2?"))
 
 # Second call - cache hit, returns cached result
-result2 = await flow.run(Question(text="What is 2+2?"))
+result2 = await extract_result_from_stream(flow.astream(Question(text="What is 2+2?"))
         """)
 
     finally:

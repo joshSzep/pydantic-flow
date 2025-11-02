@@ -64,19 +64,33 @@ async def main():
     async for token in iter_tokens(node.astream(query)):
         print(token, end="", flush=True)
     
-    # Or get the final result (consumes stream internally)
-    result = await node.run(query)
+    # Or extract final result from stream
+    async def extract_result_from_stream(stream):
+        result = None
+        async for item in stream:
+            if hasattr(item, 'result'):
+                result = item.result
+        return result
+    
+    result = await extract_result_from_stream(node.astream(query))
     print(f"\n\nFinal result: {result}")
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Non-Streaming Convenience
+### Extracting Results from Streams
 
 ```python
-# The run() method consumes the stream and returns the final validated result
-result = await node.run(query)
+# Helper to extract final result from event stream
+async def extract_result_from_stream(stream):
+    result = None
+    async for item in stream:
+        if hasattr(item, 'result'):
+            result = item.result
+    return result
+
+result = await extract_result_from_stream(node.astream(query))
 print(result)  # Fully typed and validated
 ```
 
@@ -263,11 +277,16 @@ The `Flow` class manages execution with automatic dependency resolution:
 flow = Flow()
 flow.add_nodes(node1, node2, node3)
 
-# Automatic topological sorting
-execution_order = flow.get_execution_order()
+# Compile the flow
+compiled = flow.compile()
 
-# Type-safe execution
-results = await flow.run(input_data)
+# Type-safe streaming execution
+async for item in compiled.astream(input_data):
+    # Process progress items
+    pass
+
+# Or extract final result
+result = await extract_result_from_stream(compiled.astream(input_data))
 ```
 
 ### Loops and Conditional Routing
@@ -312,7 +331,7 @@ flow.add_conditional_edges("tick", router)
 # Compile and execute
 compiled = flow.compile()
 config = RunConfig(max_steps=50)
-result = await compiled.invoke(CounterState(n=0), config)
+result = await extract_result_from_stream(compiled.astream(CounterState(n=0), config))
 # result.tick.n == 5
 ```
 
@@ -366,7 +385,7 @@ flow.add_conditional_edges("execute", router)
 # Execute with safety limits
 compiled = flow.compile()
 config = RunConfig(max_steps=50, trace_iterations=True)
-result = await compiled.invoke(WorkState(iterations=0, total=0), config)
+result = await extract_result_from_stream(compiled.astream(WorkState(iterations=0, total=0)), config)
 ```
 
 #### Routing with Mapping Dictionaries
@@ -411,7 +430,7 @@ async def run_with_error_handling():
     )
     
     try:
-        result = await compiled.invoke(initial_state, config)
+        result = await extract_result_from_stream(compiled.astream(initial_state, config))
         logger.info(f"Flow completed successfully: {result}")
         return result
         
@@ -456,7 +475,7 @@ async def run_with_error_handling():
 # RecursionLimitError: Raised when max_steps is exceeded
 config = RunConfig(max_steps=25)  # Default limit
 try:
-    result = await compiled.invoke(input_data, config)
+    result = await extract_result_from_stream(compiled.astream(input_data, config))
 except RecursionLimitError as e:
     print(f"Loop exceeded limit: {e}")
     # e includes recent iteration trace
@@ -470,7 +489,7 @@ flow.add_conditional_edges("start", bad_router)
 # FlowTimeoutError: Raised when execution exceeds time limit
 config = RunConfig(timeout_seconds=30)
 try:
-    result = await compiled.invoke(input_data, config)
+    result = await extract_result_from_stream(compiled.astream(input_data, config))
 except FlowTimeoutError:
     print("Flow execution timed out")
 ```
@@ -509,7 +528,7 @@ flow.add_edge(fetch, process)  # Static edge
 
 # Compile and run (automatically picks optimal engine)
 compiled = flow.compile()
-result = await compiled.invoke(input_data, config)
+result = await extract_result_from_stream(compiled.astream(input_data, config))
 ```
 
 #### Conditional Routing and Loops
@@ -541,7 +560,7 @@ flow.add_conditional_edges(execute, should_continue)
 
 # Compile (auto-detects loop, uses stepper engine)
 compiled = flow.compile()
-result = await compiled.invoke(initial_state, config)
+result = await extract_result_from_stream(compiled.astream(initial_state, config))
 ```
 
 **Router functions return:**
@@ -572,32 +591,6 @@ compiled = flow.compile()  # Auto-detects cycle, uses stepper
 compiled.explain()  # Shows: engine, reasons, detected features
 ```
 
-#### Explicit Engine Control
-
-You can override automatic selection if needed:
-
-```python
-from pydantic_flow import ExecutionMode
-
-# Force DAG mode (will error if cycles/conditional edges exist)
-compiled = flow.compile(mode=ExecutionMode.DAG)
-
-# Force stepper engine (works with any flow structure)
-compiled = flow.compile(mode=ExecutionMode.STEPPER)
-
-# Auto-detect (default) - uses stepper if needed, otherwise DAG
-compiled = flow.compile(mode=ExecutionMode.AUTO)
-
-# Explain the selection
-print(compiled.explain())
-# Output:
-# Engine: STEPPER
-# Reasons:
-#   - Flow contains cycles
-#   - Detected conditional edges
-# Entry nodes: plan
-```
-
 #### Understanding explain()
 
 The `explain()` method shows how your flow will execute:
@@ -608,14 +601,11 @@ analysis = compiled.explain()
 
 # Returns a structured explanation:
 # {
-#   "mode": "STEPPER",
 #   "has_cycles": True,
 #   "has_conditional_edges": True,
 #   "entry_nodes": ["plan"],
-#   "reasons": [
-#     "Flow contains cycles",
-#     "Detected conditional edges"
-#   ]
+#   "node_count": 3,
+#   "edge_count": 4
 # }
 ```
 
@@ -662,7 +652,7 @@ summary_node = ToolNode[ResearchResults, SummaryData](
 parent_flow.add_nodes(research_flow_node, summary_node)
 
 # Execute hierarchical workflow
-results = await parent_flow.run(query)
+result = await extract_result_from_stream(parent_flow.astream(query))
 research_data = results.research_sub_flow.research
 summary_data = results.summary
 ```
@@ -855,7 +845,7 @@ config = RunConfig(checkpoint_store=store, run_id="review_001")
 
 # Execute - will interrupt and save checkpoint when human input needed
 try:
-    result = await flow.run(input_data, config=config)
+    result = await extract_result_from_stream(flow.astream(input_data, config=config))
 except InterruptionRequested as exc:
     checkpoint = exc.checkpoint
     checkpoint_id = checkpoint.metadata["checkpoint_id"]
@@ -1036,7 +1026,7 @@ retry_node = RetryNode(
 
 # Flow-level error handling
 try:
-    results = await flow.run(input_data)
+    result = await extract_result_from_stream(flow.astream(input_data))
 except FlowError as e:
     print(f"Workflow failed: {e}")
 ```
@@ -1047,7 +1037,7 @@ except FlowError as e:
 print(flow.get_execution_order())
 
 # Access intermediate results
-results = await flow.run(input_data)
+result = await extract_result_from_stream(flow.astream(input_data))
 intermediate = results["parser_node"]
 final = results["summary_node"]
 ```

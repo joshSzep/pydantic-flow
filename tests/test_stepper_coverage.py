@@ -23,6 +23,8 @@ from pydantic_flow.nodes import BaseNode
 from pydantic_flow.streaming import ProgressItem
 from pydantic_flow.streaming import StreamEnd
 from pydantic_flow.streaming import StreamStart
+from pydantic_flow.streaming.tool_events import ToolResult
+from tests.conftest import extract_result_from_stream
 
 
 class SimpleState(BaseModel):
@@ -51,6 +53,7 @@ class SimpleNode(BaseNode[SimpleState, SimpleState]):
         """Increment value."""
         yield StreamStart(run_id=self.run_id or "", node_id=self.name)
         result = SimpleState(value=input_data.value + 1)
+        yield ToolResult(result=result)
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
@@ -66,6 +69,7 @@ class SlowNode(BaseNode[SimpleState, SimpleState]):
         yield StreamStart(run_id=self.run_id or "", node_id=self.name)
         await asyncio.sleep(2.0)  # Sleep longer than timeout
         result = SimpleState(value=input_data.value + 1)
+        yield ToolResult(result=result)
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
@@ -96,6 +100,7 @@ class TestInputValidation:
             entry_nodes=["node"],
             input_type=SimpleState,
             output_type=SimpleState,
+            flow_id="test_flow",
         )
         engine = StepperEngine(config)
 
@@ -105,7 +110,7 @@ class TestInputValidation:
 
         wrong_input: Any = WrongState(wrong_field="test")
         with pytest.raises(TypeError) as exc_info:
-            await engine.invoke(wrong_input, RunConfig())
+            await extract_result_from_stream(engine.astream(wrong_input, RunConfig()))
 
         assert "Input type mismatch" in str(exc_info.value)
         assert "expected SimpleState" in str(exc_info.value)
@@ -132,7 +137,9 @@ class TestRecursionLimit:
         compiled = flow.compile()
 
         with pytest.raises(RecursionLimitError) as exc_info:
-            await compiled.invoke(SimpleState(value=0), RunConfig(max_steps=3))
+            await extract_result_from_stream(
+                compiled.astream(SimpleState(value=0), RunConfig(max_steps=3))
+            )
 
         assert "Exceeded max_steps=3" in str(exc_info.value)
         assert "at iteration 3" in str(exc_info.value)
@@ -153,9 +160,13 @@ class TestRecursionLimit:
         compiled = flow.compile()
 
         with pytest.raises(RecursionLimitError) as exc_info:
-            await compiled.invoke(
-                SimpleState(value=0),
-                RunConfig(max_steps=3, trace_iterations=True, recent_events_count=2),
+            await extract_result_from_stream(
+                compiled.astream(
+                    SimpleState(value=0),
+                    RunConfig(
+                        max_steps=3, trace_iterations=True, recent_events_count=2
+                    ),
+                )
             )
 
         error_msg = str(exc_info.value)
@@ -196,7 +207,9 @@ class TestTimeout:
 
         with pytest.raises(FlowTimeoutError) as exc_info:
             # Timeout after 1 second, but loop will take ~10 seconds
-            await compiled.invoke(SimpleState(value=0), RunConfig(timeout_seconds=1))
+            await extract_result_from_stream(
+                compiled.astream(SimpleState(value=0), RunConfig(timeout_seconds=1))
+            )
 
         assert "Exceeded timeout of 1s" in str(exc_info.value)
 
@@ -225,7 +238,9 @@ class TestNodeInputRetrieval:
         flow.add_conditional_edges("loop", router)
 
         compiled = flow.compile()
-        result = await compiled.invoke(SimpleState(value=0), RunConfig())
+        result = await extract_result_from_stream(
+            compiled.astream(SimpleState(value=0), RunConfig())
+        )
 
         # First iteration: 0 + 1 = 1
         # Second iteration: 1 + 1 = 2
@@ -253,7 +268,9 @@ class TestConditionalRouting:
         compiled = flow.compile()
 
         with pytest.raises(RoutingError) as exc_info:
-            await compiled.invoke(SimpleState(value=0), RunConfig())
+            await extract_result_from_stream(
+                compiled.astream(SimpleState(value=0), RunConfig())
+            )
 
         assert "Router outcome 'unmapped' not in mapping" in str(exc_info.value)
 
@@ -273,7 +290,9 @@ class TestConditionalRouting:
         compiled = flow.compile()
 
         with pytest.raises(RoutingError) as exc_info:
-            await compiled.invoke(SimpleState(value=0), RunConfig())
+            await extract_result_from_stream(
+                compiled.astream(SimpleState(value=0), RunConfig())
+            )
 
         assert "Router target 'nonexistent_node' is not a valid node name" in str(
             exc_info.value
@@ -295,7 +314,9 @@ class TestConditionalRouting:
         compiled = flow.compile()
 
         with pytest.raises(RoutingError) as exc_info:
-            await compiled.invoke(SimpleState(value=0), RunConfig())
+            await extract_result_from_stream(
+                compiled.astream(SimpleState(value=0), RunConfig())
+            )
 
         assert "Invalid routing target: 123" in str(exc_info.value)
 
@@ -316,7 +337,9 @@ class TestConditionalRouting:
         flow.add_conditional_edges("b", lambda s: Route.END)
 
         compiled = flow.compile()
-        result = await compiled.invoke(SimpleState(value=0), RunConfig())
+        result = await extract_result_from_stream(
+            compiled.astream(SimpleState(value=0), RunConfig())
+        )
 
         # Both nodes should be executed, both use flow input
         assert result.a.value == 1
@@ -340,7 +363,9 @@ class TestConditionalRouting:
         flow.add_conditional_edges("b", lambda s: Route.END)
 
         compiled = flow.compile()
-        result = await compiled.invoke(SimpleState(value=0), RunConfig())
+        result = await extract_result_from_stream(
+            compiled.astream(SimpleState(value=0), RunConfig())
+        )
 
         assert result.a.value == 1
         assert result.b.value == 1  # b also uses flow input
@@ -365,8 +390,8 @@ class TestIterationTracing:
         flow.add_conditional_edges("a", lambda state: Route.END)
 
         compiled = flow.compile()
-        result = await compiled.invoke(
-            SimpleState(value=0), RunConfig(trace_iterations=True)
+        result = await extract_result_from_stream(
+            compiled.astream(SimpleState(value=0), RunConfig(trace_iterations=True))
         )
 
         assert result.a.value == 1
@@ -387,7 +412,9 @@ class TestErrorHandling:
         compiled = flow.compile()
 
         with pytest.raises(FlowError) as exc_info:
-            await compiled.invoke(SimpleState(value=0), RunConfig())
+            await extract_result_from_stream(
+                compiled.astream(SimpleState(value=0), RunConfig())
+            )
 
         assert "Flow execution failed" in str(exc_info.value)
 

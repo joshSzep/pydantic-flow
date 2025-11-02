@@ -1,15 +1,14 @@
 """Flow orchestration for the pydantic-flow framework.
 
-This module provides the Flow class that manages workflow execution,
-dependency resolution, and DAG validation.
+This module provides the Flow class that manages workflow execution
+and dependency resolution using the stepper engine.
 """
 
 from __future__ import annotations
 
-from collections import deque
+from collections.abc import AsyncIterator
 from collections.abc import Callable
 from dataclasses import dataclass
-from enum import StrEnum
 from typing import Any
 from typing import TypeVar
 import uuid
@@ -26,20 +25,16 @@ from pydantic_flow.core.run_config import RunConfig
 from pydantic_flow.engine.stepper import ConditionalEdge
 from pydantic_flow.engine.stepper import EngineConfig
 from pydantic_flow.engine.stepper import StepperEngine
-from pydantic_flow.flow.exceptions import CyclicDependencyError
 from pydantic_flow.hitl.decisions import InterruptCallback
 from pydantic_flow.hitl.decisions import InterruptDecision
 from pydantic_flow.hitl.interrupts import HandlerPriority
 from pydantic_flow.hitl.interrupts import InterruptHandlerRegistration
-from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.memory import ConversationMemory
 from pydantic_flow.memory import MemoryConfig
-from pydantic_flow.memory import _active_flow_memory
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes.protocols import has_input_dependency
 from pydantic_flow.nodes.protocols import has_multiple_inputs
 from pydantic_flow.streaming.base import ProgressItem
-from pydantic_flow.streaming.tool_events import ToolResult
 
 InputT = TypeVar("InputT", bound=BaseModel)
 OutputT = TypeVar("OutputT", bound=BaseModel)
@@ -71,45 +66,6 @@ class ConditionalEdgeConfig:
 
     source: BaseNode[Any, Any]
     router: Callable[[BaseModel], Any]
-
-
-@dataclass
-class GraphAnalysis:
-    """Results of flow graph structure analysis.
-
-    Attributes:
-        has_cycles: Whether the graph contains cycles.
-        has_conditional_edges: Whether there are conditional routing edges.
-        has_explicit_edges: Whether there are explicit edges defined.
-        entry_nodes: List of nodes with no incoming dependencies.
-        execution_order: Topologically sorted node order (None if has cycles).
-        mode: Recommended execution mode based on analysis.
-        reasons: Human-readable reasons for mode selection.
-
-    """
-
-    has_cycles: bool
-    has_conditional_edges: bool
-    has_explicit_edges: bool
-    entry_nodes: list[BaseNode[Any, Any]]
-    execution_order: list[BaseNode[Any, Any]] | None
-    mode: ExecutionMode
-    reasons: list[str]
-
-
-class ExecutionMode(StrEnum):
-    """Execution engine selection for flow compilation.
-
-    Attributes:
-        AUTO: Automatically detect based on flow structure (cycles, conditional edges).
-        DAG: Use legacy topological sort execution (no cycles or conditional edges).
-        STEPPER: Use loop-capable stepper engine (supports cycles and routing).
-
-    """
-
-    AUTO = "auto"
-    DAG = "dag"
-    STEPPER = "stepper"
 
 
 class Flow[InputT: BaseModel, OutputT: BaseModel]:
@@ -144,7 +100,6 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
         """
         self.nodes: list[BaseNode[Any, Any]] = []
-        self._execution_order: list[BaseNode[Any, Any]] = []
         self._results: dict[str, Any] = {}
         self._input_type = input_type
         self._output_type = output_type
@@ -240,55 +195,20 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 self._nodes_by_name[node.name] = node
                 self._nodes_by_id[id(node)] = node
 
-        # Recalculate execution order when nodes are added
-        self._calculate_execution_order()
+    async def astream(
+        self, inputs: InputT, config: RunConfig | None = None
+    ) -> AsyncIterator[ProgressItem]:
+        """Execute the flow and stream progress items.
 
-    def _calculate_execution_order(self) -> None:
-        """Calculate the execution order using topological sorting.
-
-        Raises:
-            CyclicDependencyError: If a cycle is detected in the dependencies
-
-        """
-        # Build dependency graph
-        in_degree = dict.fromkeys(self.nodes, 0)
-        adjacency = {node: [] for node in self.nodes}
-
-        for node in self.nodes:
-            for dep in getattr(node, "dependencies", []):
-                if dep in self.nodes:
-                    adjacency[dep].append(node)
-                    in_degree[node] += 1
-
-        # Kahn's algorithm for topological sorting
-        queue = deque([node for node in self.nodes if in_degree[node] == 0])
-        execution_order = []
-
-        while queue:
-            current = queue.popleft()
-            execution_order.append(current)
-
-            for neighbor in adjacency[current]:
-                in_degree[neighbor] -= 1
-                if in_degree[neighbor] == 0:
-                    queue.append(neighbor)
-
-        # Check for cycles
-        if len(execution_order) != len(self.nodes):
-            msg = "Cyclic dependency detected in the flow"
-            raise CyclicDependencyError(msg)
-
-        self._execution_order = execution_order
-
-    async def run(self, inputs: InputT, config: RunConfig | None = None) -> OutputT:
-        """Execute the flow with the given inputs.
+        This is a convenience method that compiles the flow and streams execution.
+        For better performance with multiple runs, compile once and reuse.
 
         Args:
             inputs: The input data for the flow (must match the flow's InputT type)
             config: Optional run configuration including checkpoint store
 
-        Returns:
-            The flow results with the specified OutputT type
+        Yields:
+            ProgressItem objects from flow execution, ending with FlowResult.
 
         Raises:
             FlowError: If the flow execution fails
@@ -296,278 +216,17 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             InterruptionRequested: If a HITL interrupt handler requests stopping
 
         """
-        if not isinstance(inputs, self._input_type):
-            expected_name = self._input_type.__name__
-            actual_name = type(inputs).__name__
-            msg = f"Input type mismatch: expected {expected_name}, got {actual_name}"
-            raise TypeError(msg)
+        compiled = self.compile()
+        async for item in compiled.astream(inputs, config=config):
+            yield item
 
-        config = config or RunConfig()
-        run_id = config.run_id or str(uuid.uuid4())
-
-        self._results = {}
-        self._edge_history = []
-
-        # Telemetry: check if enabled before importing/instrumenting
-        from contextlib import nullcontext
-
-        from pydantic_flow.telemetry.setup import is_enabled
-
-        if is_enabled():
-            from pydantic_flow.telemetry.attributes import AttributeKey
-            from pydantic_flow.telemetry.attributes import MetricName
-            from pydantic_flow.telemetry.attributes import SpanKind
-            from pydantic_flow.telemetry.helpers import create_span_async
-            from pydantic_flow.telemetry.helpers import measure_duration_async
-            from pydantic_flow.telemetry.helpers import record_counter
-
-            flow_attrs: dict[str, Any] = {
-                str(AttributeKey.FLOW_ID): self.flow_id,
-                str(AttributeKey.RUN_ID): run_id,
-                str(AttributeKey.EXECUTION_MODE): "dag",
-            }
-            record_counter(MetricName.FLOW_RUNS, attributes=flow_attrs)
-
-            span_ctx = create_span_async(SpanKind.FLOW_RUN, attributes=flow_attrs)
-            duration_ctx = measure_duration_async(
-                MetricName.FLOW_DURATION, attributes=flow_attrs
-            )
-        else:
-            span_ctx = nullcontext()
-            duration_ctx = nullcontext()
-
-        async with span_ctx, duration_ctx:
-            # Set conversation memory in context if enabled
-            token = None
-            if self._conversation_memory is not None:
-                token = _active_flow_memory.set(self._conversation_memory)
-
-            # Track execution progress for checkpointing
-            execution_progress: dict[str, str] = {}
-            for node in self._execution_order:
-                execution_progress[node.name] = "pending"
-
-            # Initialize checkpoint manager (creates default backend if needed)
-            checkpoint_manager: Any = None
-            backend = config.checkpoint_backend
-            backend_created_by_us = False
-
-            # Create default in-memory SQLite backend if none provided
-            if backend is None:
-                backend_created_by_us = True
-                from pathlib import Path
-
-                from pydantic_flow.checkpoints.backends.sqlite import (
-                    SQLiteCheckpointBackend,
-                )
-                from pydantic_flow.checkpoints.backends.sqlite import (
-                    SQLiteCheckpointConfig,
-                )
-
-                backend = SQLiteCheckpointBackend(
-                    config=SQLiteCheckpointConfig(db_path=Path(":memory:"))
-                )
-                await backend.initialize()
-
-            # Always create checkpoint manager for HITL support
-            from pydantic_flow.checkpoints import CheckpointConfig
-            from pydantic_flow.checkpoints import CheckpointManager
-            from pydantic_flow.checkpoints.types import RunId as CheckpointRunId
-
-            checkpoint_cfg = config.checkpoint_config or CheckpointConfig()
-            checkpoint_manager = CheckpointManager(
-                config=checkpoint_cfg,
-                storage=backend,
-                flow_id=self.flow_id,
-                run_id=CheckpointRunId(run_id),
-            )
-            await checkpoint_manager.initialize_run()
-
-            try:
-                for node in self._execution_order:
-                    execution_progress[node.name] = "running"
-
-                    # Determine input data for the node
-                    if has_multiple_inputs(node):
-                        # Multi-input node: gather all dependency results as tuple
-                        input_data: Any = tuple(
-                            self._results[dep.node.name] for dep in node.inputs
-                        )
-                    elif has_input_dependency(node):
-                        # Single-input node: node takes input from another node
-                        input_node = node.input.node
-                        if input_node.name not in self._results:
-                            msg = f"Input node {input_node.name} has not been executed"
-                            raise FlowError(msg)
-                        input_data = self._results[input_node.name]
-                        # Track edge
-                        self._edge_history.append((input_node.name, node.name))
-                    else:
-                        # No-input node: takes input from flow inputs
-                        input_data = inputs
-
-                    # Execute node with interrupt checking
-                    # Consume stream to check interrupts, get result via node.run()
-                    result: Any = None
-                    tool_result: Any = None
-                    stream_items: list[ProgressItem] = []
-
-                    # Create event log for this node if trace sampling enabled
-                    event_log = None
-                    if checkpoint_manager is not None:
-                        event_log = checkpoint_manager.create_event_log(
-                            node_id=node.name
-                        )
-
-                    async for item in node.astream(input_data):  # type: ignore[union-attr]
-                        stream_items.append(item)
-
-                        # Log event if trace sampling enabled
-                        if event_log is not None:
-                            await event_log.append(item)
-
-                        # Extract result using same logic as BaseNode.run()
-                        if isinstance(item, ToolResult) and item.result is not None:
-                            tool_result = item.result
-
-                        # Check interrupt handlers on each progress item
-                        decision = await self._check_interrupt_handlers(item)
-                        if decision.should_interrupt:
-                            # Store result before interrupting if we have it
-                            if tool_result is not None:
-                                self._results[node.name] = tool_result
-
-                            # Create snapshot and raise exception
-                            # Calculate next frontier for DAG execution
-                            # (nodes that depend on the interrupted node)
-                            next_frontier = []
-                            for future_node in self._execution_order:
-                                if (
-                                    future_node.name not in self._results
-                                    and future_node.name != node.name
-                                ):
-                                    next_frontier.append(future_node.name)
-                                    # DAG is ordered, so next is first uncompleted
-                                    break
-
-                            snapshot = (
-                                await checkpoint_manager.create_hitl_interrupt_snapshot(
-                                    current_state=self._results.copy(),
-                                    interrupted_node_id=node.name,
-                                    next_frontier=next_frontier,
-                                    metadata=getattr(decision, "metadata", None),
-                                )
-                            )
-
-                            raise InterruptionRequested(
-                                snapshot=snapshot,
-                                decision=decision,
-                            )
-
-                    # Prefer ToolResult if available, otherwise run full reconstruction
-                    if tool_result is not None:
-                        result = tool_result
-                    else:
-                        # Need to reconstruct from stream - just call node.run()
-                        result = await node.run(input_data)  # type: ignore[union-attr]
-
-                    self._results[node.name] = result
-                    execution_progress[node.name] = "completed"
-
-                    # Save checkpoint after node execution
-                    if checkpoint_manager is not None:
-                        await checkpoint_manager.save_wave_checkpoint(
-                            current_state=self._results.copy(),
-                            next_frontier=[],
-                            routing_ended=False,
-                        )
-
-                # Smart detection: If we have a single result that's already
-                # the output type, return it directly instead of trying to reconstruct
-                if len(self._results) == 1:
-                    single_result = next(iter(self._results.values()))
-                    if isinstance(single_result, self._output_type):
-                        output = single_result  # type: ignore
-                    else:
-                        # Construct the output BaseModel from the results
-                        output = self._output_type(**self._results)
-                elif len(self._results) > 1 and self._execution_order:
-                    # Multiple results: Check if last executed node matches output
-                    last_node_result = self._results[self._execution_order[-1].name]
-                    if isinstance(last_node_result, self._output_type):
-                        output = last_node_result  # type: ignore
-                    else:
-                        # Construct the output BaseModel from the results
-                        output = self._output_type(**self._results)
-                else:
-                    # No results or empty flow: construct from results
-                    output = self._output_type(**self._results)
-
-                # Finalize checkpoint run on success
-                if checkpoint_manager is not None:
-                    from pydantic_flow.checkpoints.types import RunMetadata
-
-                    await checkpoint_manager.finalize_run(
-                        status=RunMetadata.Status.COMPLETED
-                    )
-
-                return output
-
-            except InterruptionRequested:
-                # Snapshot already created in interrupt path, just finalize and re-raise
-                if checkpoint_manager is not None:
-                    from pydantic_flow.checkpoints.types import RunMetadata
-
-                    await checkpoint_manager.finalize_run(
-                        status=RunMetadata.Status.INTERRUPTED
-                    )
-                raise
-
-            except Exception as e:
-                # Mark current node as failed if we know which one
-                for node_name, status in execution_progress.items():
-                    if status == "running":
-                        execution_progress[node_name] = "failed"
-                        break
-
-                # Wrap any other exception in a FlowError for consistency
-                if isinstance(e, FlowError):
-                    # Finalize checkpoint run as failed
-                    if checkpoint_manager is not None:
-                        from pydantic_flow.checkpoints.types import RunMetadata
-
-                        await checkpoint_manager.finalize_run(
-                            status=RunMetadata.Status.FAILED
-                        )
-                    raise
-                msg = f"Flow execution failed: {e}"
-
-                # Finalize checkpoint run as failed
-                if checkpoint_manager is not None:
-                    from pydantic_flow.checkpoints.types import RunMetadata
-
-                    await checkpoint_manager.finalize_run(
-                        status=RunMetadata.Status.FAILED
-                    )
-
-                raise FlowError(msg) from e
-
-            finally:
-                # Reset context variable if it was set
-                if token is not None:
-                    _active_flow_memory.reset(token)
-
-                # Clean up auto-created backend to prevent hanging
-                if backend_created_by_us and backend is not None:
-                    await backend.close()
-
-    async def resume_from_snapshot(
+    async def astream_from_snapshot(
         self,
         snapshot: StateSnapshot,
         storage: CheckpointStorageBackend,
         config: RunConfig | None = None,
-    ) -> OutputT:
-        """Universal resume from V2 StateSnapshot.
+    ) -> AsyncIterator[ProgressItem]:
+        """Resume from V2 StateSnapshot and stream progress.
 
         Works for all snapshot types: HITL interrupts, manual pauses,
         error recovery, fork points, and debugging time-travel.
@@ -580,8 +239,8 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             storage: V2 checkpoint storage backend.
             config: Optional run configuration.
 
-        Returns:
-            Final output after resumption.
+        Yields:
+            ProgressItem objects from resumed execution, ending with FlowResult.
 
         Raises:
             FlowError: If resumption fails.
@@ -610,41 +269,12 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             run_id=snapshot.run_id,
         )
 
-        # Continue execution from next_frontier
-        # The stepper engine will handle next_frontier execution
-        return await self.run(
+        # Continue execution from next_frontier - stream the results
+        async for item in self.astream(
             input=self._results,  # type: ignore
             config=resume_config,
-        )
-
-    def get_execution_order(self) -> list[str]:
-        """Get the names of nodes in execution order.
-
-        Returns:
-            List of node names in the order they will be executed
-
-        """
-        return [node.name for node in self._execution_order]
-
-    def validate(self) -> bool:
-        """Validate the flow structure.
-
-        Returns:
-            True if the flow is valid
-
-        Raises:
-            CyclicDependencyError: If cycles are detected
-            FlowError: If other validation errors are found
-
-        """
-        try:
-            self._calculate_execution_order()
-            return True
-        except CyclicDependencyError:
-            raise
-        except Exception as e:
-            msg = f"Flow validation failed: {e}"
-            raise FlowError(msg) from e
+        ):
+            yield item
 
     def _resolve_node_reference(
         self, node_ref: BaseNode[Any, Any] | str, param_name: str
@@ -760,107 +390,72 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         # Store entry nodes
         self._entry_nodes = resolved_nodes
 
-    def compile(
-        self, *, mode: ExecutionMode = ExecutionMode.AUTO
-    ) -> CompiledFlow[InputT, OutputT]:
-        """Compile the flow into an executable form.
-
-        Args:
-            mode: Execution engine to use. AUTO detects based on flow structure,
-                  DAG uses topological sort, STEPPER uses loop-capable engine.
+    def compile(self) -> CompiledFlow[InputT, OutputT]:
+        """Compile the flow into an executable form using the stepper engine.
 
         Returns:
             CompiledFlow instance ready for execution.
 
         Raises:
-            FlowError: If flow structure is invalid or incompatible with mode.
+            FlowError: If flow structure is invalid.
 
         """
-        # Analyze graph structure
-        analysis: GraphAnalysis | None = None
+        # Build edge dictionary from node-based edges for stepper
+        edges_dict: dict[str, list[str]] = {}
 
-        # Determine which engine to use
-        if mode == ExecutionMode.AUTO:
-            analysis = self._analyze_graph()
-            use_stepper = analysis.mode == ExecutionMode.STEPPER
-        elif mode == ExecutionMode.STEPPER:
-            use_stepper = True
-        else:  # ExecutionMode.DAG
-            use_stepper = False
-            # Validate no cycles or conditional edges for DAG mode
-            if self._conditional_edges:
-                msg = (
-                    "Cannot use DAG mode with conditional edges. "
-                    "Use ExecutionMode.STEPPER or ExecutionMode.AUTO."
-                )
-                raise FlowError(msg)
-            if self._detect_cycles_efficiently():
-                msg = (
-                    "Cannot use DAG mode with cyclic dependencies. "
-                    "Use ExecutionMode.STEPPER or ExecutionMode.AUTO."
-                )
-                raise FlowError(msg)
+        # Add explicit edges
+        for edge in self._explicit_edges:
+            if edge.source.name not in edges_dict:
+                edges_dict[edge.source.name] = []
+            edges_dict[edge.source.name].append(edge.target.name)
 
-        if use_stepper:
-            # Build edge dictionary from node-based edges for stepper
-            edges_dict: dict[str, list[str]] = {}
-            for edge in self._explicit_edges:
-                if edge.source.name not in edges_dict:
-                    edges_dict[edge.source.name] = []
-                edges_dict[edge.source.name].append(edge.target.name)
+        # Add implicit edges from node dependencies
+        for node in self.nodes:
+            deps = getattr(node, "dependencies", [])
+            for dep in deps:
+                if dep.name not in edges_dict:
+                    edges_dict[dep.name] = []
+                if node.name not in edges_dict[dep.name]:
+                    edges_dict[dep.name].append(node.name)
 
-            # Build ConditionalEdge list from node-based conditional edges
-            conditional_edges_list: list[ConditionalEdge[Any]] = []
-            for cond_edge in self._conditional_edges:
-                # Get mapping if exists
-                mapping = None
-                if cond_edge.source in self._conditional_mappings:
-                    node_mapping = self._conditional_mappings[cond_edge.source]
-                    # Convert node mapping to string mapping
-                    mapping = {}
-                    for key, value in node_mapping.items():
-                        if isinstance(value, Route):
-                            mapping[key] = value.value
-                        else:
-                            mapping[key] = value.name
+        # Build ConditionalEdge list from node-based conditional edges
+        conditional_edges_list: list[ConditionalEdge[Any]] = []
+        for cond_edge in self._conditional_edges:
+            # Get mapping if exists
+            mapping = None
+            if cond_edge.source in self._conditional_mappings:
+                node_mapping = self._conditional_mappings[cond_edge.source]
+                # Convert node mapping to string mapping
+                mapping = {}
+                for key, value in node_mapping.items():
+                    if isinstance(value, Route):
+                        mapping[key] = value.value
+                    else:
+                        mapping[key] = value.name
 
-                conditional_edges_list.append(
-                    ConditionalEdge(cond_edge.source.name, cond_edge.router, mapping)
-                )
-
-            entry_node_names = [
-                n.name
-                for n in (
-                    self._entry_nodes
-                    if self._entry_nodes
-                    else self._infer_entry_nodes()
-                )
-            ]
-            engine_config = EngineConfig(
-                nodes=self.nodes,
-                edges=edges_dict,
-                conditional_edges=conditional_edges_list,
-                entry_nodes=entry_node_names,
-                input_type=self._input_type,
-                output_type=self._output_type,
-                cache_backend=self._cache_backend,
-                default_cache_policy=self._default_cache_policy,
-                flow_id=self.flow_id,
-            )
-            engine = StepperEngine(engine_config)
-            return CompiledFlow(
-                flow=self,
-                engine=engine,
-                use_stepper=True,
-                analysis=analysis,
+            conditional_edges_list.append(
+                ConditionalEdge(cond_edge.source.name, cond_edge.router, mapping)
             )
 
-        self._calculate_execution_order()
-        return CompiledFlow(
-            flow=self,
-            use_stepper=False,
-            analysis=analysis,
+        entry_node_names = [
+            n.name
+            for n in (
+                self._entry_nodes if self._entry_nodes else self._infer_entry_nodes()
+            )
+        ]
+        engine_config = EngineConfig(
+            nodes=self.nodes,
+            edges=edges_dict,
+            conditional_edges=conditional_edges_list,
+            entry_nodes=entry_node_names,
+            input_type=self._input_type,
+            output_type=self._output_type,
+            cache_backend=self._cache_backend,
+            default_cache_policy=self._default_cache_policy,
+            flow_id=self.flow_id,
         )
+        engine = StepperEngine(engine_config)
+        return CompiledFlow(engine=engine)
 
     async def cache_delete(self, key: str) -> None:
         """Delete a specific cache entry.
@@ -894,28 +489,6 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             msg = "No cache backend configured for this flow"
             raise FlowError(msg)
         return await self._cache_backend.invalidate_namespace(namespace)
-
-    def _has_cycles(self) -> bool:
-        """Check if the flow has cycles."""
-        try:
-            self._calculate_execution_order()
-            return False
-        except CyclicDependencyError:
-            return True
-
-    def _should_use_stepper(self) -> bool:
-        """Determine if stepper engine is needed based on flow structure.
-
-        Returns:
-            True if stepper engine should be used, False for DAG execution.
-
-        """
-        # Has conditional edges -> need stepper
-        if self._conditional_edges:
-            return True
-
-        # Check for cycles
-        return self._detect_cycles_efficiently()
 
     def _detect_cycles_efficiently(self) -> bool:
         """Detect cycles using DFS with color marking (no exceptions).
@@ -987,85 +560,6 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 entry.append(node)
         return entry if entry else [self.nodes[0]] if self.nodes else []
 
-    def _analyze_graph(self) -> GraphAnalysis:
-        """Analyze flow graph structure to determine optimal execution engine.
-
-        Returns:
-            GraphAnalysis with details about graph structure and recommended mode.
-
-        """
-        reasons: list[str] = []
-
-        # Check for conditional edges
-        has_conditional = len(self._conditional_edges) > 0
-        if has_conditional:
-            reasons.append("Flow contains conditional routing edges")
-
-        # Check for explicit edges (indicates potential cycles)
-        has_explicit = len(self._explicit_edges) > 0
-        if has_explicit:
-            reasons.append("Flow contains explicit edges")
-
-        # Detect cycles
-        has_cycles = self._detect_cycles_efficiently()
-        if has_cycles:
-            reasons.append("Flow contains cycles")
-
-        # Find entry nodes
-        if self._entry_nodes:
-            entry_nodes = self._entry_nodes
-        else:
-            # Infer from nodes with no dependencies
-            entry_nodes = []
-            nodes_with_deps = set()
-
-            # Check implicit dependencies
-            for node in self.nodes:
-                if has_input_dependency(node):
-                    nodes_with_deps.add(node.input.node)
-                if has_multiple_inputs(node):
-                    for inp in node.inputs:
-                        nodes_with_deps.add(inp.node)
-
-            # Check explicit edges
-            for edge in self._explicit_edges:
-                nodes_with_deps.add(edge.target)
-
-            # Entry nodes are those with no incoming edges
-            entry_nodes = [n for n in self.nodes if n not in nodes_with_deps]
-
-            if not entry_nodes and self.nodes:
-                entry_nodes = [self.nodes[0]]
-
-        # Try topological sort (only possible if no cycles)
-        execution_order = None
-        if not has_cycles and not has_conditional:
-            try:
-                self._calculate_execution_order()
-                execution_order = self._execution_order.copy()
-            except CyclicDependencyError:
-                pass
-
-        # Determine recommended mode
-        if has_conditional or has_cycles:
-            mode = ExecutionMode.STEPPER
-            if not reasons:
-                reasons.append("Complex control flow detected")
-        else:
-            mode = ExecutionMode.DAG
-            if not reasons:
-                reasons.append("Simple acyclic workflow")
-
-        return GraphAnalysis(
-            has_cycles=has_cycles,
-            has_conditional_edges=has_conditional,
-            has_explicit_edges=has_explicit,
-            entry_nodes=entry_nodes,
-            execution_order=execution_order,
-            mode=mode,
-            reasons=reasons,
-        )
-
     def __repr__(self) -> str:
         """Return a string representation of the flow."""
         node_count = len(self.nodes)
@@ -1080,127 +574,67 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
 
 class CompiledFlow[InputT: BaseModel, OutputT: BaseModel]:
-    """Compiled flow ready for execution.
+    """Compiled flow ready for execution using the stepper engine."""
 
-    This class wraps either the legacy DAG runner or the new stepper engine.
-    """
-
-    def __init__(
-        self,
-        flow: Flow[InputT, OutputT] | None = None,
-        engine: StepperEngine[InputT, OutputT] | None = None,
-        use_stepper: bool = False,
-        analysis: GraphAnalysis | None = None,
-    ) -> None:
+    def __init__(self, engine: StepperEngine[InputT, OutputT]) -> None:
         """Initialize compiled flow.
 
         Args:
-            flow: Source flow (for DAG mode).
-            engine: Stepper engine (for STEPPER mode).
-            use_stepper: Whether using stepper engine.
-            analysis: Graph analysis results (if available).
+            engine: Stepper engine for execution.
 
         """
-        self._flow = flow
         self._engine = engine
-        self._use_stepper = use_stepper
-        self._analysis = analysis
+        self.engine = engine  # Backward compatibility
 
-        # Legacy attributes for backward compatibility
-        self.flow = flow
-        self.engine = engine
-        self.use_stepper = use_stepper
-
-    def explain(self) -> str:
-        """Explain the execution engine selection.
-
-        Returns:
-            Human-readable explanation of why this engine was selected.
-
-        """
-        if self._analysis is None:
-            if self._use_stepper:
-                return "Execution Engine: STEPPER\nReason: Explicitly requested"
-            return "Execution Engine: DAG\nReason: Explicitly requested"
-
-        lines = [
-            f"Execution Engine: {self._analysis.mode.value.upper()}",
-            "Reasons:",
-        ]
-        for reason in self._analysis.reasons:
-            lines.append(f"  - {reason}")
-
-        lines.append("\nGraph Structure:")
-        lines.append(f"  - Nodes: {len(self._flow.nodes) if self._flow else 'N/A'}")
-        lines.append(f"  - Has cycles: {self._analysis.has_cycles}")
-        lines.append(
-            f"  - Has conditional edges: {self._analysis.has_conditional_edges}"
-        )
-        lines.append(f"  - Has explicit edges: {self._analysis.has_explicit_edges}")
-        lines.append(f"  - Entry nodes: {[n.name for n in self._analysis.entry_nodes]}")
-
-        return "\n".join(lines)
-
-    async def invoke(self, inputs: InputT, config: RunConfig | None = None) -> OutputT:
-        """Execute the compiled flow.
+    async def astream(
+        self, inputs: InputT, config: RunConfig | None = None
+    ) -> AsyncIterator[ProgressItem]:
+        """Execute the compiled flow and stream progress items.
 
         Args:
             inputs: Input data.
-            config: Optional execution configuration (only for stepper).
+            config: Optional execution configuration.
 
-        Returns:
-            Flow output.
+        Yields:
+            ProgressItem objects from flow execution, ending with FlowResult.
 
         Raises:
             InterruptionRequested: If a HITL interrupt occurs.
 
         """
-        if self.use_stepper and self.engine is not None:
-            from contextlib import nullcontext
+        from contextlib import nullcontext
 
-            from pydantic_flow.telemetry.setup import is_enabled
+        from pydantic_flow.telemetry.setup import is_enabled
 
-            # Prepare config
-            config = config or RunConfig()
-            run_id = config.run_id or str(uuid.uuid4())
+        # Prepare config
+        config = config or RunConfig()
+        run_id = config.run_id or str(uuid.uuid4())
 
-            # Telemetry: check if enabled before importing/instrumenting
-            if is_enabled():
-                from pydantic_flow.telemetry.attributes import AttributeKey
-                from pydantic_flow.telemetry.attributes import MetricName
-                from pydantic_flow.telemetry.attributes import SpanKind
-                from pydantic_flow.telemetry.helpers import create_span_async
-                from pydantic_flow.telemetry.helpers import measure_duration_async
-                from pydantic_flow.telemetry.helpers import record_counter
+        # Telemetry: check if enabled before importing/instrumenting
+        if is_enabled():
+            from pydantic_flow.telemetry.attributes import AttributeKey
+            from pydantic_flow.telemetry.attributes import MetricName
+            from pydantic_flow.telemetry.attributes import SpanKind
+            from pydantic_flow.telemetry.helpers import create_span_async
+            from pydantic_flow.telemetry.helpers import measure_duration_async
+            from pydantic_flow.telemetry.helpers import record_counter
 
-                flow_attrs: dict[str, Any] = {
-                    str(AttributeKey.RUN_ID): run_id,
-                    str(AttributeKey.EXECUTION_MODE): "stepper",
-                }
-                if self.flow is not None:
-                    flow_attrs[str(AttributeKey.FLOW_ID)] = self.flow.flow_id
+            flow_attrs: dict[str, Any] = {
+                str(AttributeKey.RUN_ID): run_id,
+                str(AttributeKey.EXECUTION_MODE): "stepper",
+                str(AttributeKey.FLOW_ID): self.engine.flow_id,
+            }
 
-                record_counter(MetricName.FLOW_RUNS, attributes=flow_attrs)
+            record_counter(MetricName.FLOW_RUNS, attributes=flow_attrs)
 
-                span_ctx = create_span_async(SpanKind.FLOW_RUN, attributes=flow_attrs)
-                duration_ctx = measure_duration_async(
-                    MetricName.FLOW_DURATION, attributes=flow_attrs
-                )
-            else:
-                span_ctx = nullcontext()
-                duration_ctx = nullcontext()
+            span_ctx = create_span_async(SpanKind.FLOW_RUN, attributes=flow_attrs)
+            duration_ctx = measure_duration_async(
+                MetricName.FLOW_DURATION, attributes=flow_attrs
+            )
+        else:
+            span_ctx = nullcontext()
+            duration_ctx = nullcontext()
 
-            async with span_ctx, duration_ctx:
-                # Set memory context for stepper engine execution
-                token = None
-                if self.flow is not None and self.flow._conversation_memory is not None:
-                    token = _active_flow_memory.set(self.flow._conversation_memory)
-                try:
-                    return await self.engine.invoke(inputs, config)
-                finally:
-                    if token is not None:
-                        _active_flow_memory.reset(token)
-        if self.flow is not None:
-            return await self.flow.run(inputs, config)
-        msg = "CompiledFlow has neither flow nor engine configured"
-        raise FlowError(msg)
+        async with span_ctx, duration_ctx:
+            async for item in self.engine.astream(inputs, config):
+                yield item

@@ -1,6 +1,36 @@
 """Shared fixtures for checkpoint tests."""
 
+from typing import Any
+
 import pytest
+
+from pydantic_flow.streaming.core_events import FlowResult
+from pydantic_flow.streaming.core_events import StreamEnd
+from pydantic_flow.streaming.tool_events import ToolResult
+
+
+async def extract_result_from_stream(stream) -> Any:
+    """Extract final result from node or flow astream.
+
+    Works for both nodes (ToolResult/StreamEnd) and flows (FlowResult).
+    """
+    result = None
+    async for item in stream:
+        if isinstance(item, FlowResult):
+            # Flow result
+            result = item.result
+        elif isinstance(item, ToolResult) and item.result is not None:
+            # Node result (preferred)
+            result = item.result
+        elif isinstance(item, StreamEnd) and item.result_preview:
+            # Node result (fallback)
+            if result is None:
+                result = item.result_preview
+
+    if result is None:
+        raise RuntimeError("No result found in stream")
+    return result
+
 
 # V1 checkpoint imports commented out - V1 system deprecated
 # from pydantic_flow.hitl.checkpoints.interface import CheckpointEnvelope

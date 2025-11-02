@@ -20,6 +20,8 @@ from pydantic_flow.nodes import NodeWithInput
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.tool_events import ToolResult
+from tests.conftest import extract_result_from_stream
 
 
 class CounterState(BaseModel):
@@ -35,6 +37,12 @@ class IncrementNode(BaseNode[CounterState, CounterState]):
         """Stream while incrementing the counter."""
         yield StreamStart(run_id=self.run_id or "", node_id=self.name)
         result = CounterState(n=input_data.n + 1)
+        yield ToolResult(
+            run_id=self.run_id or "",
+            node_id=self.name,
+            tool_name="increment",
+            result=result,
+        )
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
@@ -48,6 +56,12 @@ class StartNode(BaseNode[CounterState, CounterState]):
     async def astream(self, input_data: CounterState) -> AsyncIterator[ProgressItem]:
         """Stream while passing through the input."""
         yield StreamStart(run_id=self.run_id or "", node_id=self.name)
+        yield ToolResult(
+            run_id=self.run_id or "",
+            node_id=self.name,
+            tool_name="start",
+            result=input_data,
+        )
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
@@ -62,6 +76,12 @@ class ExecuteNode(BaseNode[CounterState, CounterState]):
         """Stream while incrementing by 2."""
         yield StreamStart(run_id=self.run_id or "", node_id=self.name)
         result = CounterState(n=input_data.n + 2)
+        yield ToolResult(
+            run_id=self.run_id or "",
+            node_id=self.name,
+            tool_name="execute",
+            result=result,
+        )
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
@@ -116,7 +136,7 @@ class TestLoops:
         flow.add_conditional_edges("tick", router)
 
         compiled = flow.compile()
-        result = await compiled.invoke(CounterState(n=0))
+        result = await extract_result_from_stream(compiled.astream(CounterState(n=0)))
 
         assert result.tick.n == 5
 
@@ -139,7 +159,7 @@ class TestLoops:
         flow.add_conditional_edges("execute", router)
 
         compiled = flow.compile()
-        result = await compiled.invoke(CounterState(n=0))
+        result = await extract_result_from_stream(compiled.astream(CounterState(n=0)))
 
         assert result.execute.n >= 10
 
@@ -160,7 +180,9 @@ class TestLoops:
         config = RunConfig(max_steps=10)
 
         with pytest.raises(RecursionLimitError) as exc_info:
-            await compiled.invoke(CounterState(n=0), config)
+            await extract_result_from_stream(
+                compiled.astream(CounterState(n=0), config)
+            )
 
         assert "Exceeded max_steps=10" in str(exc_info.value)
 
@@ -183,7 +205,7 @@ class TestLoops:
         flow.add_conditional_edges("b", lambda s: Route.END)
 
         compiled = flow.compile()
-        result = await compiled.invoke(CounterState(n=0))
+        result = await extract_result_from_stream(compiled.astream(CounterState(n=0)))
 
         assert result.a is not None
         assert result.a.n >= 3
@@ -205,7 +227,7 @@ class TestLoops:
         compiled = flow.compile()
 
         with pytest.raises(RoutingError) as exc_info:
-            await compiled.invoke(CounterState(n=0))
+            await extract_result_from_stream(compiled.astream(CounterState(n=0)))
 
         assert "not a valid node name" in str(exc_info.value)
 
@@ -231,7 +253,9 @@ class TestLoops:
 
         compiled = flow.compile()
         config = RunConfig(trace_iterations=True)
-        result = await compiled.invoke(CounterState(n=0), config)
+        result = await extract_result_from_stream(
+            compiled.astream(CounterState(n=0), config)
+        )
 
         assert result.tick.n == 3
         assert len(iterations_seen) > 0
@@ -252,7 +276,7 @@ class TestLoops:
         compiled = flow.compile()
 
         with pytest.raises(RoutingError) as exc_info:
-            await compiled.invoke(CounterState(n=0))
+            await extract_result_from_stream(compiled.astream(CounterState(n=0)))
 
         assert "not in mapping" in str(exc_info.value)
 
@@ -292,6 +316,12 @@ class TestLoops:
                 yield StreamStart(run_id=self.run_id or "", node_id=self.name)
                 await asyncio.sleep(0.3)
                 result = CounterState(n=input_data.n + 1)
+                yield ToolResult(
+                    run_id=self.run_id or "",
+                    node_id=self.name,
+                    tool_name="slow",
+                    result=result,
+                )
                 yield StreamEnd(
                     run_id=self.run_id or "",
                     node_id=self.name,
@@ -314,7 +344,9 @@ class TestLoops:
         config = RunConfig(timeout_seconds=1, max_steps=50)
 
         with pytest.raises(FlowTimeoutError) as exc_info:
-            await compiled.invoke(CounterState(n=0), config)
+            await extract_result_from_stream(
+                compiled.astream(CounterState(n=0), config)
+            )
 
         assert "timeout" in str(exc_info.value).lower()
 
@@ -339,7 +371,7 @@ class TestLoops:
             x: str
 
         with pytest.raises(TypeError) as exc_info:
-            await compiled.invoke(WrongState(x="wrong"))  # type: ignore[arg-type]
+            await extract_result_from_stream(compiled.astream(WrongState(x="wrong")))  # type: ignore[arg-type]
 
         assert "Input type mismatch" in str(exc_info.value)
 
@@ -370,7 +402,7 @@ class TestLoops:
         compiled = flow.compile()
 
         with pytest.raises(FlowError) as exc_info:
-            await compiled.invoke(CounterState(n=0))
+            await extract_result_from_stream(compiled.astream(CounterState(n=0)))
 
         assert "Flow execution failed" in str(exc_info.value)
 
@@ -386,6 +418,7 @@ class TestLoops:
                 entry_nodes=["nonexistent"],
                 input_type=CounterState,
                 output_type=OutputState,
+                flow_id="test_flow",
             )
 
         assert "Unknown entry nodes" in str(exc_info.value)
@@ -402,6 +435,7 @@ class TestLoops:
                 entry_nodes=["tick"],
                 input_type=CounterState,
                 output_type=OutputState,
+                flow_id="test_flow",
             )
 
         assert "Unknown edge targets" in str(exc_info.value)
@@ -438,7 +472,9 @@ class TestLoops:
         flow.add_conditional_edges("dependent", router)
 
         compiled = flow.compile()
-        result = await compiled.invoke(CounterState(n=5), RunConfig())
+        result = await extract_result_from_stream(
+            compiled.astream(CounterState(n=5), RunConfig())
+        )
 
         assert result.start.n == 5
         assert result.dependent.n == 15

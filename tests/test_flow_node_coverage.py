@@ -204,13 +204,13 @@ async def test_flow_node_astream_forwards_other_progress():
 
 @pytest.mark.asyncio
 async def test_flow_node_fallback_to_run():
-    """Test FlowNode falls back to run() when flow doesn't have astream."""
+    """Test FlowNode requires astream() - no fallback to run()."""
 
     class MockFlowWithoutStream:
         """Mock flow without astream method."""
 
         async def run(self, input_data):
-            """Run method."""
+            """Run method (no longer supported)."""
             return SimpleOutput(result="from run")
 
     mock_flow = MockFlowWithoutStream()
@@ -220,34 +220,22 @@ async def test_flow_node_fallback_to_run():
     )
 
     input_data = SimpleInput(value="test")
-    items = []
 
-    async for item in flow_node.astream(input_data):
-        items.append(item)
-
-    # Should have StreamStart, ToolResult, and StreamEnd
-    assert len(items) == 3
-    assert isinstance(items[0], StreamStart)
-    assert isinstance(items[1], ToolResult)
-    assert isinstance(items[2], StreamEnd)
-
-    # Check ToolResult
-    assert items[1].tool_name == "flow"
-    assert items[1].result.result == "from run"  # type: ignore
-
-    # Check StreamEnd has result_preview
-    assert items[2].result_preview == {"result": "from run"}
+    # Should raise AttributeError since astream() is required
+    with pytest.raises(AttributeError, match="astream"):
+        async for _ in flow_node.astream(input_data):
+            pass
 
 
 @pytest.mark.asyncio
 async def test_flow_node_fallback_result_without_model_dump():
-    """Test FlowNode handles results without model_dump in fallback path."""
+    """Test FlowNode requires astream() - no fallback path."""
 
     class MockFlowWithoutStream:
         """Mock flow without astream method."""
 
         async def run(self, input_data):
-            """Run method returning plain string."""
+            """Run method (no longer supported)."""
             return "plain string result"
 
     mock_flow = MockFlowWithoutStream()
@@ -257,15 +245,11 @@ async def test_flow_node_fallback_result_without_model_dump():
     )
 
     input_data = SimpleInput(value="test")
-    items = []
 
-    async for item in flow_node.astream(input_data):
-        items.append(item)
-
-    # Check StreamEnd has result_preview with value wrapper
-    stream_end = items[-1]
-    assert isinstance(stream_end, StreamEnd)
-    assert stream_end.result_preview == {"value": "plain string result"}
+    # Should raise AttributeError since astream() is required
+    with pytest.raises(AttributeError, match="astream"):
+        async for _ in flow_node.astream(input_data):
+            pass
 
 
 @pytest.mark.asyncio

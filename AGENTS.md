@@ -11,8 +11,8 @@ The framework follows pydantic-ai's lead in being developer-experience focused, 
 ### Core Principles
 
 - **Type Safety First**: Full type annotations everywhere with comprehensive IDE support
-- **Streaming-Native**: Primary APIs expose async streams of progress; non-streaming via convenience wrappers
-- **Async-First Design**: Primary APIs are async with sync wrappers where appropriate
+- **Streaming-Native**: Primary APIs expose async streams of progress items - events are the fundamental unit
+- **Async-First Design**: Primary APIs are async
 - **Dependency Injection**: Auto-discovery of plugins and tools with explicit configuration
 - **Fail Fast**: Rich exception context with custom exceptions for clear error handling
 - **Immutable State**: Prefer idempotent APIs over stateful ones where possible
@@ -69,7 +69,7 @@ The framework uses entry points for auto-discovery, designed for seamless extern
 
 ### API Design
 
-- **Streaming First**: `astream()` as primary interface with `run()` convenience wrapper
+- **Streaming-Only**: `astream()` as the sole interface - events are the fundamental unit
 - **Direct Instantiation**: `Agent(...)` over builder patterns
 - **Dual Import Paths**: Support both `from pydantic_flow import Agent` and `from pydantic_flow.agents import Agent`
 - **Functional + Class-Based**: Solid class foundation with functional helpers
@@ -98,38 +98,27 @@ All flow construction uses direct node references:
 - `flow.add_edge(source_node, target_node)` - Node objects, not strings
 - `flow.set_entry_nodes(node1, node2)` - Node objects as entry points  
 - Router functions return `BaseNode | Route` for control flow decisions
-- Automatic engine selection via graph analysis (cycle detection, conditional edge detection)
 
-#### Dual Execution Engines
+#### Stepper Execution Engine
 
-The framework maintains two execution engines and automatically selects the optimal one:
+The framework uses a frontier-based wave execution engine:
 
-**DAG Engine:**
-- Uses topological sort (O(V+E) complexity)
-- Optimal for acyclic flows without conditional routing
+**Key Features:**
+- Frontier-based wave execution for maximum flexibility
+- Handles acyclic flows, cycles, loops, and conditional routing
+- Supports `Route.END` sentinel for dynamic termination
+- Optimized for both simple and complex control flow patterns
 - Entry nodes inferred from nodes with no incoming edges
-- Direct execution without control flow overhead
 
-**Stepper Engine:**
-- Frontier-based wave execution
-- Required for cycles, loops, and conditional routing
-- Supports `Route.END` sentinel for termination
-- Handles dynamic control flow patterns
+**Design Decision:**
+- Single execution strategy eliminates complexity and mode selection
+- Stepper engine handles all flow patterns efficiently
+- No need for dual engine maintenance or graph analysis overhead
 
-#### Automatic Engine Selection
-
-Graph analysis determines the appropriate engine:
-- **Auto mode** (default): Detects cycles or conditional edges, uses stepper if needed
-- **DAG mode**: Forces topological sort, errors if cycles/routing detected  
-- **Stepper mode**: Forces stepper engine for all flows
-
-Selection can be overridden via `flow.compile(mode=ExecutionMode.DAG|STEPPER|AUTO)`.
-
-Users can inspect selection reasoning via `compiled_flow.explain()` which returns:
-- Selected engine mode
+Users can inspect flow structure via `compiled_flow.explain()` which returns:
 - Detected features (cycles, conditional edges, explicit edges)
 - Inferred entry nodes
-- Human-readable selection reasons
+- Node and edge counts
 
 #### Type Safety Benefits
 

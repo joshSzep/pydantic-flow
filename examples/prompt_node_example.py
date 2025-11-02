@@ -22,6 +22,16 @@ from pydantic_flow import iter_tokens
 from pydantic_flow.prompt import JsonModelParser
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Question(BaseModel):
     """Question input."""
 
@@ -166,7 +176,7 @@ Return your response as JSON with this structure:
     question = Question(topic="climate change")
 
     print("\nGetting structured summary...")
-    result = await node.run(question)
+    result = await extract_result_from_stream(node.astream(question))
 
     print("\nParsed result:")
     print(f"Type: {type(result)}")

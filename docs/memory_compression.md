@@ -478,7 +478,7 @@ All compressors support async to avoid blocking:
 ```python
 async def compress(self, messages):
     # Long-running compression
-    summary = await self.agent.run("Summarize: " + format_messages(messages))
+    summary = await self.extract_result_from_stream(agent.astream("Summarize: " + format_messages(messages))
     return create_compressed_messages(summary)
 ```
 

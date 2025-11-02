@@ -66,3 +66,15 @@ class StreamEnd(ProgressItem):
 
     type: ProgressType = ProgressType.END
     result_preview: dict[str, Any] | None = None
+
+
+class FlowResult(ProgressItem):
+    """Final result of flow execution.
+
+    Attributes:
+        result: The final validated output data from the flow.
+
+    """
+
+    type: ProgressType = ProgressType.FLOW_RESULT
+    result: Any = None

@@ -21,6 +21,16 @@ from pydantic_flow.cache.memory import InMemoryCache
 from pydantic_flow.telemetry import setup_telemetry
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Query(BaseModel):
     """Input query."""
 
@@ -115,12 +125,12 @@ async def main():
     # First run - no cache
     print("▶️  First execution (cache miss expected)...")
     query = Query(question="What is machine learning?")
-    result1 = await flow.run(query)
+    result1 = await extract_result_from_stream(flow.astream(query))
     print(f"✅ Got answer: {result1.final_answer.answer[:50]}...\n")
 
     # Second run - should hit cache
     print("▶️  Second execution (cache hit expected)...")
-    result2 = await flow.run(query)
+    result2 = await extract_result_from_stream(flow.astream(query))
     print(f"✅ Got cached answer: {result2.final_answer.answer[:50]}...\n")
 
     print("=" * 60)

@@ -55,6 +55,9 @@ class RetryNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
 
         yield StreamStart(run_id=run_id, node_id=node_id)
 
+        from pydantic_flow.streaming.tool_events import ToolResult  # noqa: PLC0415
+
+        result = None
         result_preview = None
 
         for attempt in range(self.max_retries + 1):
@@ -67,6 +70,11 @@ class RetryNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
                     elif isinstance(item, StreamEnd):
                         # Capture result on success
                         result_preview = item.result_preview
+                    elif isinstance(item, ToolResult) and item.result is not None:
+                        # Capture actual result
+                        result = item.result
+                        # Forward ToolResult
+                        yield item
                     else:
                         # Forward other progress items
                         yield item
@@ -93,6 +101,12 @@ class RetryNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
                         recoverable=False,
                     )
                     raise
+
+        # Yield ToolResult if we have it (and didn't already forward it)
+        if result is not None:
+            # Check if we already yielded it by checking if wrapped node forwarded it
+            # For simplicity, just yield it - duplicate ToolResults are ok
+            pass  # Already forwarded above
 
         # Emit our own StreamEnd with the result
         yield StreamEnd(run_id=run_id, node_id=node_id, result_preview=result_preview)

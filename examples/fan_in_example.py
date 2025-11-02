@@ -13,6 +13,16 @@ from pydantic_flow import MergeToolNode
 from pydantic_flow import ToolNode
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Query(BaseModel):
     """Input query."""
 
@@ -121,14 +131,10 @@ async def main():
     )
 
     flow.add_nodes(research_node, analysis_node, metadata_node, merge_node)
-
-    print("\nExecution Order:")
-    execution_order = flow.get_execution_order()
-    for i, node_name in enumerate(execution_order, 1):
-        print(f"  {i}. {node_name}")
+    flow.compile()
 
     print("\nRunning flow...")
-    result = await flow.run(Query(topic="AI Workflows"))
+    result = await extract_result_from_stream(flow.astream(Query(topic="AI Workflows")))
 
     print("\n" + "=" * 60)
     print("Results:")

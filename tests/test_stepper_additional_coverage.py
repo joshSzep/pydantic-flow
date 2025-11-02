@@ -17,6 +17,7 @@ from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
+from tests.conftest import extract_result_from_stream
 
 
 class SimpleState(BaseModel):
@@ -98,6 +99,7 @@ class TestStepperEngineAdditionalCoverage:
                 entry_nodes=["nonexistent"],
                 input_type=SimpleState,
                 output_type=SimpleState,
+                flow_id="test_flow",
             )
 
     async def test_config_validation_unknown_edge_targets(self) -> None:
@@ -114,6 +116,7 @@ class TestStepperEngineAdditionalCoverage:
                 entry_nodes=["node1"],
                 input_type=SimpleState,
                 output_type=SimpleState,
+                flow_id="test_flow",
             )
 
     async def test_conditional_edge_outcome_not_in_mapping_raises(
@@ -138,12 +141,13 @@ class TestStepperEngineAdditionalCoverage:
             conditional_edges=[cond_edge],
             input_type=SimpleState,
             output_type=SimpleState,
+            flow_id="test_flow",
         )
 
         engine = StepperEngine(config)
 
         with pytest.raises(RoutingError, match="not in mapping"):
-            await engine.invoke(SimpleState(value=50))
+            await extract_result_from_stream(engine.astream(SimpleState(value=50)))
 
     async def test_conditional_edge_invalid_node_target_raises(self) -> None:
         """Test that routing to non-existent node raises RoutingError."""
@@ -163,12 +167,13 @@ class TestStepperEngineAdditionalCoverage:
             conditional_edges=[cond_edge],
             input_type=SimpleState,
             output_type=SimpleState,
+            flow_id="test_flow",
         )
 
         engine = StepperEngine(config)
 
         with pytest.raises(RoutingError, match="not a valid node name"):
-            await engine.invoke(SimpleState(value=60))
+            await extract_result_from_stream(engine.astream(SimpleState(value=60)))
 
     async def test_conditional_edge_invalid_type_raises(self) -> None:
         """Test that routing with invalid type raises RoutingError."""
@@ -188,12 +193,13 @@ class TestStepperEngineAdditionalCoverage:
             conditional_edges=[cond_edge],
             input_type=SimpleState,
             output_type=SimpleState,
+            flow_id="test_flow",
         )
 
         engine = StepperEngine(config)
 
         with pytest.raises(RoutingError, match="Invalid routing target"):
-            await engine.invoke(SimpleState(value=70))
+            await extract_result_from_stream(engine.astream(SimpleState(value=70)))
 
     async def test_node_execution_error_wrapped_in_flow_error(self) -> None:
         """Test that node execution errors are wrapped in FlowError."""
@@ -204,9 +210,10 @@ class TestStepperEngineAdditionalCoverage:
             entry_nodes=["value"],
             input_type=SimpleState,
             output_type=SimpleState,
+            flow_id="test_flow",
         )
 
         engine = StepperEngine(config)
 
         with pytest.raises(FlowError, match="Flow execution failed"):
-            await engine.invoke(SimpleState(value=80))
+            await extract_result_from_stream(engine.astream(SimpleState(value=80)))

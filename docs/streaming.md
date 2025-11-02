@@ -86,7 +86,7 @@ async for token in iter_tokens(node.astream(query)):
     print(token, end="")
 
 # Or get final result
-result = await node.run(query)
+result = await extract_result_from_stream(node.astream(query)
 ```
 
 ### LLMNode
@@ -231,7 +231,7 @@ result = await node.execute(input)
 
 ```python
 # Same interface for compatibility
-result = await node.run(input)
+result = await extract_result_from_stream(node.astream(input)
 
 # Or stream for visibility
 async for item in node.astream(input):
@@ -273,7 +273,7 @@ agent = Agent("openai:gpt-4", output_type=Answer)
 node = LLMNode[Query, Answer](agent=agent, prompt_template="{question}")
 
 # Get validated result
-result = await node.run(query)
+result = await extract_result_from_stream(node.astream(query)
 print(f"Summary: {result.summary}")
 ```
 
@@ -373,7 +373,7 @@ assert items[-1].type == ProgressType.END
 tokens = await collect_all_tokens(node.astream(input))
 
 # Non-streaming
-result = await node.run(input)
+result = await extract_result_from_stream(node.astream(input)
 
 # Should match (modulo whitespace)
 assert tokens.strip() == result.strip()

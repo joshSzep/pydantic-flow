@@ -43,6 +43,7 @@ class ProgressType(StrEnum):
         MEMORY_COMPRESSION_PENDING: Memory compression about to begin.
         MEMORY_COMPRESSION_COMPLETE: Memory compression completed.
         CHECKPOINT_SAVED: Checkpoint persisted to storage.
+        FLOW_RESULT: Final flow execution result.
 
     """
 
@@ -64,6 +65,7 @@ class ProgressType(StrEnum):
     CACHE_WRITE = "cache_write"
     CACHE_ERROR = "cache_error"
     CHECKPOINT_SAVED = "checkpoint_saved"
+    FLOW_RESULT = "flow_result"
 
 
 class ProgressItem(BaseModel):

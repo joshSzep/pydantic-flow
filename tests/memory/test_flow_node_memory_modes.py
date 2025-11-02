@@ -11,6 +11,7 @@ from pydantic_flow.memory import ReadOnlyConversationMemory
 from pydantic_flow.memory import ReadOnlyMemoryError
 from pydantic_flow.memory import _active_flow_memory
 from pydantic_flow.nodes import FlowNode
+from pydantic_flow.streaming.core_events import FlowResult
 
 
 class SimpleInput(BaseModel):
@@ -32,10 +33,10 @@ async def test_flow_node_shared_memory_context():
     parent_memory.append(ModelRequest(parts=[SystemPromptPart(content="parent")]))
 
     class MockFlow:
-        async def run(self, input_data):
+        async def astream(self, input_data):
             ctx_memory = _active_flow_memory.get()
             assert ctx_memory is parent_memory
-            return SimpleOutput(result="test")
+            yield FlowResult(result=SimpleOutput(result="test"))
 
     flow_node = FlowNode[SimpleInput, SimpleOutput](
         flow=MockFlow(),  # type: ignore[arg-type]
@@ -58,11 +59,11 @@ async def test_flow_node_isolated_memory_context():
     parent_memory.append(ModelRequest(parts=[SystemPromptPart(content="parent")]))
 
     class MockFlow:
-        async def run(self, input_data):
+        async def astream(self, input_data):
             ctx_memory = _active_flow_memory.get()
             assert ctx_memory is not parent_memory
             assert len(ctx_memory) == 0  # type: ignore[arg-type]
-            return SimpleOutput(result="test")
+            yield FlowResult(result=SimpleOutput(result="test"))
 
     flow_node = FlowNode[SimpleInput, SimpleOutput](
         flow=MockFlow(),  # type: ignore[arg-type]
@@ -86,11 +87,11 @@ async def test_flow_node_isolated_memory_with_seed():
     parent_memory.append(ModelRequest(parts=[SystemPromptPart(content="parent")]))
 
     class MockFlow:
-        async def run(self, input_data):
+        async def astream(self, input_data):
             ctx_memory = _active_flow_memory.get()
             assert ctx_memory is not parent_memory
             assert len(ctx_memory) == 1  # type: ignore[arg-type]
-            return SimpleOutput(result="test")
+            yield FlowResult(result=SimpleOutput(result="test"))
 
     flow_node = FlowNode[SimpleInput, SimpleOutput](
         flow=MockFlow(),  # type: ignore[arg-type]
@@ -114,11 +115,11 @@ async def test_flow_node_readonly_memory_context():
     parent_memory.append(ModelRequest(parts=[SystemPromptPart(content="parent")]))
 
     class MockFlow:
-        async def run(self, input_data):
+        async def astream(self, input_data):
             ctx_memory = _active_flow_memory.get()
             assert isinstance(ctx_memory, ReadOnlyConversationMemory)
             assert len(ctx_memory) == 1
-            return SimpleOutput(result="test")
+            yield FlowResult(result=SimpleOutput(result="test"))
 
     flow_node = FlowNode[SimpleInput, SimpleOutput](
         flow=MockFlow(),  # type: ignore[arg-type]
@@ -139,10 +140,10 @@ async def test_flow_node_no_parent_memory():
     """Test FlowNode handles case when parent has no memory."""
 
     class MockFlow:
-        async def run(self, input_data):
+        async def astream(self, input_data):
             ctx_memory = _active_flow_memory.get()
             assert ctx_memory is None
-            return SimpleOutput(result="test")
+            yield FlowResult(result=SimpleOutput(result="test"))
 
     flow_node = FlowNode[SimpleInput, SimpleOutput](
         flow=MockFlow(),  # type: ignore[arg-type]

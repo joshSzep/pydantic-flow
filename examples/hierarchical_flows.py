@@ -22,6 +22,17 @@ from pydantic_flow import Flow
 from pydantic_flow import FlowNode
 from pydantic_flow import ToolNode
 
+
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 # ================================
 # Data Models for Content Pipeline
 # ================================
@@ -410,7 +421,7 @@ async def demonstrate_individual_flows():
         target_audience="business executives",
         content_type="blog_post",
     )
-    research_result = await research_flow.run(request)
+    research_result = await extract_result_from_stream(research_flow.astream(request))
     print(f"   Research Quality: {research_result.validated_research.research_quality}")
     print(
         f"   Verified Facts: {len(research_result.validated_research.verified_facts)}"
@@ -420,7 +431,9 @@ async def demonstrate_individual_flows():
     # Test planning flow
     print("2. Testing Planning Flow")
     planning_flow = await create_planning_flow()
-    planning_result = await planning_flow.run(research_result)
+    planning_result = await extract_result_from_stream(
+        planning_flow.astream(research_result)
+    )
     print(f"   Content Title: {planning_result.content_outline.title}")
     print(f"   Sections: {len(planning_result.content_outline.main_sections)}")
     print()
@@ -428,7 +441,9 @@ async def demonstrate_individual_flows():
     # Test writing flow
     print("3. Testing Writing Flow")
     writing_flow = await create_writing_flow()
-    writing_result = await writing_flow.run(planning_result)
+    writing_result = await extract_result_from_stream(
+        writing_flow.astream(planning_result)
+    )
     print(f"   Final Word Count: {writing_result.reviewed_content.final_word_count}")
     print(f"   Quality Score: {writing_result.reviewed_content.quality_score}")
     print()
@@ -436,7 +451,9 @@ async def demonstrate_individual_flows():
     # Test publishing flow
     print("4. Testing Publishing Flow")
     publishing_flow = await create_publishing_flow()
-    publishing_result = await publishing_flow.run(writing_result)
+    publishing_result = await extract_result_from_stream(
+        publishing_flow.astream(writing_result)
+    )
     print(f"   Platform: {publishing_result.formatted_content.platform}")
     print(f"   SEO Optimized: {publishing_result.formatted_content.seo_optimized}")
     print()
@@ -449,7 +466,6 @@ async def demonstrate_master_pipeline():
     # Create the master pipeline
     master_pipeline = await create_content_pipeline()
     print(f"Pipeline Structure: {master_pipeline}")
-    print(f"Execution Order: {master_pipeline.get_execution_order()}")
     print()
 
     # Execute complete pipeline
@@ -462,7 +478,7 @@ async def demonstrate_master_pipeline():
     )
 
     print("Executing complete content creation pipeline...")
-    results = await master_pipeline.run(content_request)
+    results = await extract_result_from_stream(master_pipeline.astream(content_request))
 
     # Display results from each phase
     print("\n📊 Pipeline Results Summary:")
@@ -508,10 +524,12 @@ async def demonstrate_pipeline_reusability():
     pipeline = await create_content_pipeline()
 
     print("Creating blog content...")
-    blog_results = await pipeline.run(blog_request)
+    blog_results = await extract_result_from_stream(pipeline.astream(blog_request))
 
     print("Creating technical guide...")
-    technical_results = await pipeline.run(technical_request)
+    technical_results = await extract_result_from_stream(
+        pipeline.astream(technical_request)
+    )
 
     print("\n📝 Content Comparison:")
     print(f"Blog Post: '{blog_results.planning_phase.content_outline.title}'")

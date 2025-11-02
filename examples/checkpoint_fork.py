@@ -25,6 +25,16 @@ from pydantic_flow.checkpoints.types import RunId
 from pydantic_flow.core.run_config import RunConfig
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Query(BaseModel):
     """User query."""
 
@@ -83,7 +93,7 @@ async def run_initial_flow(
     query = Query(text="Optimize database performance")
 
     await backend.initialize()
-    result = await flow.run(query, config=run_config)
+    result = await extract_result_from_stream(flow.astream(query, config=run_config))
     print("✅ Initial flow completed")
     print(f"   Result: {result.answer[:100]}...")
 

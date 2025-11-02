@@ -130,13 +130,13 @@ async def customer_balance(
 
 async def main():
     deps = SupportDependencies(customer_id=123, db=DatabaseConn())
-    result = await support_agent.run('What is my balance?', deps=deps)  # (8)!
+    result = await extract_result_from_stream(support_agent.astream('What is my balance?', deps=deps)  # (8)!
     print(result.output)  # (10)!
     """
     support_advice='Hello John, your current account balance, including pending transactions, is $123.45.' block_card=False risk=1
     """
 
-    result = await support_agent.run('I just lost my card!', deps=deps)
+    result = await extract_result_from_stream(support_agent.astream('I just lost my card!', deps=deps)
     print(result.output)
     """
     support_advice="I'm sorry to hear that, John. We are temporarily blocking your card to prevent unauthorized transactions." block_card=True risk=8
@@ -955,8 +955,8 @@ Agents are intended to be instantiated once (frequently as module globals) and r
 
 There are five ways to run an agent:
 
-1. agent.run() â€” an async function which returns a RunResult containing a completed response.
-1. agent.run_sync() â€” a plain, synchronous function which returns a RunResult containing a completed response (internally, this just calls `loop.run_until_complete(self.run())`).
+1. extract_result_from_stream(agent.astream() â€” an async function which returns a RunResult containing a completed response.
+1. agent.run_sync() â€” a plain, synchronous function which returns a RunResult containing a completed response (internally, this just calls `loop.run_until_complete(extract_result_from_stream(self.astream())`).
 1. agent.run_stream() â€” an async context manager which returns a StreamedRunResult, which contains methods to stream text and structured output as an async iterable.
 1. agent.run_stream_events() â€” a function which returns an async iterable of AgentStreamEvents and a AgentRunResultEvent containing the final run result.
 1. agent.iter() â€” a context manager which returns an AgentRun, an async iterable over the nodes of the agent's underlying Graph.
@@ -976,7 +976,7 @@ print(result_sync.output)
 
 
 async def main():
-    result = await agent.run('What is the capital of France?')
+    result = await extract_result_from_stream(agent.astream('What is the capital of France?')
     print(result.output)
     #> The capital of France is Paris.
 
@@ -1120,7 +1120,7 @@ if __name__ == '__main__':
 
 ### Streaming All Events
 
-Like `agent.run_stream()`, agent.run() takes an optional `event_stream_handler` argument that lets you stream all events from the model's streaming response and the agent's execution of tools. Unlike `run_stream()`, it always runs the agent graph to completion even if text was received ahead of tool calls that looked like it could've been the final result.
+Like `agent.run_stream()`, extract_result_from_stream(agent.astream() takes an optional `event_stream_handler` argument that lets you stream all events from the model's streaming response and the agent's execution of tools. Unlike `run_stream()`, it always runs the agent graph to completion even if text was received ahead of tool calls that looked like it could've been the final result.
 
 For convenience, a agent.run_stream_events() method is also available as a wrapper around `run(event_stream_handler=...)`, which returns an async iterable of AgentStreamEvents and a AgentRunResultEvent containing the final run result.
 
@@ -1179,7 +1179,7 @@ if __name__ == '__main__':
 
 Under the hood, each `Agent` in Pydantic AI uses **pydantic-graph** to manage its execution flow. **pydantic-graph** is a generic, type-centric library for building and running finite state machines in Python. It doesn't actually depend on Pydantic AI â€” you can use it standalone for workflows that have nothing to do with GenAI â€” but Pydantic AI makes use of it to orchestrate the handling of model requests and model responses in an agent's run.
 
-In many scenarios, you don't need to worry about pydantic-graph at all; calling `agent.run(...)` simply traverses the underlying graph from start to finish. However, if you need deeper insight or control â€” for example to inject your own logic at specific stages â€” Pydantic AI exposes the lower-level iteration process via Agent.iter. This method returns an AgentRun, which you can async-iterate over, or manually drive node-by-node via the next method. Once the agent's graph returns an End, you have the final result along with a detailed history of all steps.
+In many scenarios, you don't need to worry about pydantic-graph at all; calling `extract_result_from_stream(agent.astream(...)` simply traverses the underlying graph from start to finish. However, if you need deeper insight or control â€” for example to inject your own logic at specific stages â€” Pydantic AI exposes the lower-level iteration process via Agent.iter. This method returns an AgentRun, which you can async-iterate over, or manually drive node-by-node via the next method. Once the agent's graph returns an End, you have the final result along with a detailed history of all steps.
 
 #### `async for` iteration
 
@@ -2584,7 +2584,7 @@ To support these use cases, Pydantic AI provides the concept of deferred tools, 
 
 When the model calls a deferred tool, the agent run will end with a DeferredToolRequests output object containing information about the deferred tool calls. Once the approvals and/or results are ready, a new agent run can then be started with the original run's [message history](../message-history/) plus a DeferredToolResults object holding results for each tool call in `DeferredToolRequests`, which will continue the original run where it left off.
 
-Note that handling deferred tool calls requires `DeferredToolRequests` to be in the `Agent`'s [`output_type`](../output/#structured-output) so that the possible types of the agent run output are correctly inferred. If your agent can also be used in a context where no deferred tools are available and you don't want to deal with that type everywhere you use the agent, you can instead pass the `output_type` argument when you run the agent using agent.run(), agent.run_sync(), agent.run_stream(), or agent.iter(). Note that the run-time `output_type` overrides the one specified at construction time (for type inference reasons), so you'll need to include the original output type explicitly.
+Note that handling deferred tool calls requires `DeferredToolRequests` to be in the `Agent`'s [`output_type`](../output/#structured-output) so that the possible types of the agent run output are correctly inferred. If your agent can also be used in a context where no deferred tools are available and you don't want to deal with that type everywhere you use the agent, you can instead pass the `output_type` argument when you run the agent using extract_result_from_stream(agent.astream(), agent.run_sync(), agent.run_stream(), or agent.iter(). Note that the run-time `output_type` overrides the one specified at construction time (for type inference reasons), so you'll need to include the original output type explicitly.
 
 ## Human-in-the-Loop Tool Approval
 
@@ -2804,7 +2804,7 @@ async def calculate_answer(ctx: RunContext, question: str) -> str:
 
 
 async def main():
-    result = await agent.run('Calculate the answer to the ultimate question of life, the universe, and everything')
+    result = await extract_result_from_stream(agent.astream('Calculate the answer to the ultimate question of life, the universe, and everything')
     messages = result.all_messages()
 
     assert isinstance(result.output, DeferredToolRequests)
@@ -2838,7 +2838,7 @@ async def main():
 
         results.calls[call.tool_call_id] = result
 
-    result = await agent.run(message_history=messages, deferred_tool_results=results)
+    result = await extract_result_from_stream(agent.astream(message_history=messages, deferred_tool_results=results)
     print(result.output)
     #> The answer to the ultimate question of life, the universe, and everything is 42.
     print(result.all_messages())
@@ -2942,7 +2942,7 @@ agent = Agent(
 async def main():
     async with httpx.AsyncClient() as client:
         deps = MyDeps('foobar', client)
-        result = await agent.run(
+        result = await extract_result_from_stream(agent.astream(
             'Tell me a joke.',
             deps=deps,  # (3)!
         )
@@ -2996,7 +2996,7 @@ async def get_system_prompt(ctx: RunContext[MyDeps]) -> str:  # (2)!
 async def main():
     async with httpx.AsyncClient() as client:
         deps = MyDeps('foobar', client)
-        result = await agent.run('Tell me a joke.', deps=deps)
+        result = await extract_result_from_stream(agent.astream('Tell me a joke.', deps=deps)
         print(result.output)
         #> Did you hear about the toothpaste scandal? They called it Colgate.
 
@@ -3054,7 +3054,7 @@ def get_system_prompt(ctx: RunContext[MyDeps]) -> str:  # (2)!
 
 async def main():
     deps = MyDeps('foobar', httpx.Client())
-    result = await agent.run(
+    result = await extract_result_from_stream(agent.astream(
         'Tell me a joke.',
         deps=deps,
     )
@@ -3128,7 +3128,7 @@ async def validate_output(ctx: RunContext[MyDeps], output: str) -> str:
 async def main():
     async with httpx.AsyncClient() as client:
         deps = MyDeps('foobar', client)
-        result = await agent.run('Tell me a joke.', deps=deps)
+        result = await extract_result_from_stream(agent.astream('Tell me a joke.', deps=deps)
         print(result.output)
         #> Did you hear about the toothpaste scandal? They called it Colgate.
 
@@ -3182,7 +3182,7 @@ async def application_code(prompt: str) -> str:  # (3)!
     # now deep within application code we call our agent
     async with httpx.AsyncClient() as client:
         app_deps = MyDeps('foobar', client)
-        result = await joke_agent.run(prompt, deps=app_deps)  # (4)!
+        result = await extract_result_from_stream(joke_agent.astream(prompt, deps=app_deps)  # (4)!
     return result.output
 
 ```
@@ -3994,7 +3994,7 @@ async def summarize_old_messages(messages: list[ModelMessage]) -> list[ModelMess
     # Summarize the oldest 10 messages
     if len(messages) > 10:
         oldest_messages = messages[:10]
-        summary = await summarize_agent.run(message_history=oldest_messages)
+        summary = await extract_result_from_stream(summarize_agent.astream(message_history=oldest_messages)
         # Return the last message and the summary
         return summary.new_messages() + messages[-1:]
 
@@ -4134,7 +4134,7 @@ joke_generation_agent = Agent(  # (2)!
 
 @joke_selection_agent.tool
 async def joke_factory(ctx: RunContext[None], count: int) -> list[str]:
-    r = await joke_generation_agent.run(  # (3)!
+    r = await extract_result_from_stream(joke_generation_agent.astream(  # (3)!
         f'Please generate {count} jokes.',
         usage=ctx.usage,  # (4)!
     )
@@ -4217,7 +4217,7 @@ joke_generation_agent = Agent(
 
 @joke_selection_agent.tool
 async def joke_factory(ctx: RunContext[ClientAndKey], count: int) -> list[str]:
-    r = await joke_generation_agent.run(
+    r = await extract_result_from_stream(joke_generation_agent.astream(
         f'Please generate {count} jokes.',
         deps=ctx.deps,  # (3)!
         usage=ctx.usage,
@@ -4239,7 +4239,7 @@ async def get_jokes(ctx: RunContext[ClientAndKey], count: int) -> str:
 async def main():
     async with httpx.AsyncClient() as client:
         deps = ClientAndKey(client, 'foobar')
-        result = await joke_selection_agent.run('Tell me a joke.', deps=deps)
+        result = await extract_result_from_stream(joke_selection_agent.astream('Tell me a joke.', deps=deps)
         print(result.output)
         #> Did you hear about the toothpaste scandal? They called it Colgate.
         print(result.usage())  # (6)!
@@ -4327,7 +4327,7 @@ async def find_flight(usage: RunUsage) -> FlightDetails | None:  # (4)!
         prompt = Prompt.ask(
             'Where would you like to fly from and to?',
         )
-        result = await flight_search_agent.run(
+        result = await extract_result_from_stream(flight_search_agent.astream(
             prompt,
             message_history=message_history,
             usage=usage,
@@ -4364,7 +4364,7 @@ async def find_seat(usage: RunUsage) -> SeatPreference:  # (6)!
     while True:
         answer = Prompt.ask('What seat would you like?')
 
-        result = await seat_preference_agent.run(
+        result = await extract_result_from_stream(seat_preference_agent.astream(
             answer,
             message_history=message_history,
             usage=usage,
@@ -4631,7 +4631,7 @@ async def hand_off_to_sql_agent(ctx: RunContext, query: str) -> list[Row]:
     # Drop the final message with the output tool call, as it shouldn't be passed on to the SQL agent
     messages = ctx.messages[:-1]
     try:
-        result = await sql_agent.run(query, message_history=messages)
+        result = await extract_result_from_stream(sql_agent.astream(query, message_history=messages)
         output = result.output
         if isinstance(output, SQLFailure):
             raise ModelRetry(f'SQL agent failed: {output.explanation}')
@@ -6543,7 +6543,7 @@ Toolsets are used (among many other things) to define [MCP servers](../mcp/clien
 The toolsets that will be available during an agent run can be specified in four different ways:
 
 - at agent construction time, via the toolsets keyword argument to `Agent`, which takes toolset instances as well as functions that generate toolsets [dynamically](#dynamically-building-a-toolset) based on the agent run context
-- at agent run time, via the `toolsets` keyword argument to agent.run(), agent.run_sync(), agent.run_stream(), or agent.iter(). These toolsets will be additional to those registered on the `Agent`
+- at agent run time, via the `toolsets` keyword argument to extract_result_from_stream(agent.astream(), agent.run_sync(), agent.run_stream(), or agent.iter(). These toolsets will be additional to those registered on the `Agent`
 - [dynamically](#dynamically-building-a-toolset), via the @agent.toolset decorator which lets you build a toolset based on the agent run context
 - as a contextual override, via the `toolsets` keyword argument to the agent.override() context manager. These toolsets will replace those provided at agent construction or run time during the life of the context manager
 
@@ -7009,7 +7009,7 @@ When the model calls an external tool, the call is considered to be ["deferred"]
 
 When the tool call results are received from the upstream service or frontend, you can build a DeferredToolResults object with a `calls` dictionary that maps each tool call ID to an arbitrary value to be returned to the model, a [`ToolReturn`](../tools-advanced/#advanced-tool-returns) object, or a ModelRetry exception in case the tool call failed and the model should [try again](../tools-advanced/#tool-retries). This `DeferredToolResults` object can then be provided to one of the agent run methods as `deferred_tool_results`, alongside the original run's [message history](../message-history/).
 
-Note that you need to add `DeferredToolRequests` to the `Agent`'s or `agent.run()`'s [`output_type`](../output/#structured-output) so that the possible types of the agent run output are correctly inferred. For more information, see the [Deferred Tools](../deferred-tools/#deferred-tools) documentation.
+Note that you need to add `DeferredToolRequests` to the `Agent`'s or `extract_result_from_stream(agent.astream()`'s [`output_type`](../output/#structured-output) so that the possible types of the agent run output are correctly inferred. For more information, see the [Deferred Tools](../deferred-tools/#deferred-tools) documentation.
 
 To demonstrate, let us first define a simple agent *without* deferred tools:
 
@@ -9405,7 +9405,7 @@ vending_machine_graph = Graph(  # (13)!
 
 async def main():
     state = MachineState()  # (14)!
-    await vending_machine_graph.run(InsertCoin(), state=state)  # (15)!
+    await extract_result_from_stream(vending_machine_graph.astream(InsertCoin(), state=state)  # (15)!
     print(f'purchase successful item={state.product} change={state.user_balance:0.2f}')
     #> purchase successful item=crisps change=0.25
 
@@ -9537,7 +9537,7 @@ class WriteEmail(BaseNode[State]):
                 f'{format_as_xml(ctx.state.user)}'
             )
 
-        result = await email_writer_agent.run(
+        result = await extract_result_from_stream(email_writer_agent.astream(
             prompt,
             message_history=ctx.state.write_agent_messages,
         )
@@ -9571,7 +9571,7 @@ class Feedback(BaseNode[State, None, Email]):
         ctx: GraphRunContext[State],
     ) -> WriteEmail | End[Email]:
         prompt = format_as_xml({'user': ctx.state.user, 'email': self.email})
-        result = await feedback_agent.run(prompt)
+        result = await extract_result_from_stream(feedback_agent.astream(prompt)
         if isinstance(result.output, EmailRequiresWrite):
             return WriteEmail(email_feedback=result.output.feedback)
         else:
@@ -9586,7 +9586,7 @@ async def main():
     )
     state = State(user)
     feedback_graph = Graph(nodes=(WriteEmail, Feedback))
-    result = await feedback_graph.run(WriteEmail(), state=state)
+    result = await extract_result_from_stream(feedback_graph.astream(WriteEmail(), state=state)
     print(result.output)
     """
     Email(
@@ -9774,7 +9774,7 @@ async def run_node(run_id: str) -> bool:  # (3)!
 1. Call graph.initialize() to set the initial graph state in the persistence object.
 1. `run_node` is a pure function that doesn't need access to any other process state to run the next node of the graph, except the ID of the run.
 1. Call graph.iter_from_persistence() create a GraphRun object that will run the next node of the graph from the state stored in persistence. This will return either a node or an `End` object.
-1. graph.run() will return either a node or an End object.
+1. extract_result_from_stream(graph.astream() will return either a node or an End object.
 1. Check if the node is an End object, if it is, the graph run is complete.
 
 *(This example is complete, it can be run "as is" â€” you'll need to add `asyncio.run(main())` to run `main`)*
@@ -9824,7 +9824,7 @@ class Ask(BaseNode[QuestionState]):
     async def run(
         self, ctx: GraphRunContext[QuestionState]
     ) -> Annotated[Answer, Edge(label='Ask the question')]:
-        result = await ask_agent.run(
+        result = await extract_result_from_stream(ask_agent.astream(
             'Ask a simple question with a single correct answer.',
             message_history=ctx.state.ask_agent_messages,
         )
@@ -9865,7 +9865,7 @@ class Evaluate(BaseNode[QuestionState, None, str]):
         ctx: GraphRunContext[QuestionState],
     ) -> Annotated[End[str], Edge(label='success')] | Reprimand:
         assert ctx.state.question is not None
-        result = await evaluate_agent.run(
+        result = await extract_result_from_stream(evaluate_agent.astream(
             format_as_xml({'question': ctx.state.question, 'answer': self.answer}),
             message_history=ctx.state.evaluate_agent_messages,
         )
@@ -10009,7 +10009,7 @@ fives_graph = Graph(nodes=[DivisibleBy5, Increment])
 async def main():
     with ProcessPoolExecutor() as executor:
         deps = GraphDeps(executor)
-        result = await fives_graph.run(DivisibleBy5(3), deps=deps, persistence=FullStatePersistence())
+        result = await extract_result_from_stream(fives_graph.astream(DivisibleBy5(3), deps=deps, persistence=FullStatePersistence())
     print(result.output)
     #> 5
     # the full history is quite verbose (see below), so we'll just print the summary
@@ -10073,7 +10073,7 @@ class Ask(BaseNode[QuestionState]):
     async def run(
         self, ctx: GraphRunContext[QuestionState]
     ) -> Annotated[Answer, Edge(label='Ask the question')]:
-        result = await ask_agent.run(
+        result = await extract_result_from_stream(ask_agent.astream(
             'Ask a simple question with a single correct answer.',
             message_history=ctx.state.ask_agent_messages,
         )
@@ -10114,7 +10114,7 @@ class Evaluate(BaseNode[QuestionState, None, str]):
         ctx: GraphRunContext[QuestionState],
     ) -> Annotated[End[str], Edge(label='success')] | Reprimand:
         assert ctx.state.question is not None
-        result = await evaluate_agent.run(
+        result = await extract_result_from_stream(evaluate_agent.astream(
             format_as_xml({'question': ctx.state.question, 'answer': self.answer}),
             message_history=ctx.state.evaluate_agent_messages,
         )
@@ -11318,7 +11318,7 @@ class Agent(AbstractAgent[AgentDepsT, OutputDataT]):
         async def get_instructions(run_context: RunContext[AgentDepsT]) -> str | None:
             parts = [
                 instructions_literal,
-                *[await func.run(run_context) for func in instructions_functions],
+                *[await extract_result_from_stream(func.astream(run_context) for func in instructions_functions],
             ]
 
             model_profile = model_used.profile
@@ -12914,7 +12914,7 @@ async def iter(
     async def get_instructions(run_context: RunContext[AgentDepsT]) -> str | None:
         parts = [
             instructions_literal,
-            *[await func.run(run_context) for func in instructions_functions],
+            *[await extract_result_from_stream(func.astream(run_context) for func in instructions_functions],
         ]
 
         model_profile = model_used.profile
@@ -14231,7 +14231,7 @@ class AbstractAgent(Generic[AgentDepsT, OutputDataT], ABC):
         agent = Agent('openai:gpt-4o')
 
         async def main():
-            agent_run = await agent.run('What is the capital of France?')
+            agent_run = await extract_result_from_stream(agent.astream('What is the capital of France?')
             print(agent_run.output)
             #> The capital of France is Paris.
         ```
@@ -14377,7 +14377,7 @@ class AbstractAgent(Generic[AgentDepsT, OutputDataT], ABC):
             self._infer_name(inspect.currentframe())
 
         return get_event_loop().run_until_complete(
-            self.run(
+            extract_result_from_stream(self.astream(
                 user_prompt,
                 output_type=output_type,
                 message_history=message_history,
@@ -14460,7 +14460,7 @@ class AbstractAgent(Generic[AgentDepsT, OutputDataT], ABC):
         As this method will consider the first output matching the `output_type` to be the final output,
         it will stop running the agent graph and will not execute any tool calls made by the model after this "final" output.
         If you want to always run the agent graph to completion and stream events and output at the same time,
-        use [`agent.run()`][pydantic_ai.agent.AbstractAgent.run] with an `event_stream_handler` or [`agent.iter()`][pydantic_ai.agent.AbstractAgent.iter] instead.
+        use [`extract_result_from_stream(agent.astream()`][pydantic_ai.agent.AbstractAgent.run] with an `event_stream_handler` or [`agent.iter()`][pydantic_ai.agent.AbstractAgent.iter] instead.
 
         Example:
         ```python
@@ -14770,7 +14770,7 @@ class AbstractAgent(Generic[AgentDepsT, OutputDataT], ABC):
 
         async def run_agent() -> AgentRunResult[Any]:
             async with send_stream:
-                return await self.run(
+                return await extract_result_from_stream(self.astream(
                     user_prompt,
                     output_type=output_type,
                     message_history=message_history,
@@ -15409,7 +15409,7 @@ from pydantic_ai import Agent
 agent = Agent('openai:gpt-4o')
 
 async def main():
-    agent_run = await agent.run('What is the capital of France?')
+    agent_run = await extract_result_from_stream(agent.astream('What is the capital of France?')
     print(agent_run.output)
     #> The capital of France is Paris.
 
@@ -15455,7 +15455,7 @@ async def run(
     agent = Agent('openai:gpt-4o')
 
     async def main():
-        agent_run = await agent.run('What is the capital of France?')
+        agent_run = await extract_result_from_stream(agent.astream('What is the capital of France?')
         print(agent_run.output)
         #> The capital of France is Paris.
     ```
@@ -15679,7 +15679,7 @@ def run_sync(
         self._infer_name(inspect.currentframe())
 
     return get_event_loop().run_until_complete(
-        self.run(
+        extract_result_from_stream(self.astream(
             user_prompt,
             output_type=output_type,
             message_history=message_history,
@@ -15792,7 +15792,7 @@ Run the agent with a user prompt in async streaming mode.
 
 This method builds an internal agent graph (using system prompts, tools and output schemas) and then runs the graph until the model produces output matching the `output_type`, for example text or structured data. At this point, a streaming run result object is yielded from which you can stream the output as it comes in, and -- once this output has completed streaming -- get the complete output, message history, and usage.
 
-As this method will consider the first output matching the `output_type` to be the final output, it will stop running the agent graph and will not execute any tool calls made by the model after this "final" output. If you want to always run the agent graph to completion and stream events and output at the same time, use agent.run() with an `event_stream_handler` or agent.iter() instead.
+As this method will consider the first output matching the `output_type` to be the final output, it will stop running the agent graph and will not execute any tool calls made by the model after this "final" output. If you want to always run the agent graph to completion and stream events and output at the same time, use extract_result_from_stream(agent.astream() with an `event_stream_handler` or agent.iter() instead.
 
 Example:
 
@@ -15847,7 +15847,7 @@ async def run_stream(  # noqa C901
     As this method will consider the first output matching the `output_type` to be the final output,
     it will stop running the agent graph and will not execute any tool calls made by the model after this "final" output.
     If you want to always run the agent graph to completion and stream events and output at the same time,
-    use [`agent.run()`][pydantic_ai.agent.AbstractAgent.run] with an `event_stream_handler` or [`agent.iter()`][pydantic_ai.agent.AbstractAgent.iter] instead.
+    use [`extract_result_from_stream(agent.astream()`][pydantic_ai.agent.AbstractAgent.run] with an `event_stream_handler` or [`agent.iter()`][pydantic_ai.agent.AbstractAgent.iter] instead.
 
     Example:
     ```python
@@ -20723,7 +20723,7 @@ class TemporalAgent(WrapperAgent[AgentDepsT, OutputDataT]):
         agent = Agent('openai:gpt-4o')
 
         async def main():
-            agent_run = await agent.run('What is the capital of France?')
+            agent_run = await extract_result_from_stream(agent.astream('What is the capital of France?')
             print(agent_run.output)
             #> The capital of France is Paris.
         ```
@@ -20863,7 +20863,7 @@ class TemporalAgent(WrapperAgent[AgentDepsT, OutputDataT]):
         """
         if workflow.in_workflow():
             raise UserError(
-                '`agent.run_sync()` cannot be used inside a Temporal workflow. Use `await agent.run()` instead.'
+                '`agent.run_sync()` cannot be used inside a Temporal workflow. Use `await extract_result_from_stream(agent.astream()` instead.'
             )
 
         return super().run_sync(
@@ -20976,7 +20976,7 @@ class TemporalAgent(WrapperAgent[AgentDepsT, OutputDataT]):
         if workflow.in_workflow():
             raise UserError(
                 '`agent.run_stream()` cannot be used inside a Temporal workflow. '
-                'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+                'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
             )
 
         async with super().run_stream(
@@ -21102,7 +21102,7 @@ class TemporalAgent(WrapperAgent[AgentDepsT, OutputDataT]):
         if workflow.in_workflow():
             raise UserError(
                 '`agent.run_stream_events()` cannot be used inside a Temporal workflow. '
-                'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+                'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
             )
 
         return super().run_stream_events(
@@ -21256,7 +21256,7 @@ class TemporalAgent(WrapperAgent[AgentDepsT, OutputDataT]):
             if not self._temporal_overrides_active.get():
                 raise UserError(
                     '`agent.iter()` cannot be used inside a Temporal workflow. '
-                    'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+                    'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
                 )
 
             if model is not None:
@@ -21624,7 +21624,7 @@ from pydantic_ai import Agent
 agent = Agent('openai:gpt-4o')
 
 async def main():
-    agent_run = await agent.run('What is the capital of France?')
+    agent_run = await extract_result_from_stream(agent.astream('What is the capital of France?')
     print(agent_run.output)
     #> The capital of France is Paris.
 
@@ -21671,7 +21671,7 @@ async def run(
     agent = Agent('openai:gpt-4o')
 
     async def main():
-        agent_run = await agent.run('What is the capital of France?')
+        agent_run = await extract_result_from_stream(agent.astream('What is the capital of France?')
         print(agent_run.output)
         #> The capital of France is Paris.
     ```
@@ -21890,7 +21890,7 @@ def run_sync(
     """
     if workflow.in_workflow():
         raise UserError(
-            '`agent.run_sync()` cannot be used inside a Temporal workflow. Use `await agent.run()` instead.'
+            '`agent.run_sync()` cannot be used inside a Temporal workflow. Use `await extract_result_from_stream(agent.astream()` instead.'
         )
 
     return super().run_sync(
@@ -22085,7 +22085,7 @@ async def run_stream(
     if workflow.in_workflow():
         raise UserError(
             '`agent.run_stream()` cannot be used inside a Temporal workflow. '
-            'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+            'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
         )
 
     async with super().run_stream(
@@ -22302,7 +22302,7 @@ def run_stream_events(
     if workflow.in_workflow():
         raise UserError(
             '`agent.run_stream_events()` cannot be used inside a Temporal workflow. '
-            'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+            'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
         )
 
     return super().run_stream_events(
@@ -22571,7 +22571,7 @@ async def iter(
         if not self._temporal_overrides_active.get():
             raise UserError(
                 '`agent.iter()` cannot be used inside a Temporal workflow. '
-                'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+                'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
             )
 
         if model is not None:
@@ -23245,7 +23245,7 @@ class DBOSAgent(WrapperAgent[AgentDepsT, OutputDataT], DBOSConfiguredInstance):
         agent = Agent('openai:gpt-4o')
 
         async def main():
-            agent_run = await agent.run('What is the capital of France?')
+            agent_run = await extract_result_from_stream(agent.astream('What is the capital of France?')
             print(agent_run.output)
             #> The capital of France is Paris.
         ```
@@ -23487,7 +23487,7 @@ class DBOSAgent(WrapperAgent[AgentDepsT, OutputDataT], DBOSConfiguredInstance):
         if DBOS.workflow_id is not None and DBOS.step_id is None:
             raise UserError(
                 '`agent.run_stream()` cannot be used inside a DBOS workflow. '
-                'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+                'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
             )
 
         async with super().run_stream(
@@ -23612,7 +23612,7 @@ class DBOSAgent(WrapperAgent[AgentDepsT, OutputDataT], DBOSConfiguredInstance):
         """
         raise UserError(
             '`agent.run_stream_events()` cannot be used with DBOS. '
-            'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+            'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
         )
 
     @overload
@@ -24087,7 +24087,7 @@ from pydantic_ai import Agent
 agent = Agent('openai:gpt-4o')
 
 async def main():
-    agent_run = await agent.run('What is the capital of France?')
+    agent_run = await extract_result_from_stream(agent.astream('What is the capital of France?')
     print(agent_run.output)
     #> The capital of France is Paris.
 
@@ -24134,7 +24134,7 @@ async def run(
     agent = Agent('openai:gpt-4o')
 
     async def main():
-        agent_run = await agent.run('What is the capital of France?')
+        agent_run = await extract_result_from_stream(agent.astream('What is the capital of France?')
         print(agent_run.output)
         #> The capital of France is Paris.
     ```
@@ -24537,7 +24537,7 @@ async def run_stream(
     if DBOS.workflow_id is not None and DBOS.step_id is None:
         raise UserError(
             '`agent.run_stream()` cannot be used inside a DBOS workflow. '
-            'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+            'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
         )
 
     async with super().run_stream(
@@ -24753,7 +24753,7 @@ def run_stream_events(
     """
     raise UserError(
         '`agent.run_stream_events()` cannot be used with DBOS. '
-        'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+        'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
     )
 
 ````
@@ -25242,7 +25242,7 @@ class DBOSModel(WrapperModel):
             ) as streamed_response:
                 if self.event_stream_handler is not None:
                     assert run_context is not None, (
-                        'A DBOS model cannot be used with `pydantic_ai.direct.model_request_stream()` as it requires a `run_context`. Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+                        'A DBOS model cannot be used with `pydantic_ai.direct.model_request_stream()` as it requires a `run_context`. Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
                     )
                     await self.event_stream_handler(run_context, streamed_response)
 
@@ -25509,7 +25509,7 @@ class PrefectAgent(WrapperAgent[AgentDepsT, OutputDataT]):
         agent = Agent('openai:gpt-4o')
 
         async def main():
-            agent_run = await agent.run('What is the capital of France?')
+            agent_run = await extract_result_from_stream(agent.astream('What is the capital of France?')
             print(agent_run.output)
             #> The capital of France is Paris.
         ```
@@ -25774,7 +25774,7 @@ class PrefectAgent(WrapperAgent[AgentDepsT, OutputDataT]):
         if FlowRunContext.get() is not None:
             raise UserError(
                 '`agent.run_stream()` cannot be used inside a Prefect flow. '
-                'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+                'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
             )
 
         async with super().run_stream(
@@ -25900,7 +25900,7 @@ class PrefectAgent(WrapperAgent[AgentDepsT, OutputDataT]):
         if FlowRunContext.get() is not None:
             raise UserError(
                 '`agent.run_stream_events()` cannot be used inside a Prefect flow. '
-                'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+                'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
             )
 
         return super().run_stream_events(
@@ -26326,7 +26326,7 @@ from pydantic_ai import Agent
 agent = Agent('openai:gpt-4o')
 
 async def main():
-    agent_run = await agent.run('What is the capital of France?')
+    agent_run = await extract_result_from_stream(agent.astream('What is the capital of France?')
     print(agent_run.output)
     #> The capital of France is Paris.
 
@@ -26373,7 +26373,7 @@ async def run(
     agent = Agent('openai:gpt-4o')
 
     async def main():
-        agent_run = await agent.run('What is the capital of France?')
+        agent_run = await extract_result_from_stream(agent.astream('What is the capital of France?')
         print(agent_run.output)
         #> The capital of France is Paris.
     ```
@@ -26799,7 +26799,7 @@ async def run_stream(
     if FlowRunContext.get() is not None:
         raise UserError(
             '`agent.run_stream()` cannot be used inside a Prefect flow. '
-            'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+            'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
         )
 
     async with super().run_stream(
@@ -27016,7 +27016,7 @@ def run_stream_events(
     if FlowRunContext.get() is not None:
         raise UserError(
             '`agent.run_stream_events()` cannot be used inside a Prefect flow. '
-            'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+            'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
         )
 
     return super().run_stream_events(
@@ -27599,7 +27599,7 @@ class PrefectModel(WrapperModel):
                 if self.event_stream_handler is not None:
                     assert ctx is not None, (
                         'A Prefect model cannot be used with `pydantic_ai.direct.model_request_stream()` as it requires a `run_context`. '
-                        'Set an `event_stream_handler` on the agent and use `agent.run()` instead.'
+                        'Set an `event_stream_handler` on the agent and use `extract_result_from_stream(agent.astream()` instead.'
                     )
                     await self.event_stream_handler(ctx, streamed_response)
 
@@ -28230,7 +28230,7 @@ def tool_from_langchain(langchain_tool: LangChainTool) -> Tool:
     def proxy(*args: Any, **kwargs: Any) -> str:
         assert not args, 'This should always be called with kwargs'
         kwargs = defaults | kwargs
-        return langchain_tool.run(kwargs)
+        return extract_result_from_stream(langchain_tool.astream(kwargs)
 
     return Tool.from_schema(
         function=proxy,
@@ -51051,7 +51051,7 @@ async def model_function(
 async def test_my_agent():
     """Unit test for my_agent, to be run by pytest."""
     with my_agent.override(model=FunctionModel(model_function)):
-        result = await my_agent.run('Testing my agent...')
+        result = await extract_result_from_stream(my_agent.astream('Testing my agent...')
         assert result.output == 'hello world'
 
 ```
@@ -57341,7 +57341,7 @@ async def test_my_agent():
     """Unit test for my_agent, to be run by pytest."""
     m = TestModel()
     with my_agent.override(model=m):
-        result = await my_agent.run('Testing my agent...')
+        result = await extract_result_from_stream(my_agent.astream('Testing my agent...')
         assert result.output == 'success (no tool calls)'
     assert m.last_model_request_parameters.function_tools == []
 
@@ -61081,7 +61081,7 @@ async def judge_output(
     """
     user_prompt = _build_prompt(output=output, rubric=rubric)
     return (
-        await _judge_output_agent.run(user_prompt, model=model or _default_model, model_settings=model_settings)
+        await extract_result_from_stream(_judge_output_agent.astream(user_prompt, model=model or _default_model, model_settings=model_settings)
     ).output
 
 ```
@@ -61121,7 +61121,7 @@ async def judge_input_output(
     user_prompt = _build_prompt(inputs=inputs, output=output, rubric=rubric)
 
     return (
-        await _judge_input_output_agent.run(user_prompt, model=model or _default_model, model_settings=model_settings)
+        await extract_result_from_stream(_judge_input_output_agent.astream(user_prompt, model=model or _default_model, model_settings=model_settings)
     ).output
 
 ```
@@ -61163,7 +61163,7 @@ async def judge_input_output_expected(
     user_prompt = _build_prompt(inputs=inputs, output=output, rubric=rubric, expected_output=expected_output)
 
     return (
-        await _judge_input_output_expected_agent.run(
+        await extract_result_from_stream(_judge_input_output_expected_agent.astream(
             user_prompt, model=model or _default_model, model_settings=model_settings
         )
     ).output
@@ -61204,7 +61204,7 @@ async def judge_output_expected(
     """
     user_prompt = _build_prompt(output=output, rubric=rubric, expected_output=expected_output)
     return (
-        await _judge_output_expected_agent.run(
+        await extract_result_from_stream(_judge_output_expected_agent.astream(
             user_prompt, model=model or _default_model, model_settings=model_settings
         )
     ).output
@@ -61324,7 +61324,7 @@ async def generate_dataset(
         retries=1,
     )
 
-    result = await agent.run(extra_instructions or 'Please generate the object.')
+    result = await extract_result_from_stream(agent.astream(extra_instructions or 'Please generate the object.')
     output = strip_markdown_fences(result.output)
     try:
         result = dataset_type.from_text(output, fmt='json', custom_evaluator_types=custom_evaluator_types)
@@ -64124,12 +64124,12 @@ class Graph(Generic[StateT, DepsT, RunEndT]):
 
         async def main():
             state = MyState(1)
-            await never_42_graph.run(Increment(), state=state)
+            await extract_result_from_stream(never_42_graph.astream(Increment(), state=state)
             print(state)
             #> MyState(number=2)
 
             state = MyState(41)
-            await never_42_graph.run(Increment(), state=state)
+            await extract_result_from_stream(never_42_graph.astream(Increment(), state=state)
             print(state)
             #> MyState(number=43)
         ```
@@ -64177,7 +64177,7 @@ class Graph(Generic[StateT, DepsT, RunEndT]):
             self._infer_name(inspect.currentframe())
 
         return _utils.get_event_loop().run_until_complete(
-            self.run(start_node, state=state, deps=deps, persistence=persistence, infer_name=False)
+            extract_result_from_stream(self.astream(start_node, state=state, deps=deps, persistence=persistence, infer_name=False)
         )
 
     @asynccontextmanager
@@ -64625,12 +64625,12 @@ from never_42 import Increment, MyState, never_42_graph
 
 async def main():
     state = MyState(1)
-    await never_42_graph.run(Increment(), state=state)
+    await extract_result_from_stream(never_42_graph.astream(Increment(), state=state)
     print(state)
     #> MyState(number=2)
 
     state = MyState(41)
-    await never_42_graph.run(Increment(), state=state)
+    await extract_result_from_stream(never_42_graph.astream(Increment(), state=state)
     print(state)
     #> MyState(number=43)
 
@@ -64669,12 +64669,12 @@ async def run(
 
     async def main():
         state = MyState(1)
-        await never_42_graph.run(Increment(), state=state)
+        await extract_result_from_stream(never_42_graph.astream(Increment(), state=state)
         print(state)
         #> MyState(number=2)
 
         state = MyState(41)
-        await never_42_graph.run(Increment(), state=state)
+        await extract_result_from_stream(never_42_graph.astream(Increment(), state=state)
         print(state)
         #> MyState(number=43)
     ```
@@ -64755,7 +64755,7 @@ def run_sync(
         self._infer_name(inspect.currentframe())
 
     return _utils.get_event_loop().run_until_complete(
-        self.run(start_node, state=state, deps=deps, persistence=persistence, infer_name=False)
+        extract_result_from_stream(self.astream(start_node, state=state, deps=deps, persistence=persistence, infer_name=False)
     )
 
 ```
@@ -65511,7 +65511,7 @@ class GraphRun(Generic[StateT, DepsT, RunEndT]):
 
             async with self.persistence.record_run(node_snapshot_id):
                 ctx = GraphRunContext(state=self.state, deps=self.deps)
-                self._next_node = await node.run(ctx)
+                self._next_node = await extract_result_from_stream(node.astream(ctx)
 
         if isinstance(self._next_node, End):
             self._snapshot_id = self._next_node.get_snapshot_id()
@@ -65756,7 +65756,7 @@ async def next(
 
         async with self.persistence.record_run(node_snapshot_id):
             ctx = GraphRunContext(state=self.state, deps=self.deps)
-            self._next_node = await node.run(ctx)
+            self._next_node = await extract_result_from_stream(node.astream(ctx)
 
     if isinstance(self._next_node, End):
         self._snapshot_id = self._next_node.get_snapshot_id()
@@ -68235,7 +68235,7 @@ recipe_agent = Agent(
 
 
 async def transform_recipe(customer_order: CustomerOrder) -> Recipe:  # (2)!
-    r = await recipe_agent.run(format_as_xml(customer_order))
+    r = await extract_result_from_stream(recipe_agent.astream(format_as_xml(customer_order))
     return r.output
 
 
@@ -68908,14 +68908,14 @@ dbos_agent = DBOSAgent(agent)  # (1)!
 
 async def main():
     DBOS.launch()
-    result = await dbos_agent.run('What is the capital of Mexico?')  # (2)!
+    result = await extract_result_from_stream(dbos_agent.astream('What is the capital of Mexico?')  # (2)!
     print(result.output)
     #> Mexico City (Ciudad de MÃ©xico, CDMX)
 
 ```
 
 1. Workflows and `DBOSAgent` must be defined before `DBOS.launch()` so that recovery can correctly find all workflows.
-1. DBOSAgent.run() works like Agent.run(), but runs as a DBOS workflow and executes model requests, decorated tool calls, and MCP communication as DBOS steps.
+1. extract_result_from_stream(DBOSAgent.astream() works like extract_result_from_stream(Agent.astream(), but runs as a DBOS workflow and executes model requests, decorated tool calls, and MCP communication as DBOS steps.
 1. This example uses SQLite. Postgres is recommended for production.
 1. The agent's `name` is used to uniquely identify its workflows.
 
@@ -68943,13 +68943,13 @@ Other than that, any agent and toolset will just work!
 
 ### Agent Run Context and Dependencies
 
-DBOS checkpoints workflow inputs/outputs and step outputs into a database using [`pickle`](https://docs.python.org/3/library/pickle.html). This means you need to make sure [dependencies](../../dependencies/) object provided to DBOSAgent.run() or DBOSAgent.run_sync(), and tool outputs can be serialized using pickle. You may also want to keep the inputs and outputs small (under ~2 MB). PostgreSQL and SQLite support up to 1 GB per field, but large objects may impact performance.
+DBOS checkpoints workflow inputs/outputs and step outputs into a database using [`pickle`](https://docs.python.org/3/library/pickle.html). This means you need to make sure [dependencies](../../dependencies/) object provided to extract_result_from_stream(DBOSAgent.astream() or DBOSAgent.run_sync(), and tool outputs can be serialized using pickle. You may also want to keep the inputs and outputs small (under ~2 MB). PostgreSQL and SQLite support up to 1 GB per field, but large objects may impact performance.
 
 ### Streaming
 
 Because DBOS cannot stream output directly to the workflow or step call site, Agent.run_stream() and Agent.run_stream_events() are not supported when running inside of a DBOS workflow.
 
-Instead, you can implement streaming by setting an event_stream_handler on the `Agent` or `DBOSAgent` instance and using DBOSAgent.run(). The event stream handler function will receive the agent run context and an async iterable of events from the model's streaming response and the agent's execution of tools. For examples, see the [streaming docs](../../agents/#streaming-all-events).
+Instead, you can implement streaming by setting an event_stream_handler on the `Agent` or `DBOSAgent` instance and using extract_result_from_stream(DBOSAgent.astream(). The event stream handler function will receive the agent run context and an async iterable of events from the model's streaming response and the agent's execution of tools. For examples, see the [streaming docs](../../agents/#streaming-all-events).
 
 ## Step Configuration
 
@@ -69092,7 +69092,7 @@ agent = Agent(
 prefect_agent = PrefectAgent(agent)  # (2)!
 
 async def main():
-    result = await prefect_agent.run('What is the capital of Mexico?')  # (3)!
+    result = await extract_result_from_stream(prefect_agent.astream('What is the capital of Mexico?')  # (3)!
     print(result.output)
     #> Mexico City (Ciudad de MÃ©xico, CDMX)
 
@@ -69100,7 +69100,7 @@ async def main():
 
 1. The agent's `name` is used to uniquely identify its flows and tasks.
 1. Wrapping the agent with `PrefectAgent` enables durable execution for all agent runs.
-1. PrefectAgent.run() works like Agent.run(), but runs as a Prefect flow and executes model requests, decorated tool calls, and MCP communication as Prefect tasks.
+1. extract_result_from_stream(PrefectAgent.astream() works like extract_result_from_stream(Agent.astream(), but runs as a Prefect flow and executes model requests, decorated tool calls, and MCP communication as Prefect tasks.
 
 *(This example is complete, it can be run "as is" â€” you'll need to add `asyncio.run(main())` to run `main`)*
 
@@ -69154,7 +69154,7 @@ Set a tool's config to `None` in `tool_task_config_by_name` to disable task wrap
 
 When running inside a Prefect flow, Agent.run_stream() works but doesn't provide real-time streaming because Prefect tasks consume their entire execution before returning results. The method will execute fully and return the complete result at once.
 
-For real-time streaming behavior inside Prefect flows, you can set an event_stream_handler on the `Agent` or `PrefectAgent` instance and use PrefectAgent.run().
+For real-time streaming behavior inside Prefect flows, you can set an event_stream_handler on the `Agent` or `PrefectAgent` instance and use extract_result_from_stream(PrefectAgent.astream().
 
 **Note**: Event stream handlers behave differently when running inside a Prefect flow versus outside:
 
@@ -69207,7 +69207,7 @@ prefect_agent = PrefectAgent(
 )
 
 async def main():
-    result = await prefect_agent.run('What is the capital of France?')
+    result = await extract_result_from_stream(prefect_agent.astream('What is the capital of France?')
     print(result.output)
     #> Paris
 
@@ -69278,7 +69278,7 @@ prefect_agent = PrefectAgent(agent)
 @flow
 async def daily_report_flow(user_prompt: str):
     """Generate a daily report using the agent."""
-    result = await prefect_agent.run(user_prompt)
+    result = await extract_result_from_stream(prefect_agent.astream(user_prompt)
     return result.output
 
 # Serve the flow with a daily schedule
@@ -69402,7 +69402,7 @@ temporal_agent = TemporalAgent(agent)  # (1)!
 class GeographyWorkflow:  # (2)!
     @workflow.run
     async def run(self, prompt: str) -> str:
-        result = await temporal_agent.run(prompt)  # (3)!
+        result = await extract_result_from_stream(temporal_agent.astream(prompt)  # (3)!
         return result.output
 
 
@@ -69431,7 +69431,7 @@ async def main():
 
 1. The original `Agent` cannot be used inside a deterministic Temporal workflow, but the `TemporalAgent` can.
 1. As explained above, the workflow represents a deterministic piece of code that can use non-deterministic activities for operations that require I/O.
-1. TemporalAgent.run() works just like Agent.run(), but it will automatically offload model requests, tool calls, and MCP server communication to Temporal activities.
+1. extract_result_from_stream(TemporalAgent.astream() works just like extract_result_from_stream(Agent.astream(), but it will automatically offload model requests, tool calls, and MCP server communication to Temporal activities.
 1. We connect to the Temporal server which keeps track of workflow and activity execution.
 1. This assumes the Temporal server is [running locally](https://github.com/temporalio/temporal#download-and-start-temporal-server-locally).
 1. The PydanticAIPlugin tells Temporal to use Pydantic for serialization and deserialization, and to treat UserError exceptions as non-retryable.
@@ -69468,7 +69468,7 @@ Synchronous tool functions are supported, as tools are automatically run in acti
 
 As workflows and activities run in separate processes, any values passed between them need to be serializable. As these payloads are stored in the workflow execution event history, Temporal limits their size to 2MB.
 
-To account for these limitations, tool functions and the [event stream handler](#streaming) running inside activities receive a limited version of the agent's RunContext, and it's your responsibility to make sure that the [dependencies](../../dependencies/) object provided to TemporalAgent.run() can be serialized using Pydantic.
+To account for these limitations, tool functions and the [event stream handler](#streaming) running inside activities receive a limited version of the agent's RunContext, and it's your responsibility to make sure that the [dependencies](../../dependencies/) object provided to extract_result_from_stream(TemporalAgent.astream() can be serialized using Pydantic.
 
 Specifically, only the `deps`, `retries`, `tool_call_id`, `tool_name`, `tool_call_approved`, `retry`, `max_retries` and `run_step` fields are available by default, and trying to access `model`, `usage`, `prompt`, `messages`, or `tracer` will raise an error. If you need one or more of these attributes to be available inside activities, you can create a TemporalRunContext subclass with custom `serialize_run_context` and `deserialize_run_context` class methods and pass it to TemporalAgent as `run_context_type`.
 
@@ -69476,7 +69476,7 @@ Specifically, only the `deps`, `retries`, `tool_call_id`, `tool_name`, `tool_cal
 
 Because Temporal activities cannot stream output directly to the activity call site, Agent.run_stream(), Agent.run_stream_events(), and Agent.iter() are not supported.
 
-Instead, you can implement streaming by setting an event_stream_handler on the `Agent` or `TemporalAgent` instance and using TemporalAgent.run() inside the workflow. The event stream handler function will receive the agent run context and an async iterable of events from the model's streaming response and the agent's execution of tools. For examples, see the [streaming docs](../../agents/#streaming-all-events).
+Instead, you can implement streaming by setting an event_stream_handler on the `Agent` or `TemporalAgent` instance and using extract_result_from_stream(TemporalAgent.astream() inside the workflow. The event stream handler function will receive the agent run context and an async iterable of events from the model's streaming response and the agent's execution of tools. For examples, see the [streaming docs](../../agents/#streaming-all-events).
 
 As the streaming model request activity, workflow, and workflow execution call all take place in separate processes, passing data between them requires some care:
 
@@ -69607,7 +69607,7 @@ def add(a: int, b: int) -> int:
     return a + b
 
 if __name__ == '__main__':
-    app.run(transport='streamable-http')
+    extract_result_from_stream(app.astream(transport='streamable-http')
 
 ```
 
@@ -69624,7 +69624,7 @@ agent = Agent('openai:gpt-4o', toolsets=[server])  # (2)!
 
 async def main():
     async with agent:  # (3)!
-        result = await agent.run('What is 7 plus 5?')
+        result = await extract_result_from_stream(agent.astream('What is 7 plus 5?')
     print(result.output)
     #> The answer is 12.
 
@@ -69679,7 +69679,7 @@ def add(a: int, b: int) -> int:
     return a + b
 
 if __name__ == '__main__':
-    app.run(transport='sse')
+    extract_result_from_stream(app.astream(transport='sse')
 
 ```
 
@@ -69697,7 +69697,7 @@ agent = Agent('openai:gpt-4o', toolsets=[server])  # (2)!
 
 async def main():
     async with agent:  # (3)!
-        result = await agent.run('What is 7 plus 5?')
+        result = await extract_result_from_stream(agent.astream('What is 7 plus 5?')
     print(result.output)
     #> The answer is 12.
 
@@ -69729,7 +69729,7 @@ agent = Agent('openai:gpt-4o', toolsets=[server])
 
 async def main():
     async with agent:
-        result = await agent.run('How many days between 2000-01-01 and 2025-03-18?')
+        result = await extract_result_from_stream(agent.astream('How many days between 2000-01-01 and 2025-03-18?')
     print(result.output)
     #> There are 9,208 days between January 1, 2000, and March 18, 2025.
 
@@ -69789,7 +69789,7 @@ agent = Agent('openai:gpt-5', toolsets=servers)
 
 async def main():
     async with agent:
-        result = await agent.run('What is 7 plus 5?')
+        result = await extract_result_from_stream(agent.astream('What is 7 plus 5?')
     print(result.output)
 
 ```
@@ -69832,7 +69832,7 @@ agent = Agent(
 
 async def main():
     async with agent:
-        result = await agent.run('Echo with deps set to 42', deps=42)
+        result = await extract_result_from_stream(agent.astream('Echo with deps set to 42', deps=42)
     print(result.output)
     #> {"echo_deps":{"echo":"This is an echo message","deps":42}}
 
@@ -69868,7 +69868,7 @@ async def echo_deps(ctx: Context[ServerSession, None]) -> dict[str, Any]:
     return {'echo': 'This is an echo message', 'deps': deps}
 
 if __name__ == '__main__':
-    mcp.run()
+    extract_result_from_stream(mcp.astream()
 
 ```
 
@@ -69939,7 +69939,7 @@ agent = Agent('openai:gpt-4o', toolsets=[server])
 
 async def main():
     async with agent:
-        result = await agent.run('How many days between 2000-01-01 and 2025-03-18?')
+        result = await extract_result_from_stream(agent.astream('How many days between 2000-01-01 and 2025-03-18?')
     print(result.output)
     #> There are 9,208 days between January 1, 2000, and March 18, 2025.
 
@@ -70023,7 +70023,7 @@ async def image_generator(ctx: Context, subject: str, style: str) -> str:
 
 if __name__ == '__main__':
     # run the server via stdio
-    app.run()
+    extract_result_from_stream(app.astream()
 
 ````
 
@@ -70042,7 +70042,7 @@ agent = Agent('openai:gpt-4o', toolsets=[server])
 async def main():
     async with agent:
         agent.set_mcp_sampling_model()
-        result = await agent.run('Create an image of a robot in a punk style.')
+        result = await extract_result_from_stream(agent.astream('Create an image of a robot in a punk style.')
     print(result.output)
     #> Image file written to robot_punk.svg.
 
@@ -70124,7 +70124,7 @@ async def book_table(ctx: Context) -> str:
 
 
 if __name__ == '__main__':
-    mcp.run(transport='stdio')
+    extract_result_from_stream(mcp.astream(transport='stdio')
 
 ```
 
@@ -70194,7 +70194,7 @@ agent = Agent('openai:gpt-4o', toolsets=[restaurant_server])
 async def main():
     """Run the agent to book a restaurant table."""
     async with agent:
-        result = await agent.run('Book me a table')
+        result = await extract_result_from_stream(agent.astream('Book me a table')
         print(f'\nResult: {result.output}')
 
 
@@ -70256,12 +70256,12 @@ server_agent = Agent(
 @server.tool()
 async def poet(theme: str) -> str:
     """Poem generator"""
-    r = await server_agent.run(f'write a poem about {theme}')
+    r = await extract_result_from_stream(server_agent.astream(f'write a poem about {theme}')
     return r.output
 
 
 if __name__ == '__main__':
-    server.run()
+    extract_result_from_stream(server.astream()
 
 ```
 
@@ -70326,12 +70326,12 @@ server_agent = Agent(system_prompt='always reply in rhyme')
 @server.tool()
 async def poet(ctx: Context, theme: str) -> str:
     """Poem generator"""
-    r = await server_agent.run(f'write a poem about {theme}', model=MCPSamplingModel(session=ctx.session))
+    r = await extract_result_from_stream(server_agent.astream(f'write a poem about {theme}', model=MCPSamplingModel(session=ctx.session))
     return r.output
 
 
 if __name__ == '__main__':
-    server.run()  # run the server over stdio
+    extract_result_from_stream(server.astream()  # run the server over stdio
 
 ```
 
@@ -71096,7 +71096,7 @@ async def run_weather_forecast(  # (4)!
     async with WeatherService() as weather_service:
 
         async def run_forecast(prompt: str, user_id: int):
-            result = await weather_agent.run(prompt, deps=weather_service)
+            result = await extract_result_from_stream(weather_agent.astream(prompt, deps=weather_service)
             await conn.store_forecast(user_id, result.output)
 
         # run all prompts in parallel
@@ -72338,7 +72338,7 @@ class Database:
 if __name__ == '__main__':
     import uvicorn
 
-    uvicorn.run(
+    extract_result_from_stream(uvicorn.astream(
         'pydantic_ai_examples.chat_app:app', reload=True, reload_dirs=[str(THIS_DIR)]
     )
 
@@ -72824,7 +72824,7 @@ extraction_agent = Agent(
 async def extract_flights(ctx: RunContext[Deps]) -> list[FlightDetails]:
     """Get details of all flights."""
     # we pass the usage to the search agent so requests within this agent are counted
-    result = await extraction_agent.run(ctx.deps.web_page_text, usage=ctx.usage)
+    result = await extract_result_from_stream(extraction_agent.astream(ctx.deps.web_page_text, usage=ctx.usage)
     logfire.info('found {flight_count} flights', flight_count=len(result.output))
     return result.output
 
@@ -72944,7 +72944,7 @@ async def main():
     usage: RunUsage = RunUsage()
     # run the agent until a satisfactory flight is found
     while True:
-        result = await search_agent.run(
+        result = await extract_result_from_stream(search_agent.astream(
             f'Find me a flight from {deps.req_origin} to {deps.req_destination} on {deps.req_date}',
             deps=deps,
             usage=usage,
@@ -72977,7 +72977,7 @@ async def find_seat(usage: RunUsage) -> SeatPreference:
     while True:
         answer = Prompt.ask('What seat would you like?')
 
-        result = await seat_preference_agent.run(
+        result = await extract_result_from_stream(seat_preference_agent.astream(
             answer,
             message_history=message_history,
             usage=usage,
@@ -73145,7 +73145,7 @@ class QuestionState:
 @dataclass
 class Ask(BaseNode[QuestionState]):
     async def run(self, ctx: GraphRunContext[QuestionState]) -> Answer:
-        result = await ask_agent.run(
+        result = await extract_result_from_stream(ask_agent.astream(
             'Ask a simple question with a single correct answer.',
             message_history=ctx.state.ask_agent_messages,
         )
@@ -73186,7 +73186,7 @@ class Evaluate(BaseNode[QuestionState, None, str]):
         ctx: GraphRunContext[QuestionState],
     ) -> End[str] | Reprimand:
         assert ctx.state.question is not None
-        result = await evaluate_agent.run(
+        result = await extract_result_from_stream(evaluate_agent.astream(
             format_as_xml({'question': ctx.state.question, 'answer': self.answer}),
             message_history=ctx.state.evaluate_agent_messages,
         )
@@ -73215,7 +73215,7 @@ question_graph = Graph(
 async def run_as_continuous():
     state = QuestionState()
     node = Ask()
-    end = await question_graph.run(node, state=state)
+    end = await extract_result_from_stream(question_graph.astream(node, state=state)
     print('END:', end.output)
 
 
@@ -73446,7 +73446,7 @@ async def run_agent(question: str):
 
     async with database_connect(False) as pool:
         deps = Deps(openai=openai, pool=pool)
-        answer = await agent.run(question, deps=deps)
+        answer = await extract_result_from_stream(agent.astream(question, deps=deps)
     print(answer.output)
 
 
@@ -73988,7 +73988,7 @@ We also define a `analyze_profile` helper function that takes a `Profile`, runs 
 
 @logfire.instrument('Analyze profile')
 async def analyze_profile(profile: Profile) -> Analysis | None:
-    result = await agent.run(profile.as_prompt())
+    result = await extract_result_from_stream(agent.astream(profile.as_prompt())
     return result.output
 
 ```
@@ -74582,7 +74582,7 @@ async def main():
         'postgresql://postgres:postgres@localhost:54320', 'pydantic_ai_sql_gen'
     ) as conn:
         deps = Deps(conn)
-        result = await agent.run(prompt, deps=deps)
+        result = await extract_result_from_stream(agent.astream(prompt, deps=deps)
     debug(result.output)
 
 
@@ -74973,7 +74973,7 @@ async def main():
     async with AsyncClient() as client:
         logfire.instrument_httpx(client, capture_all=True)
         deps = Deps(client=client)
-        result = await weather_agent.run(
+        result = await extract_result_from_stream(weather_agent.astream(
             'What is the weather like in London and in Wiltshire?', deps=deps
         )
         print('Response:', result.output)

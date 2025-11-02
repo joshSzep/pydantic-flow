@@ -19,6 +19,16 @@ from pydantic_flow.nodes import FlowNode
 from pydantic_flow.nodes import ToolNode
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 # Data models
 class Query(BaseModel):
     """User query."""
@@ -170,7 +180,9 @@ async def scenario_parallel_research():
     parent_flow.compile()
 
     # Execute
-    result = await parent_flow.run(Query(question="AI safety"))
+    result = await extract_result_from_stream(
+        parent_flow.astream(Query(question="AI safety"))
+    )
 
     print(f"Topic A: {result.topic_a.findings.text}")
     print(f"Topic B: {result.topic_b.findings.text}")
@@ -238,7 +250,9 @@ async def scenario_context_enrichment():
     print("Parent memory before enrichment: 2 messages")
 
     # Execute
-    result = await parent_flow.run(Query(question="deep learning"))
+    result = await extract_result_from_stream(
+        parent_flow.astream(Query(question="deep learning"))
+    )
 
     print(f"Enriched: {result.enriched.context}")
 
@@ -315,7 +329,9 @@ async def scenario_sequential_conversation():
     parent_flow.compile()
 
     # Execute
-    result = await parent_flow.run(Query(question="neural networks"))
+    result = await extract_result_from_stream(
+        parent_flow.astream(Query(question="neural networks"))
+    )
 
     print(f"Final summary: {result.result.summary}")
 

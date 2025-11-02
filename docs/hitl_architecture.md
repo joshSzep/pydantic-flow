@@ -927,7 +927,7 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                     input_data = inputs
                 
                 # Execute the node (may raise InterruptionRequested)
-                result = await node.run(input_data)
+                result = await extract_result_from_stream(node.astream(input_data)
                 self._results[node.name] = result
                 
                 # Check after node execution
@@ -1018,7 +1018,7 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 else:
                     input_data = inputs
                 
-                result = await node.run(input_data)
+                result = await extract_result_from_stream(node.astream(input_data)
                 self._results[node.name] = result
                 
                 await self._check_flow_interrupt(
@@ -1530,7 +1530,7 @@ summary_node = PromptNode[WeatherInfo, str](
 flow.add_nodes(weather_node, approval_node, summary_node)
 
 try:
-    result = await flow.run(Query(location="Paris"))
+    result = await extract_result_from_stream(flow.astream(Query(location="Paris"))
 except InterruptionRequested as e:
     print(f"Flow interrupted: {e.decision.reason}")
 ```
@@ -1745,7 +1745,7 @@ async def loop_with_approval():
     
     checkpoint = None
     try:
-        result = await compiled.invoke(
+        result = await extract_result_from_stream(compiled.astream(
             CounterState(n=0),
             config,
         )
@@ -1882,7 +1882,7 @@ async def metadata_rich_interruption():
     )
     
     try:
-        result = await flow.run(query)
+        result = await extract_result_from_stream(flow.astream(query)
     except InterruptionRequested as e:
         # Access rich metadata
         metadata = e.decision.metadata
@@ -1903,7 +1903,7 @@ async def metadata_rich_interruption():
 ### Phase 1: Core Infrastructure (Breaking Changes)
 1. Modify `ProgressItem` to add `interrupt_callback` field
 2. Create `InterruptDecision` and `InterruptionRequested`
-3. Update `BaseNode.run()` to check interrupts
+3. Update `extract_result_from_stream(BaseNode.astream()` to check interrupts
 4. Update `BaseNode.astream()` to add lifecycle checks
 5. Add `NodeLifecycleEvent` enum
 
@@ -1915,7 +1915,7 @@ async def metadata_rich_interruption():
 
 ### Phase 3: Flow-Level HITL
 1. Add `FlowInterruptHandler` and `add_interrupt_handler()` to `Flow`
-2. Implement `_check_flow_interrupt()` in `Flow.run()`
+2. Implement `_check_flow_interrupt()` in `extract_result_from_stream(Flow.astream()`
 3. Add interrupt hooks to `StepperEngine`
 4. Update `CompiledFlow` to pass interrupt handlers
 
@@ -1933,10 +1933,10 @@ async def metadata_rich_interruption():
 - `ProgressItem`: Added `interrupt_callback` field, changed `frozen=False`
 - `BaseNode.__init__`: Added `_interrupt_handlers` list
 - `BaseNode.astream()`: Added lifecycle interrupt checks
-- `BaseNode.run()`: Added interrupt exception handling
+- `extract_result_from_stream(BaseNode.astream()`: Added interrupt exception handling
 - `Flow.__init__`: Added `_interrupt_handlers` list
-- `Flow.run()`: Added flow transition interrupt checks
-- `StepperEngine.invoke()`: Added `interrupt_handlers` parameter
+- `extract_result_from_stream(Flow.astream()`: Added flow transition interrupt checks
+- `extract_result_from_stream(StepperEngine.astream()`: Added `interrupt_handlers` parameter
 
 ### New Exceptions
 - `InterruptionRequested`: Special exception for HITL interruptions
@@ -2133,7 +2133,7 @@ async def metadata_rich_interruption():
 1. Update `StepperEngine.__init__()`:
    - Add `_interrupt_handlers` tracking
    
-2. Update `StepperEngine.invoke()`:
+2. Update `extract_result_from_stream(StepperEngine.astream()`:
    - Accept interrupt handlers parameter
    - Implement `_check_stepper_interrupt()`
    - Add interrupt checks at all key points:
@@ -2240,7 +2240,7 @@ async def metadata_rich_interruption():
   - Added `resume()` method
   - Modified `run()` to check flow interrupts and create checkpoints
   
-- **`StepperEngine.invoke()`**: 
+- **`extract_result_from_stream(StepperEngine.astream()`**: 
   - Added `interrupt_handlers` parameter
   
 - **`StepperEngine`**:

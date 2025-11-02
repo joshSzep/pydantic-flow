@@ -5,6 +5,7 @@ import pytest
 
 from pydantic_flow import Flow
 from pydantic_flow import ToolNode
+from tests.conftest import extract_result_from_stream
 
 # Test constants
 EXPECTED_RESULT_10 = 10
@@ -61,7 +62,7 @@ class TestStronglyTypedFlow:
 
         # Execute the flow
         input_data = InputModel(value=5)
-        results = await flow.run(input_data)
+        results = await extract_result_from_stream(flow.astream(input_data))
 
         # Results should be typed as FlowResults (BaseModel)
         # In a type-aware IDE, this would provide auto-completion
@@ -86,7 +87,7 @@ class TestStronglyTypedFlow:
 
         # Execute the flow
         input_data = InputModel(value=3)
-        results = await flow.run(input_data)
+        results = await extract_result_from_stream(flow.astream(input_data))
 
         # Results should be a BaseModel instance
         assert isinstance(results, SingleNodeResults)
@@ -129,7 +130,7 @@ class TestStronglyTypedFlow:
         flow.add_nodes(node)
 
         input_data = InputModel(value=7)
-        results = await flow.run(input_data)
+        results = await extract_result_from_stream(flow.astream(input_data))
 
         # Should return a BaseModel instance
         assert isinstance(results, SingleNodeResults)

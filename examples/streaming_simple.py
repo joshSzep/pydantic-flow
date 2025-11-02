@@ -14,6 +14,16 @@ from pydantic_flow.streaming.helpers import collect_all_tokens
 from pydantic_flow.streaming.helpers import iter_tokens
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Query(BaseModel):
     """User query input."""
 
@@ -63,7 +73,7 @@ async def demo_non_streaming():
     print("-" * 50)
 
     # Run synchronously - internally consumes the stream
-    result = await node.run(query)
+    result = await extract_result_from_stream(node.astream(query))
     print(result)
 
     print("-" * 50)
@@ -94,9 +104,11 @@ if __name__ == "__main__":
     print("=" * 50)
 
     # Run demos (these would need API keys configured)
-    # asyncio.run(demo_streaming())
-    # asyncio.run(demo_non_streaming())
-    # asyncio.run(demo_collect_tokens())
+    # asyncio.run(demo_streaming()
+    # asyncio.run(demo_non_streaming()
+    # asyncio.run(demo_collect_tokens()
 
-    print("\nNote: Uncomment the asyncio.run() calls above to run the demos.")
+    print(
+        "\nNote: Uncomment the extract_result_from_stream(asyncio.astream() calls above to run the demos."
+    )
     print("Make sure to set your OpenAI API key first.")

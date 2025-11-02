@@ -29,6 +29,16 @@ from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import TokenChunk
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class DocumentInput(BaseModel):
     """Document to process."""
 
@@ -170,7 +180,9 @@ async def run_low_risk_test(
 
     fired_handlers.clear()
     try:
-        result = await flow.run(low_risk_doc, config=config)
+        result = await extract_result_from_stream(
+            flow.astream(low_risk_doc, config=config)
+        )
         print("✅ Document processed successfully (no interrupt)")
         print(f"   Risk Score: {result.risk_score}")
         print(f"   Summary: {result.summary}")
@@ -208,7 +220,9 @@ async def run_high_risk_test(  # noqa: PLR0915
 
     fired_handlers.clear()
     try:
-        result = await flow.run(high_risk_doc, config=config)
+        result = await extract_result_from_stream(
+            flow.astream(high_risk_doc, config=config)
+        )
         print(f"Unexpected success: {result}")
 
     except InterruptionRequested as exc:

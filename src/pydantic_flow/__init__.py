@@ -17,7 +17,6 @@ from pydantic_flow.core import RoutingError
 from pydantic_flow.core import RunConfig
 from pydantic_flow.flow import CompiledFlow
 from pydantic_flow.flow import CyclicDependencyError
-from pydantic_flow.flow import ExecutionMode
 from pydantic_flow.flow import Flow
 from pydantic_flow.flow import FlowError
 from pydantic_flow.hitl import ApprovalNode
@@ -132,7 +131,6 @@ __all__ = [
     "DurabilityMode",
     "EmbeddingNode",
     "EmbeddingProvider",
-    "ExecutionMode",
     "FSLoader",
     "Flow",
     "FlowError",

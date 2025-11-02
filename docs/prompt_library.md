@@ -207,7 +207,7 @@ node = TypedPromptNode(
 )
 
 # In a flow context (once model adapters are implemented)
-result = await node.run(QueryInput(location="London"))
+result = await extract_result_from_stream(node.astream(QueryInput(location="London"))
 ```
 
 ## Observability

@@ -28,6 +28,16 @@ from pydantic_flow.prompt import from_template
 from pydantic_flow.prompt import validate_missing_or_extra
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 # Define input and output models
 class UserQuery(BaseModel):
     """User query input for simple prompts."""

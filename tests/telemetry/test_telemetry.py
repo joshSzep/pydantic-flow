@@ -11,6 +11,7 @@ from pydantic_flow.cache.base import CachePolicy
 from pydantic_flow.cache.memory import InMemoryCache
 from pydantic_flow.telemetry import is_enabled
 from pydantic_flow.telemetry import setup_telemetry
+from tests.conftest import extract_result_from_stream
 
 
 class Input(BaseModel):
@@ -123,7 +124,7 @@ async def test_flow_with_telemetry():
     flow.add_nodes(node1)
 
     # Execute - should work with telemetry
-    result = await flow.run(Input(value=5))
+    result = await extract_result_from_stream(flow.astream(Input(value=5)))
     assert result.node1.result == 10
 
 
@@ -143,7 +144,7 @@ async def test_flow_without_telemetry():
     flow.add_nodes(node1)
 
     # Execute - should work without telemetry
-    result = await flow.run(Input(value=5))
+    result = await extract_result_from_stream(flow.astream(Input(value=5)))
     assert result.node1.result == 10
 
 
@@ -170,11 +171,11 @@ async def test_cache_telemetry():
     flow.add_nodes(node1)
 
     # First run - cache miss
-    result1 = await flow.run(Input(value=5))
+    result1 = await extract_result_from_stream(flow.astream(Input(value=5)))
     assert result1.node1.result == 10
 
     # Second run - cache hit
-    result2 = await flow.run(Input(value=5))
+    result2 = await extract_result_from_stream(flow.astream(Input(value=5)))
     assert result2.node1.result == 10
 
 
@@ -196,7 +197,7 @@ async def test_telemetry_overhead_disabled():
 
     start = time.perf_counter()
     for _ in range(100):
-        await flow.run(Input(value=5))
+        await extract_result_from_stream(flow.astream(Input(value=5)))
     elapsed_disabled = time.perf_counter() - start
 
     # With telemetry disabled, overhead should be negligible
@@ -219,8 +220,8 @@ async def test_multiple_flows_same_telemetry():
     flow2.add_nodes(node2)
 
     # Execute both - should work with shared telemetry
-    result1 = await flow1.run(Input(value=3))
-    result2 = await flow2.run(Input(value=4))
+    result1 = await extract_result_from_stream(flow1.astream(Input(value=3)))
+    result2 = await extract_result_from_stream(flow2.astream(Input(value=4)))
 
     assert result1.node1.result == 6
     assert result2.node1.result == 8

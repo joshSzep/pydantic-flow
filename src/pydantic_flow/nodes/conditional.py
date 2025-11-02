@@ -68,15 +68,31 @@ class IfNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
         # Evaluate predicate and choose branch
         chosen_branch = self.if_true if self.predicate(input_data) else self.if_false
 
+        # Import ToolResult for result capture
+        from pydantic_flow.streaming.tool_events import ToolResult  # noqa: PLC0415
+
         # Stream from the chosen branch
+        result = None
         result_preview = None
         async for item in chosen_branch.astream(input_data):
             # Forward all items from the branch, but don't forward its StreamEnd
             if not isinstance(item, StreamEnd):
                 yield item
+                # Capture result from ToolResult if available
+                if isinstance(item, ToolResult) and item.result is not None:
+                    result = item.result
             else:
                 # Save the result from the branch's StreamEnd
                 result_preview = item.result_preview
+
+        # Yield ToolResult with actual result if we have it
+        if result is not None:
+            yield ToolResult(
+                run_id=run_id,
+                node_id=node_id,
+                tool_name="conditional",
+                result=result,
+            )
 
         # Emit our own StreamEnd with the branch's result
         yield StreamEnd(run_id=run_id, node_id=node_id, result_preview=result_preview)

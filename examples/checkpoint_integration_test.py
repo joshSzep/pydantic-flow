@@ -1,7 +1,7 @@
 """Checkpoint persistence integration example with unified checkpoint system.
 
 This example demonstrates:
-1. Flow.run() accepts a RunConfig with checkpoint_backend
+1. extract_result_from_stream(Flow.astream() accepts a RunConfig with checkpoint_backend
 2. Checkpoints are automatically persisted when InterruptionRequested is raised
 3. The snapshot ID and run ID are available in the exception
 4. Snapshots can be queried from the backend after interruption
@@ -21,6 +21,16 @@ from pydantic_flow.core.run_config import RunConfig
 from pydantic_flow.hitl.decisions import InterruptDecision
 from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.streaming.base import ProgressItem
+
+
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
 
 
 class Query(BaseModel):
@@ -66,7 +76,9 @@ async def main() -> None:
 
         # Run flow - should trigger interruption
         try:
-            await flow.run(Query(question="What is 2+2?"), config=run_config)
+            await extract_result_from_stream(
+                flow.astream(Query(question="What is 2+2?"), config=run_config)
+            )
             print("ERROR: Flow should have been interrupted!")
         except InterruptionRequested as e:
             print("✅ Flow interrupted as expected")

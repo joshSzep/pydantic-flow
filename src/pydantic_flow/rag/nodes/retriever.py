@@ -112,6 +112,16 @@ class VectorRetrieverNode(NodeWithInput[QueryInput, RetrievalResult]):
 
         result = RetrievalResult(documents=doc_dicts, query=input_data.query)
 
+        # Yield the actual result object
+        from pydantic_flow.streaming.tool_events import ToolResult  # noqa: PLC0415
+
+        yield ToolResult(
+            run_id=actual_run_id,
+            node_id=self.name,
+            tool_name="retrieve",
+            result=result,
+        )
+
         yield StreamEnd(
             run_id=actual_run_id,
             node_id=self.name,

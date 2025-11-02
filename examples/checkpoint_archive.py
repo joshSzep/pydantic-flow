@@ -25,6 +25,16 @@ from pydantic_flow.checkpoints.types import RunId
 from pydantic_flow.core.run_config import RunConfig
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Input(BaseModel):
     """Input data."""
 
@@ -67,7 +77,9 @@ async def create_checkpoint_session(
 
     await backend.initialize()
     input_data = Input(value="test data")
-    result = await flow.run(input_data, config=run_config)
+    result = await extract_result_from_stream(
+        flow.astream(input_data, config=run_config)
+    )
     print(f"✅ Created checkpoint session: {result.result[:50]}...")
 
     runs = await backend.list_runs(limit=1)

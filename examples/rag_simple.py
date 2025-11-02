@@ -20,6 +20,16 @@ from pydantic_flow.rag.vectors.hnsw import HNSWMemoryStore
 from pydantic_flow.streaming.retrieval_events import RetrievalItem
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class MockEmbeddings(EmbeddingProvider):
     """Mock embedding provider for demonstration."""
 
@@ -98,7 +108,7 @@ async def main():
                 print()
 
         print("\n6. Using non-streaming run() method")
-        result = await node.run(query)
+        result = await extract_result_from_stream(node.astream(query))
         print(f"   Retrieved {len(result.documents)} documents")
         for i, doc_dict in enumerate(result.documents):
             print(f"   {i + 1}. {doc_dict['id']}: {doc_dict['content'][:60]}...")

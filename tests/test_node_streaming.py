@@ -20,6 +20,7 @@ from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.system_events import NonFatalError
 from pydantic_flow.streaming.tool_events import ToolCall
 from pydantic_flow.streaming.tool_events import ToolResult
+from tests.conftest import extract_result_from_stream
 
 
 class SimpleInput(BaseModel):
@@ -282,12 +283,13 @@ async def test_merge_parser_node_astream_sequence():
     async for item in merge_parser.astream(input_tuple):
         items.append(item)
 
-    # Verify sequence: StreamStart -> StreamEnd (parser nodes are simple)
-    assert len(items) == 2
+    # Verify sequence: StreamStart -> ToolResult -> StreamEnd
+    assert len(items) == 3
     assert isinstance(items[0], StreamStart)
-    assert isinstance(items[1], StreamEnd)
-    assert items[1].result_preview is not None
-    assert items[1].result_preview.get("combined") == "a=10,b=20"
+    assert isinstance(items[1], ToolResult)
+    assert isinstance(items[2], StreamEnd)
+    assert items[2].result_preview is not None
+    assert items[2].result_preview.get("combined") == "a=10,b=20"
 
 
 @pytest.mark.asyncio
@@ -355,7 +357,7 @@ async def test_run_wraps_astream():
     )
 
     # Call run() which should internally consume astream()
-    result = await node.run(SimpleInput(value=7))
+    result = await extract_result_from_stream(node.astream(SimpleInput(value=7)))
 
     # Verify we get the actual model object, not a dict
     assert isinstance(result, SimpleOutput)
@@ -376,7 +378,7 @@ async def test_multiple_tool_calls_in_sequence():
     node2 = ToolNode[SimpleOutput, SimpleOutput](tool_func=triple, name="node2")
 
     # Stream through first node
-    result1 = await node1.run(SimpleInput(value=5))
+    result1 = await extract_result_from_stream(node1.astream(SimpleInput(value=5)))
     assert result1.result == 10
 
     # Stream through second node
@@ -390,5 +392,5 @@ async def test_multiple_tool_calls_in_sequence():
     assert isinstance(items[-1], StreamEnd)
 
     # Verify final result
-    result2 = await node2.run(result1)
+    result2 = await extract_result_from_stream(node2.astream(result1))
     assert result2.result == 30

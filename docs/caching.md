@@ -398,7 +398,7 @@ common_queries = [
 ]
 
 for query in common_queries:
-    await flow.run({"text": query})
+    await extract_result_from_stream(flow.astream({"text": query})
 ```
 
 ### Tiered Caching

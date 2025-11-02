@@ -6,6 +6,7 @@ import pytest
 from pydantic_flow import Flow
 from pydantic_flow import MergePromptNode
 from pydantic_flow import ToolNode
+from tests.conftest import extract_result_from_stream
 
 
 class Query(BaseModel):
@@ -70,16 +71,12 @@ async def test_merge_prompt_node_in_flow():
     flow = Flow(input_type=Query, output_type=Report)
     flow.add_nodes(research_node, analysis_node, merge_node)
 
-    # Validate execution order
-    execution_order = flow.get_execution_order()
-    assert len(execution_order) == 3
-    # Research and analysis can be in any order (parallel)
-    # But merge must come after both
-    merge_index = execution_order.index("merge_summary")
-    research_index = execution_order.index("research")
-    analysis_index = execution_order.index("analysis")
-    assert merge_index > research_index
-    assert merge_index > analysis_index
+    # Verify flow compiles successfully with merge node dependencies
+    compiled = flow.compile()
+    assert compiled is not None
+    assert len(flow.nodes) == 3
+    # Verify merge node has proper dependencies
+    assert len(merge_node.dependencies) == 2
 
     # Execute flow (will run but we can't fully verify LLM output without API)
     query = Query(topic="AI frameworks")
@@ -88,10 +85,10 @@ async def test_merge_prompt_node_in_flow():
     # and produces expected structure
     try:
         # Stream through execution to verify nodes execute
-        research_result = await research_node.run(query)
+        research_result = await extract_result_from_stream(research_node.astream(query))
         assert research_result.findings == "Research findings about AI frameworks"
 
-        analysis_result = await analysis_node.run(query)
+        analysis_result = await extract_result_from_stream(analysis_node.astream(query))
         assert analysis_result.insights == "Analysis insights for AI frameworks"
 
         # Verify merge node can be called with both inputs
@@ -143,8 +140,9 @@ async def test_merge_prompt_node_dependencies_in_flow():
     assert research_node in merge_node.dependencies
     assert analysis_node in merge_node.dependencies
 
-    # Verify flow doesn't raise CyclicDependencyError
-    assert flow.validate()
+    # Verify flow compiles successfully
+    compiled = flow.compile()
+    assert compiled is not None
 
 
 @pytest.mark.asyncio
@@ -169,8 +167,8 @@ async def test_merge_prompt_node_format_in_context():
     )
 
     query = Query(topic="Python")
-    research_result = await research_node.run(query)
-    analysis_result = await analysis_node.run(query)
+    research_result = await extract_result_from_stream(research_node.astream(query))
+    analysis_result = await extract_result_from_stream(analysis_node.astream(query))
 
     formatted = merge_node._format_prompt((research_result, analysis_result))
 

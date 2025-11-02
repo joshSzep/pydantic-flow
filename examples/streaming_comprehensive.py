@@ -20,6 +20,16 @@ from pydantic_flow import collect_all_tokens
 from pydantic_flow import iter_tokens
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Query(BaseModel):
     """User query."""
 
@@ -119,7 +129,7 @@ async def example_3_non_streaming():
     print("-" * 60)
 
     # Get final result without observing stream
-    result = await node.run(query)
+    result = await extract_result_from_stream(node.astream(query))
     print(result)
 
     print("-" * 60)

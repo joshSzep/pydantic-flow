@@ -19,6 +19,16 @@ from pydantic_flow.nodes import ToolNode
 from pydantic_flow.telemetry import setup_telemetry
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Query(BaseModel):
     """User query."""
 
@@ -76,12 +86,12 @@ async def main() -> None:
 
     # First execution - cache miss
     print("▶️  First execution (cache miss)...")
-    result1 = await flow.run(query)
+    result1 = await extract_result_from_stream(flow.astream(query))
     print(f"✅ Result: {result1.response}\n")
 
     # Second execution - cache hit
     print("▶️  Second execution (cache hit)...")
-    result2 = await flow.run(query)
+    result2 = await extract_result_from_stream(flow.astream(query))
     print(f"✅ Result: {result2.response}\n")
 
     print("=" * 60)

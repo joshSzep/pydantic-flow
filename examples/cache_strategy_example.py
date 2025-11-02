@@ -15,6 +15,16 @@ from pydantic_flow.flow import Flow
 from pydantic_flow.nodes import AgentNode
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Question(BaseModel):
     """Input model for questions."""
 

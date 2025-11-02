@@ -13,6 +13,16 @@ from pydantic_flow import MergePromptNode
 from pydantic_flow import ToolNode
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Query(BaseModel):
     """Input query."""
 
@@ -120,7 +130,7 @@ findings and analysis.""",
     print()
 
     # In a real scenario with API keys:
-    # result = await flow.run(query)
+    # result = await extract_result_from_stream(flow.astream(query)
     # print("Summary:", result.summary)
 
     # For demonstration without API keys:

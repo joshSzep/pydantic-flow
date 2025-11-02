@@ -23,6 +23,16 @@ from pydantic_flow.checkpoints.debugger import CheckpointDebugger
 from pydantic_flow.core.run_config import RunConfig
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Question(BaseModel):
     """Input question."""
 
@@ -62,8 +72,8 @@ async def run_flow_with_checkpoints() -> tuple[Answer, Path, SQLiteCheckpointBac
     )
 
     # Execute the flow
-    result = await flow.run(
-        Question(text="What is the capital of France?"), config=config
+    result = await extract_result_from_stream(
+        flow.astream(Question(text="What is the capital of France?"), config=config)
     )
     return result, db_path, backend
 

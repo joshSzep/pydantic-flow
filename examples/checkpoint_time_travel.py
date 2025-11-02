@@ -25,6 +25,16 @@ from pydantic_flow.checkpoints.types import RunId
 from pydantic_flow.core.run_config import RunConfig
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Question(BaseModel):
     """A question to answer."""
 
@@ -90,7 +100,7 @@ async def run_flow_with_checkpoints(
     question = Question(text="What is the capital of France?")
 
     await backend.initialize()
-    result = await flow.run(question, config=run_config)
+    result = await extract_result_from_stream(flow.astream(question, config=run_config))
     print("✅ Flow completed successfully")
     print(f"   Answer: {result.response}")
     print(f"   Confidence: {result.confidence}")

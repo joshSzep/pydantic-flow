@@ -6,6 +6,7 @@ import pytest
 from pydantic_flow.nodes import ParserNode
 from pydantic_flow.nodes import ToolNode
 from pydantic_flow.streaming.tool_events import ToolResult
+from tests.conftest import extract_result_from_stream
 
 
 class SimpleInput(BaseModel):
@@ -52,7 +53,7 @@ async def test_parser_node_with_non_model_result():
         parser_func=parse_to_string, name="parser"
     )
 
-    result = await node.run(SimpleInput(value=5))
+    result = await extract_result_from_stream(node.astream(SimpleInput(value=5)))
     assert isinstance(result, SimpleOutput)
     assert result.result == 6
 

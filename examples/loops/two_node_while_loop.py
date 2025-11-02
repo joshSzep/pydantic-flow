@@ -16,6 +16,16 @@ from pydantic_flow.streaming import StreamEnd
 from pydantic_flow.streaming import StreamStart
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class WorkState(BaseModel):
     """State containing work progress."""
 
@@ -116,7 +126,9 @@ async def main() -> None:
     compiled = flow.compile()
 
     config = RunConfig(max_steps=50, trace_iterations=True)
-    result = await compiled.invoke(WorkState(iterations=0, total=0), config)
+    result = await extract_result_from_stream(
+        compiled.astream(WorkState(iterations=0, total=0), config)
+    )
 
     print("\nFinal result:")
     print(f"  Iterations: {result.execute.iterations}")

@@ -13,6 +13,7 @@ from pydantic_flow import Flow
 from pydantic_flow import ToolNode
 from pydantic_flow.cache.base import CachePolicy
 from pydantic_flow.cache.memory import InMemoryCache
+from tests.conftest import extract_result_from_stream
 
 
 class Input(BaseModel):
@@ -60,7 +61,7 @@ async def test_middleware_cache_with_backend():
     flow.add_nodes(node)
 
     # Should execute successfully with cache configured
-    result = await flow.run(Input(value=5))
+    result = await extract_result_from_stream(flow.astream(Input(value=5)))
     assert result.compute.result == 10
 
 
@@ -87,11 +88,11 @@ async def test_middleware_without_cache_backend():
     flow.add_nodes(node)
 
     # Both executions should call the function
-    result1 = await flow.run(Input(value=5))
+    result1 = await extract_result_from_stream(flow.astream(Input(value=5)))
     assert result1.compute.result == 10
     assert call_count == 1
 
-    result2 = await flow.run(Input(value=5))
+    result2 = await extract_result_from_stream(flow.astream(Input(value=5)))
     assert result2.compute.result == 10
     assert call_count == 2  # No caching
 

@@ -88,6 +88,16 @@ class EmbeddingNode(NodeWithInput[EmbeddingInput, EmbeddingOutput]):
 
         output = EmbeddingOutput(embeddings=embeddings, dimensions=dimensions)
 
+        # Yield the actual result object
+        from pydantic_flow.streaming.tool_events import ToolResult  # noqa: PLC0415
+
+        yield ToolResult(
+            run_id=actual_run_id,
+            node_id=self.name,
+            tool_name="embed",
+            result=output,
+        )
+
         yield StreamEnd(
             run_id=actual_run_id,
             node_id=self.name,

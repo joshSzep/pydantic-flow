@@ -4,7 +4,7 @@ This module provides a frontier-based execution engine that supports cycles,
 conditional routing, and dynamic control flow.
 """
 
-import asyncio
+from collections.abc import AsyncIterator
 from collections.abc import Callable
 import time
 from typing import TYPE_CHECKING
@@ -28,7 +28,9 @@ from pydantic_flow.nodes.protocols import NodeWithInput
 from pydantic_flow.nodes.protocols import NodeWithInputs
 from pydantic_flow.nodes.protocols import has_input_dependency
 from pydantic_flow.nodes.protocols import has_multiple_inputs
+from pydantic_flow.streaming import ProgressItem
 from pydantic_flow.streaming import ToolResult
+from pydantic_flow.streaming.core_events import StreamEnd
 
 if TYPE_CHECKING:
     pass
@@ -96,7 +98,7 @@ class EngineConfig[InputT: BaseModel, OutputT: BaseModel](BaseModel):
         output_type: Expected output type for the flow.
         cache_backend: Optional cache backend for node execution.
         default_cache_policy: Optional default cache policy for nodes.
-        flow_id: Optional flow identifier for checkpoint tracking.
+        flow_id: Flow identifier for checkpoint tracking (from Flow.flow_id).
 
     """
 
@@ -108,7 +110,7 @@ class EngineConfig[InputT: BaseModel, OutputT: BaseModel](BaseModel):
     output_type: type[OutputT]
     cache_backend: Any = None
     default_cache_policy: Any = None
-    flow_id: str | None = None
+    flow_id: str
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -160,6 +162,43 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
         self.flow_id = config.flow_id
         self._background_tasks: set[Any] = set()
 
+    @staticmethod
+    async def _extract_result_from_stream(
+        stream: AsyncIterator[ProgressItem],
+    ) -> Any:
+        """Extract final result from a node's astream.
+
+        Args:
+            stream: Async iterator of progress items.
+
+        Returns:
+            The extracted result object.
+
+        Raises:
+            RuntimeError: If no result found in stream.
+
+        """
+        final_result: Any = None
+        tool_result: Any = None
+
+        async for item in stream:
+            # Extract result from ToolResult (preferred - has actual object)
+            if isinstance(item, ToolResult) and item.result is not None:
+                tool_result = item.result
+            # StreamEnd carries result preview as fallback
+            elif isinstance(item, StreamEnd) and item.result_preview:
+                final_result = item.result_preview
+
+        # Prefer actual result from ToolResult if available
+        if tool_result is not None:
+            return tool_result
+
+        if final_result is None:
+            msg = "Node did not produce a result in stream"
+            raise RuntimeError(msg)
+
+        return final_result
+
     async def _maybe_checkpoint_after_frontier(
         self,
         config: RunConfig,
@@ -210,19 +249,22 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
         # V1 checkpoint code removed - V2 CheckpointManager handles this
         pass
 
-    async def invoke(  # noqa: PLR0912, PLR0915
+    async def astream(  # noqa: PLR0912, PLR0915
         self,
         inputs: InputT,
         config: RunConfig | None = None,
-    ) -> OutputT:
-        """Execute the flow with the given inputs.
+    ) -> AsyncIterator[ProgressItem]:
+        """Execute the flow and stream progress items.
 
         Args:
             inputs: Input data matching InputT.
             config: Optional execution configuration.
 
+        Yields:
+            ProgressItem objects from node execution.
+
         Returns:
-            Output data matching OutputT.
+            Final output data matching OutputT (via FinalResult progress item).
 
         Raises:
             RecursionLimitError: If max_steps is exceeded.
@@ -281,7 +323,7 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
         checkpoint_manager = CheckpointManager(
             config=checkpoint_cfg,
             storage=backend,
-            flow_id=self.flow_id or "stepper_engine",
+            flow_id=self.flow_id,
             run_id=CheckpointRunId(run_id),
         )
         await checkpoint_manager.initialize_run()
@@ -293,13 +335,15 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
                 current_frontier = list(frontier)
                 frontier = set()
 
-                await self._execute_frontier(
+                async for item in self._execute_frontier(
                     current_frontier,
                     inputs,
                     results,
                     execution_progress,
                     checkpoint_manager,
-                )
+                ):
+                    yield item
+
                 next_frontier, ended = await self._route_next(current_frontier, results)
 
                 await self._maybe_checkpoint_after_frontier(
@@ -349,7 +393,14 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
                     status=RunMetadata.Status.COMPLETED
                 )
 
-            return output
+            # Yield final result instead of returning
+            from pydantic_flow.streaming.core_events import FlowResult  # noqa: PLC0415
+
+            yield FlowResult(
+                run_id=run_id,
+                node_id="flow",
+                result=output,
+            )
 
         except FlowError:
             # Mark failed nodes
@@ -441,8 +492,11 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
         results: dict[str, Any],
         execution_progress: dict[str, str] | None = None,
         checkpoint_manager: Any = None,
-    ) -> None:
-        """Execute all nodes in the current frontier in parallel.
+    ) -> AsyncIterator[ProgressItem]:
+        """Execute all nodes in the current frontier and stream progress.
+
+        Note: Nodes are currently executed sequentially to enable real-time
+        streaming. Parallel execution with streaming will be added in a future update.
 
         Args:
             frontier: List of node names to execute.
@@ -451,10 +505,11 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
             execution_progress: Optional execution progress tracking.
             checkpoint_manager: Optional checkpoint v2 manager for event logging.
 
-        """
+        Yields:
+            ProgressItem objects from node execution.
 
-        async def execute_node(node_name: str) -> tuple[str, Any]:
-            """Execute a single node and return its name and result."""
+        """
+        for node_name in frontier:
             if execution_progress is not None:
                 execution_progress[node_name] = "running"
 
@@ -471,40 +526,53 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
             effective_policy = node_cache_policy or self.default_cache_policy
 
             if self.cache_backend is not None and effective_policy is not None:
-                # Use cached execution
+                # Use cached execution - need to wrap in stream extraction
+                async def cached_exec(
+                    _node: BaseNode[Any, Any] = node,
+                    _input_data: Any = input_data,
+                ) -> Any:
+                    return await self._extract_result_from_stream(
+                        _node.astream(_input_data)
+                    )
+
                 result, _cache_events = await maybe_cached_execute(
                     node_name=node_name,
                     inputs={"input": input_data},
-                    exec_fn=lambda: node.run(input_data),
+                    exec_fn=cached_exec,
                     backend=self.cache_backend,
                     policy=effective_policy,
                     context=None,
                 )
-            elif event_log is not None:
-                # Stream through node execution to capture events
+            else:
+                # Stream through node execution and extract result
                 result = None
                 async for item in node.astream(input_data):
-                    await event_log.append(item)
+                    # Yield progress item to user
+                    yield item
+
+                    # Also log to checkpoint if enabled
+                    if event_log is not None:
+                        await event_log.append(item)
+
                     # Extract result from ToolResult if available
                     if isinstance(item, ToolResult) and item.result is not None:
                         result = item.result
+                    # Or from StreamEnd result_preview
+                    elif (
+                        isinstance(item, StreamEnd)
+                        and item.result_preview
+                        and result is None
+                    ):
+                        # Only use preview if no ToolResult
+                        result = item.result_preview
 
-                # If no result extracted from stream, call run() to get it
                 if result is None:
-                    result = await node.run(input_data)
-            else:
-                # Direct execution without event capture
-                result = await node.run(input_data)
+                    msg = f"Node {node_name} did not produce a result"
+                    raise FlowError(msg)
 
             if execution_progress is not None:
                 execution_progress[node_name] = "completed"
 
-            return node_name, result
-
-        tasks = [execute_node(node_name) for node_name in frontier]
-        node_results = await asyncio.gather(*tasks)
-
-        for node_name, result in node_results:
             results[node_name] = result
 
     def _get_node_input(
@@ -559,7 +627,33 @@ class StepperEngine[InputT: BaseModel, OutputT: BaseModel]:
                     next_frontier.update(targets)
                     ended = ended or edge_ended
 
-        return next_frontier, ended
+        # Filter to only include nodes whose dependencies are satisfied
+        ready_frontier = {
+            node_name
+            for node_name in next_frontier
+            if self._dependencies_ready(node_name, results)
+        }
+
+        return ready_frontier, ended
+
+    def _dependencies_ready(self, node_name: str, results: dict[str, Any]) -> bool:
+        """Check if all dependencies for a node are satisfied."""
+        node = self.nodes_by_name.get(node_name)
+        if node is None:
+            return False
+
+        # Check multi-input dependencies
+        if has_multiple_inputs(node):
+            node_with_inputs = cast(NodeWithInputs, node)
+            return all(dep.node.name in results for dep in node_with_inputs.inputs)
+
+        # Check single-input dependency
+        if has_input_dependency(node):
+            node_with_input = cast(NodeWithInput, node)
+            return node_with_input.input.node.name in results
+
+        # Node has no explicit input dependencies
+        return True
 
     def _apply_conditional_edge(
         self,

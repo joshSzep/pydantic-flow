@@ -168,7 +168,7 @@ async for item in retriever_node.astream(query):
         print(f"Retrieved: {item.content[:50]}...")
 
 # Non-streaming usage
-result = await retriever_node.run(query)
+result = await extract_result_from_stream(retriever_node.astream(query)
 print(f"Found {len(result.documents)} documents")
 ```
 
@@ -186,7 +186,7 @@ embedding_node = EmbeddingNode(
 )
 
 input_data = EmbeddingInput(texts=["hello", "world"])
-result = await embedding_node.run(input_data)
+result = await extract_result_from_stream(embedding_node.astream(input_data)
 print(f"Generated {len(result.embeddings)} embeddings of dim {result.dimensions}")
 ```
 

@@ -12,6 +12,16 @@ from pydantic_flow import Flow
 from pydantic_flow import ToolNode
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class WeatherQuery(BaseModel):
     """Input model for weather queries."""
 
@@ -75,7 +85,7 @@ async def demonstrate_typed_flow():
 
     # This works - correct input type
     valid_input = WeatherQuery(location="Paris")
-    results = await weather_flow.run(valid_input)
+    results = await extract_result_from_stream(weather_flow.astream(valid_input))
     print(f"Valid results: {results}")
 
     # Now results is strongly typed as WeatherFlowResults (BaseModel)
@@ -100,7 +110,7 @@ async def demonstrate_basemodel_output_flow():
 
     # This works with explicit BaseModel output type
     query = WeatherQuery(location="London")
-    results = await basemodel_flow.run(query)
+    results = await extract_result_from_stream(basemodel_flow.astream(query))
     print(f"BaseModel results: {results}")
 
     # Access via attribute with full type safety

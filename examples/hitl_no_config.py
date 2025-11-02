@@ -19,6 +19,16 @@ from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamEnd
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class ContentInput(BaseModel):
     """Input content to process."""
 
@@ -69,7 +79,7 @@ async def main():
 
     try:
         print("🚀 Running flow (no RunConfig provided)...")
-        result = await flow.run(input_data)
+        result = await extract_result_from_stream(flow.astream(input_data))
         print(f"Unexpected success: {result}\n")
     except InterruptionRequested as exc:
         print()

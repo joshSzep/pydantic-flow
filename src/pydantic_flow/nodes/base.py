@@ -84,8 +84,8 @@ class BaseNode[InputT, OutputT](InterruptibleNodeMixin, ABC):
     async def astream(self, input_data: InputT) -> AsyncIterator[ProgressItem]:
         """Stream progress items while executing the node's logic.
 
-        This is the primary interface for node execution. It yields a
-        coherent sequence: start, useful progress, clean end.
+        This is the primary and only interface for node execution.
+        Events are the fundamental unit, not nodes.
 
         Args:
             input_data: The input data for this node
@@ -110,59 +110,6 @@ class BaseNode[InputT, OutputT](InterruptibleNodeMixin, ABC):
             node_id=self.name,
         )
 
-    async def run(self, input_data: InputT) -> OutputT:
-        """Execute the node and return the final validated result.
-
-        This is a convenience method that consumes the astream() and
-        assembles the final output.
-
-        Args:
-            input_data: The input data for this node
-
-        Returns:
-            The final validated output data
-
-        """
-        from pydantic_flow.telemetry.helpers import traced_node_execution
-
-        async with traced_node_execution(
-            self.name, self.__class__.__name__, self.run_id
-        ):
-            final_result: OutputT | None = None
-            tool_result: Any = None
-
-            async for item in self.astream(input_data):
-                # Record stream events as span events
-                self._record_stream_event(item)
-
-                # Try to extract result from ToolResult first (has the actual object)
-                if isinstance(item, ToolResult) and item.result is not None:
-                    tool_result = item.result
-                # StreamEnd carries the final result preview as fallback
-                elif isinstance(item, StreamEnd) and item.result_preview:
-                    # Reconstruct the output from the preview
-                    # Try Pydantic validation first
-                    try:
-                        if hasattr(self._output_type, "model_validate"):
-                            final_result = self._output_type.model_validate(  # type: ignore
-                                item.result_preview
-                            )
-                        else:
-                            final_result = item.result_preview  # type: ignore
-                    except Exception:
-                        # Fall back to direct assignment
-                        final_result = item.result_preview  # type: ignore
-
-            # Prefer the actual result from ToolResult if available
-            if tool_result is not None:
-                final_result = tool_result  # type: ignore
-
-            if final_result is None:
-                msg = f"Node {self.name} did not produce a result"
-                raise RuntimeError(msg)
-
-            return final_result
-
     def _record_stream_event(self, item: ProgressItem) -> None:
         """Record a streaming progress item as a span event.
 
@@ -176,7 +123,6 @@ class BaseNode[InputT, OutputT](InterruptibleNodeMixin, ABC):
         from pydantic_flow.streaming.core_events import StreamStart
         from pydantic_flow.streaming.core_events import TokenChunk
         from pydantic_flow.streaming.tool_events import ToolCall
-        from pydantic_flow.streaming.tool_events import ToolResult
         from pydantic_flow.telemetry.attributes import EventName
         from pydantic_flow.telemetry.helpers import record_span_event
 
@@ -312,10 +258,6 @@ class NodeProtocol[InputT, OutputT](Protocol):
         """Stream progress items during execution."""
         ...
 
-    async def run(self, input_data: InputT) -> OutputT:
-        """Execute the node's logic and return final result."""
-        ...
-
 
 class RunnableNode[InputT, OutputT](Protocol):
     """Protocol for nodes that can be executed."""
@@ -324,8 +266,4 @@ class RunnableNode[InputT, OutputT](Protocol):
 
     async def astream(self, input_data: InputT) -> AsyncIterator[ProgressItem]:
         """Stream progress items during execution."""
-        ...
-
-    async def run(self, input_data: InputT) -> OutputT:
-        """Execute the node's logic and return final result."""
         ...

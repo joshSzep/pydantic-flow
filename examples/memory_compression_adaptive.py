@@ -32,6 +32,16 @@ from pydantic_flow.memory.events import MemoryCompressionPending
 from pydantic_flow.streaming.base import ProgressItem
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class ChatInput(BaseModel):
     """User message input."""
 

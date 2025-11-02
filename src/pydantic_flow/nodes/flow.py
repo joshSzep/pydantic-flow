@@ -15,6 +15,7 @@ from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import FlowResult
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.tool_events import ToolResult
@@ -120,45 +121,29 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
                 memory_token = _active_flow_memory.set(sub_flow_memory)
 
         try:
-            # Check if the flow has an astream method (future enhancement)
-            if hasattr(self.flow, "astream"):
-                # Stream from the flow
-                result = None
-                result_preview = None
-                async for item in self.flow.astream(input_data):  # type: ignore
-                    # Don't forward StreamStart/StreamEnd from wrapped flow
-                    if isinstance(item, StreamStart):
-                        continue
-                    elif isinstance(item, StreamEnd):
-                        # Capture result
-                        result_preview = item.result_preview
-                    elif isinstance(item, ToolResult) and item.result:
-                        # Capture actual result if available
-                        result = item.result
-                    else:
-                        # Forward other progress items
-                        yield item
+            # Stream from the flow
+            result = None
+            result_preview = None
+            async for item in self.flow.astream(input_data):  # type: ignore
+                # Handle FlowResult from wrapped flow
+                if isinstance(item, FlowResult):
+                    result = item.result
+                    if hasattr(result, "model_dump"):
+                        result_preview = result.model_dump()
+                    elif result is not None:
+                        result_preview = {"value": str(result)}
+                # Don't forward StreamStart/StreamEnd from wrapped flow
+                elif isinstance(item, (StreamStart, StreamEnd)):
+                    continue
+                elif isinstance(item, ToolResult) and item.result:
+                    # Capture actual result if available
+                    result = item.result
+                else:
+                    # Forward other progress items
+                    yield item
 
-                # Emit ToolResult with actual result if we have it
-                if result is not None:
-                    yield ToolResult(
-                        run_id=run_id,
-                        node_id=node_id,
-                        tool_name="flow",
-                        call_id="",
-                        result=result,
-                        error=None,
-                    )
-
-                # Emit our own StreamEnd with the result
-                yield StreamEnd(
-                    run_id=run_id, node_id=node_id, result_preview=result_preview
-                )
-            else:
-                # Fall back to run() and wrap result
-                result = await self.flow.run(input_data)
-
-                # Emit ToolResult with the actual result
+            # Emit ToolResult with actual result if we have it
+            if result is not None:
                 yield ToolResult(
                     run_id=run_id,
                     node_id=node_id,
@@ -168,15 +153,10 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
                     error=None,
                 )
 
-                result_preview = None
-                if hasattr(result, "model_dump"):
-                    result_preview = result.model_dump()
-                elif result is not None:
-                    result_preview = {"value": str(result)}
-
-                yield StreamEnd(
-                    run_id=run_id, node_id=node_id, result_preview=result_preview
-                )
+            # Emit our own StreamEnd with the result
+            yield StreamEnd(
+                run_id=run_id, node_id=node_id, result_preview=result_preview
+            )
         finally:
             # Restore parent memory context
             if memory_token is not None:

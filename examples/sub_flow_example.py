@@ -13,6 +13,16 @@ from pydantic_flow import FlowNode
 from pydantic_flow import ToolNode
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 # Input/Output Models
 class UserQuery(BaseModel):
     """User input for the complete workflow."""
@@ -150,7 +160,7 @@ async def demonstrate_simple_sub_flow():
 
     # Execute the complete workflow
     query = UserQuery(topic="artificial intelligence", style="technical")
-    result = await parent_flow.run(query)
+    result = await extract_result_from_stream(parent_flow.astream(query))
 
     print(f"Research Facts: {result.research_flow.research.facts}")
     print(f"Summary Title: {result.summary_flow.summary.title}")
@@ -199,7 +209,7 @@ async def demonstrate_nested_sub_flows():
 
     # Execute the deeply nested workflow
     query = UserQuery(topic="machine learning", style="academic")
-    result = await level3_flow.run(query)
+    result = await extract_result_from_stream(level3_flow.astream(query))
 
     # Verify the nested structure worked
     nested_result = result.complete_workflow
@@ -253,8 +263,8 @@ async def demonstrate_reusable_sub_flows():
     query_a = UserQuery(topic="quantum computing", style="beginner")
     query_b = UserQuery(topic="blockchain technology", style="expert")
 
-    result_a = await flow_a.run(query_a)
-    result_b = await flow_b.run(query_b)
+    result_a = await extract_result_from_stream(flow_a.astream(query_a))
+    result_b = await extract_result_from_stream(flow_b.astream(query_b))
 
     print("Flow A Topic: quantum computing")
     print(f"Flow A Research: {result_a.research_flow.research.facts[:50]}...")

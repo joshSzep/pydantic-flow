@@ -1,20 +1,19 @@
-"""Tests for ExecutionMode and flow compilation options."""
+"""Tests for flow compilation and execution using stepper engine."""
 
 from collections.abc import AsyncIterator
 
 from pydantic import BaseModel
 import pytest
 
-from pydantic_flow import ExecutionMode
 from pydantic_flow import Flow
 from pydantic_flow import Route
-from pydantic_flow.core.errors import FlowError
-from pydantic_flow.core.routing import T_Route
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import MergeToolNode
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
+from pydantic_flow.streaming.tool_events import ToolResult
+from tests.conftest import extract_result_from_stream
 
 
 class SimpleState(BaseModel):
@@ -49,6 +48,7 @@ class SimpleNode(BaseNode[SimpleState, SimpleState]):
     async def astream(self, input_data: SimpleState) -> AsyncIterator[ProgressItem]:
         """Stream while passing through."""
         yield StreamStart(run_id=self.run_id or "", node_id=self.name)
+        yield ToolResult(result=input_data)
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
@@ -56,116 +56,139 @@ class SimpleNode(BaseNode[SimpleState, SimpleState]):
         )
 
 
-class TestExecutionMode:
-    """Test ExecutionMode selection and flow compilation."""
+class TestFlowCompilation:
+    """Test flow compilation and execution with stepper engine."""
 
     @pytest.mark.asyncio
-    async def test_explicit_dag_mode_with_simple_flow(self) -> None:
-        """Test explicitly forcing DAG mode on a simple flow."""
+    async def test_compile_and_run_simple_flow(self) -> None:
+        """Test compiling and running a simple flow."""
         flow = Flow(input_type=SimpleState, output_type=SimpleOutput)
         node = SimpleNode(name="simple")
         flow.add_nodes(node)
 
-        # Should work fine with DAG mode
-        compiled = flow.compile(mode=ExecutionMode.DAG)
-        result = await compiled.invoke(SimpleState(value=42))
+        # Compile and run
+        compiled = flow.compile()
+        result = await extract_result_from_stream(
+            compiled.astream(SimpleState(value=42))
+        )
 
         assert result.simple.value == 42
 
     @pytest.mark.asyncio
-    async def test_explicit_stepper_mode_with_simple_flow(self) -> None:
-        """Test explicitly forcing stepper mode on a simple flow."""
+    async def test_compile_flow_with_entry_nodes(self) -> None:
+        """Test compiling flow with explicit entry nodes."""
         flow = Flow(input_type=SimpleState, output_type=SimpleOutput)
         node = SimpleNode(name="simple")
         flow.add_nodes(node)
         flow.set_entry_nodes("simple")
 
-        # Should work fine with stepper mode
-        compiled = flow.compile(mode=ExecutionMode.STEPPER)
-        result = await compiled.invoke(SimpleState(value=42))
+        # Compile and run
+        compiled = flow.compile()
+        result = await extract_result_from_stream(
+            compiled.astream(SimpleState(value=42))
+        )
 
         assert result.simple.value == 42
 
     @pytest.mark.asyncio
-    async def test_dag_mode_with_conditional_edges_raises_error(self) -> None:
-        """Test that DAG mode raises error if conditional edges exist."""
-        flow = Flow(input_type=SimpleState, output_type=SimpleState)
+    async def test_flow_with_conditional_edges(self) -> None:
+        """Test flow with conditional edges compiles and runs."""
+        flow = Flow(input_type=SimpleState, output_type=SimpleOutput)
         node = SimpleNode(name="simple")
         flow.add_nodes(node)
         flow.set_entry_nodes("simple")
 
-        def router(state: BaseModel) -> T_Route:
+        def router(state: BaseModel) -> Route | list[Route]:
             return Route.END
 
         flow.add_conditional_edges("simple", router)
 
-        # Should raise FlowError
-        with pytest.raises(
-            FlowError, match="Cannot use DAG mode with conditional edges"
-        ):
-            flow.compile(mode=ExecutionMode.DAG)
+        # Stepper handles conditional edges
+        compiled = flow.compile()
+        result = await extract_result_from_stream(
+            compiled.astream(SimpleState(value=42))
+        )
+
+        assert result.simple.value == 42
 
     @pytest.mark.asyncio
-    async def test_dag_mode_with_cycles_raises_error(self) -> None:
-        """Test that DAG mode raises error if cycles exist."""
-        flow = Flow(input_type=SimpleState, output_type=SimpleState)
+    async def test_flow_with_cycles(self) -> None:
+        """Test flow with cycles compiles and runs."""
+
+        class TwoNodeOutput(BaseModel):
+            node1: SimpleState
+            node2: SimpleState
+
+        flow = Flow(input_type=SimpleState, output_type=TwoNodeOutput)
         node1 = SimpleNode(name="node1")
         node2 = SimpleNode(name="node2")
         flow.add_nodes(node1, node2)
 
-        # Create a cycle
+        # Create a cycle that terminates via conditional routing
         flow.add_edge("node1", "node2")
         flow.add_edge("node2", "node1")
         flow.set_entry_nodes("node1")
 
-        # Should raise FlowError
-        with pytest.raises(
-            FlowError, match="Cannot use DAG mode with cyclic dependencies"
-        ):
-            flow.compile(mode=ExecutionMode.DAG)
+        def router(state: BaseModel) -> Route | list[Route]:
+            return Route.END
+
+        flow.add_conditional_edges("node2", router)
+
+        # Stepper handles cycles
+        compiled = flow.compile()
+        result = await extract_result_from_stream(
+            compiled.astream(SimpleState(value=42))
+        )
+
+        assert result.node1.value == 42
+        assert result.node2.value == 42
 
     @pytest.mark.asyncio
-    async def test_auto_mode_selects_stepper_for_conditional_edges(self) -> None:
-        """Test that AUTO mode selects stepper when conditional edges exist."""
+    async def test_flow_with_conditional_routing(self) -> None:
+        """Test flow with conditional routing."""
         flow = Flow(input_type=SimpleState, output_type=SimpleOutput)
         node = SimpleNode(name="simple")
         flow.add_nodes(node)
         flow.set_entry_nodes("simple")
 
-        def router(state: BaseModel) -> T_Route:
+        def router(state: BaseModel) -> Route | list[Route]:
             return Route.END
 
         flow.add_conditional_edges("simple", router)
 
-        # AUTO mode should select stepper (no error)
-        compiled = flow.compile(mode=ExecutionMode.AUTO)
-        result = await compiled.invoke(SimpleState(value=42))
+        # Compile and run
+        compiled = flow.compile()
+        result = await extract_result_from_stream(
+            compiled.astream(SimpleState(value=42))
+        )
 
         assert result.simple.value == 42
 
     @pytest.mark.asyncio
-    async def test_auto_mode_selects_stepper_for_cycles(self) -> None:
-        """Test that AUTO mode selects stepper when cycles exist."""
+    async def test_flow_with_self_loop(self) -> None:
+        """Test flow with self-loop via conditional edge."""
         flow = Flow(input_type=SimpleState, output_type=NodeOutput)
         node = SimpleNode(name="node")
         flow.add_nodes(node)
         flow.set_entry_nodes("node")
 
-        def router(state: BaseModel) -> T_Route:
+        def router(state: BaseModel) -> Route | list[Route]:
             return Route.END
 
         # Create a self-loop via conditional edge
         flow.add_conditional_edges("node", router)
 
-        # AUTO mode should select stepper (no error)
-        compiled = flow.compile(mode=ExecutionMode.AUTO)
-        result = await compiled.invoke(SimpleState(value=42))
+        # Compile and run
+        compiled = flow.compile()
+        result = await extract_result_from_stream(
+            compiled.astream(SimpleState(value=42))
+        )
 
         assert result.node.value == 42
 
     @pytest.mark.asyncio
-    async def test_detect_cycles_efficiently_with_multi_input_nodes(self) -> None:
-        """Test cycle detection handles multi-input nodes correctly."""
+    async def test_flow_with_multi_input_nodes(self) -> None:
+        """Test flow with multi-input merge nodes."""
         flow = Flow(input_type=SimpleState, output_type=MergeOutput)
         node1 = SimpleNode(name="node1")
         node2 = SimpleNode(name="node2")
@@ -181,8 +204,10 @@ class TestExecutionMode:
         )
         flow.add_nodes(node1, node2, merge)
 
-        # No cycles - should compile in DAG mode
-        compiled = flow.compile(mode=ExecutionMode.DAG)
-        result = await compiled.invoke(SimpleState(value=10))
+        # Compile and run
+        compiled = flow.compile()
+        result = await extract_result_from_stream(
+            compiled.astream(SimpleState(value=10))
+        )
 
         assert result.merge.value == 20  # 10 + 10

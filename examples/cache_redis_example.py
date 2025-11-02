@@ -18,6 +18,16 @@ from pydantic_flow.cache import CacheEntry
 from pydantic_flow.cache import RedisCache
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 async def example_self_managed() -> None:
     """Pattern 1: Self-Managed Connection.
 

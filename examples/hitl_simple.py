@@ -26,6 +26,16 @@ from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamEnd
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class ContentInput(BaseModel):
     """Input content to process."""
 
@@ -46,7 +56,7 @@ async def example_no_review(flow: Flow, input_data: ContentInput) -> None:
     print("=" * 60 + "\n")
 
     try:
-        result = await flow.run(input_data)
+        result = await extract_result_from_stream(flow.astream(input_data))
         print("✅ Workflow completed without interruption")
         print(f"   Result: {result.text}\n")
     except InterruptionRequested as exc:
@@ -79,7 +89,9 @@ async def example_with_persistence(
     config = RunConfig(checkpoint_backend=backend, run_id=run_id)
 
     try:
-        result = await flow.run(input_data, config=config)
+        result = await extract_result_from_stream(
+            flow.astream(input_data, config=config)
+        )
         print(f"Unexpected success: {result}\n")
     except InterruptionRequested as exc:
         snapshot = exc.snapshot

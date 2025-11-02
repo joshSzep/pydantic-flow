@@ -70,6 +70,16 @@ class MergeParserNode[*InputTs, OutputModel: BaseModel](
         # Execute the parser function with unpacked inputs
         result = self.parser_func(*input_data)
 
+        # Yield the actual result object
+        from pydantic_flow.streaming.tool_events import ToolResult  # noqa: PLC0415
+
+        yield ToolResult(
+            run_id=run_id,
+            node_id=node_id,
+            tool_name="merge_parser",
+            result=result,
+        )
+
         # Prepare result preview
         result_preview = None
         if hasattr(result, "model_dump"):

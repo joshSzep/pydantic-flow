@@ -12,6 +12,7 @@ from pydantic_flow.rag.retrievers.base import Retriever
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.retrieval_events import RetrievalItem
+from tests.conftest import extract_result_from_stream
 
 
 class MockRetriever(Retriever):
@@ -56,7 +57,8 @@ async def test_vector_retriever_node():
     async for item in node.astream(query):
         items.append(item)
 
-    assert len(items) == 5
+    # StreamStart + 3 RetrievalItems + ToolResult + StreamEnd = 6 items
+    assert len(items) == 6
 
     assert isinstance(items[0], StreamStart)
     assert items[0].node_id == "test-retriever"
@@ -78,7 +80,7 @@ async def test_vector_retriever_node_run():
     node = VectorRetrieverNode(retriever=retriever)
 
     query = QueryInput(query="test", k=2)
-    result = await node.run(query)
+    result = await extract_result_from_stream(node.astream(query))
 
     assert len(result.documents) == 2
     assert result.query == "test"
@@ -100,14 +102,15 @@ async def test_embedding_node():
     async for item in node.astream(input_data):
         items.append(item)
 
-    assert len(items) == 2
+    # StreamStart + ToolResult + StreamEnd = 3 items
+    assert len(items) == 3
     assert isinstance(items[0], StreamStart)
-    assert isinstance(items[1], StreamEnd)
+    assert isinstance(items[-1], StreamEnd)
 
-    assert items[1].result_preview is not None
-    assert items[1].result_preview["dimensions"] == 256
-    assert "embeddings" in items[1].result_preview
-    assert len(items[1].result_preview["embeddings"]) == 2
+    assert items[-1].result_preview is not None
+    assert items[-1].result_preview["dimensions"] == 256
+    assert "embeddings" in items[-1].result_preview
+    assert len(items[-1].result_preview["embeddings"]) == 2
 
 
 @pytest.mark.asyncio
@@ -117,7 +120,7 @@ async def test_embedding_node_run():
     node = EmbeddingNode(embedding_provider=provider)
 
     input_data = EmbeddingInput(texts=["test"])
-    result = await node.run(input_data)
+    result = await extract_result_from_stream(node.astream(input_data))
 
     assert len(result.embeddings) == 1
     assert len(result.embeddings[0]) == 128

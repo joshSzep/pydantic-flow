@@ -18,6 +18,8 @@ from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.streaming import ProgressItem
 from pydantic_flow.streaming import StreamEnd
 from pydantic_flow.streaming import StreamStart
+from pydantic_flow.streaming.tool_events import ToolResult
+from tests.conftest import extract_result_from_stream
 
 
 class SimpleInput(BaseModel):
@@ -45,6 +47,7 @@ class IncrementNode(NodeWithInput[SimpleInput, SimpleInput]):
         """Increment the value."""
         yield StreamStart(run_id=self.run_id or "", node_id=self.name)
         result = SimpleInput(value=input_data.value + 1)
+        yield ToolResult(result=result)
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
@@ -93,7 +96,9 @@ async def test_flow_execution_with_checkpoints(temp_checkpoint_backend):
     )
 
     # Execute flow
-    result = await compiled.invoke(SimpleInput(value=1), config=run_config)
+    result = await extract_result_from_stream(
+        compiled.astream(SimpleInput(value=1), run_config)
+    )
 
     # Verify result - each node increments by 1
     assert result.a.value == 2  # 1 + 1
@@ -155,7 +160,9 @@ async def test_state_reconstruction_from_real_execution(temp_checkpoint_backend)
         run_id="test_reconstruction_run",
     )
 
-    await compiled.invoke(SimpleInput(value=10), config=run_config)
+    await extract_result_from_stream(
+        compiled.astream(SimpleInput(value=10), run_config)
+    )
 
     # Reconstruct state at wave 1 (after nodes a and b)
     from pydantic_flow.checkpoints.types import RunId
@@ -206,7 +213,7 @@ async def test_full_snapshot_every_nth_wave_with_real_flow(temp_checkpoint_backe
         run_id="test_full_snapshot_run",
     )
 
-    await compiled.invoke(SimpleInput(value=1), config=run_config)
+    await extract_result_from_stream(compiled.astream(SimpleInput(value=1), run_config))
 
     # Verify snapshot types
     from pydantic_flow.checkpoints.types import RunId

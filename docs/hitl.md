@@ -243,7 +243,7 @@ flow.add_node(approval, dependencies=[processor])
 
 # First execution - will interrupt at approval node
 try:
-    result = await flow.run(ContentInput(text="test"))
+    result = await extract_result_from_stream(flow.astream(ContentInput(text="test"))
 except InterruptionRequested as exc:
     checkpoint = exc.checkpoint
     print(f"Flow interrupted: {checkpoint.interrupt_reason}")
@@ -316,7 +316,7 @@ while True:
         if checkpoint:
             result = await flow.resume(checkpoint, inputs=current_input)
         else:
-            result = await flow.run(current_input)
+            result = await extract_result_from_stream(flow.astream(current_input)
         
         # Completed successfully
         print(f"All approvals complete: {result}")
@@ -386,7 +386,7 @@ Save checkpoints for resilience:
 
 ```python
 try:
-    result = await flow.run(input_data)
+    result = await extract_result_from_stream(flow.astream(input_data)
 except InterruptionRequested as exc:
     # Persist checkpoint
     save_checkpoint(exc.checkpoint)
@@ -402,7 +402,7 @@ except InterruptionRequested as exc:
 # Temporary handler for specific execution
 node.register_interrupt_handler(temp_handler, priority=50)
 try:
-    result = await flow.run(input_data)
+    result = await extract_result_from_stream(flow.astream(input_data)
 finally:
     node.clear_interrupt_handlers()
 ```
@@ -468,7 +468,7 @@ async def idempotent_handler(request: HumanInputRequest) -> InterruptDecision:
 
 ### Flow Methods
 
-- **`await flow.run(inputs)`**: Execute flow, may raise `InterruptionRequested`
+- **`await extract_result_from_stream(flow.astream(inputs)`**: Execute flow, may raise `InterruptionRequested`
 - **`await flow.resume(checkpoint, inputs)`**: Resume from checkpoint
 
 ## Type Safety

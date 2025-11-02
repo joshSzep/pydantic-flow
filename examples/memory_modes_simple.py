@@ -17,6 +17,16 @@ from pydantic_flow.nodes import FlowNode
 from pydantic_flow.nodes import ToolNode
 
 
+# Helper to extract result from stream
+async def extract_result_from_stream(stream):
+    """Extract final result from async stream of progress items."""
+    result = None
+    async for item in stream:
+        if hasattr(item, "result"):
+            result = item.result
+    return result
+
+
 class Query(BaseModel):
     """Input for processing."""
 
@@ -84,7 +94,7 @@ async def demonstrate_shared_mode():
         print(f"Parent memory before: {len(parent_flow._conversation_memory)} message")
 
     # Run the flow
-    result = await parent_flow.run(Query(text="Hello"))
+    result = await extract_result_from_stream(parent_flow.astream(Query(text="Hello")))
     print(f"Result: {result.result.processed.value}")
 
     # Note: In SHARED mode, sub-flow could add messages to parent memory
@@ -139,7 +149,7 @@ async def demonstrate_isolated_mode():
         print(f"Parent memory before: {len(parent_flow._conversation_memory)} messages")
 
     # Run the flow
-    result = await parent_flow.run(Query(text="Hello"))
+    result = await extract_result_from_stream(parent_flow.astream(Query(text="Hello")))
     print(f"Result: {result.result.processed.value}")
 
     # Check memory after - should be unchanged
@@ -191,7 +201,7 @@ async def demonstrate_isolated_with_seed():
         print(f"Parent memory before: {len(parent_flow._conversation_memory)} message")
 
     # Run the flow
-    result = await parent_flow.run(Query(text="Hello"))
+    result = await extract_result_from_stream(parent_flow.astream(Query(text="Hello")))
     print(f"Result: {result.result.processed.value}")
 
     # Check memory after
@@ -239,7 +249,7 @@ async def demonstrate_readonly_mode():
         print(f"Parent memory before: {len(parent_flow._conversation_memory)} message")
 
     # Run the flow
-    result = await parent_flow.run(Query(text="Hello"))
+    result = await extract_result_from_stream(parent_flow.astream(Query(text="Hello")))
     print(f"Result: {result.result.processed.value}")
 
     # Check memory after
