@@ -12,8 +12,7 @@ from pydantic_ai import Agent
 from pydantic_flow.cache.base import CachePolicy
 from pydantic_flow.hitl.interrupts import InterruptionRequested
 from pydantic_flow.memory import _active_flow_memory
-from pydantic_flow.nodes.base import NodeWithInput
-from pydantic_flow.nodes.mixins import CacheableNode
+from pydantic_flow.nodes.base import Node
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
@@ -23,9 +22,7 @@ from pydantic_flow.streaming.observers import observe_agent_stream
 from pydantic_flow.streaming.system_events import NonFatalError
 
 
-class AgentNode[InputModel: BaseModel, OutputT](
-    CacheableNode, NodeWithInput[InputModel, OutputT]
-):
+class AgentNode[InputModel: BaseModel, OutputT](Node[InputModel, OutputT]):
     """A streaming-native node that uses a pydantic-ai Agent.
 
     This node integrates user-supplied pydantic-ai agents with our streaming
@@ -60,11 +57,10 @@ class AgentNode[InputModel: BaseModel, OutputT](
             cache_policy: Optional cache policy for this node.
 
         """
-        super().__init__(input, name, run_id)
+        super().__init__(input, name, run_id, cache_policy)
         self.agent = agent
         self.prompt_template = prompt_template or ""
         self.use_conversation_memory = use_conversation_memory
-        self.cache_policy = cache_policy
 
     async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:
         """Stream progress items while executing the LLM call.
@@ -143,7 +139,7 @@ class AgentNode[InputModel: BaseModel, OutputT](
 
 
 class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
-    CacheableNode, NodeWithInput[InputModel, OutputModel]
+    Node[InputModel, OutputModel]
 ):
     """A streaming-native LLM node with structured output.
 
@@ -175,11 +171,9 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
             cache_policy: Optional cache policy for this node.
 
         """
-        super().__init__(input, name, run_id)
+        super().__init__(input, name, run_id, cache_policy)
         self.agent = agent
         self.prompt_template = prompt_template
-        self.use_conversation_memory = use_conversation_memory
-        self.cache_policy = cache_policy
         self.use_conversation_memory = use_conversation_memory
 
     async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:

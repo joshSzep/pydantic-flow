@@ -9,9 +9,8 @@ import uuid
 from pydantic import BaseModel
 
 from pydantic_flow.cache.base import CachePolicy
+from pydantic_flow.nodes.base import Node
 from pydantic_flow.nodes.base import NodeOutput
-from pydantic_flow.nodes.base import NodeWithInput
-from pydantic_flow.nodes.mixins import CacheableNode
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
@@ -21,7 +20,7 @@ from pydantic_flow.streaming.tool_events import ToolResult
 
 
 class ToolNode[InputModel: BaseModel, OutputModel: BaseModel](
-    CacheableNode, NodeWithInput[InputModel, OutputModel]
+    Node[InputModel, OutputModel]
 ):
     """A node that calls an external tool using an async function.
 
@@ -49,7 +48,7 @@ class ToolNode[InputModel: BaseModel, OutputModel: BaseModel](
             ValueError: If tool_func is not an async function
 
         """
-        super().__init__(input, name)
+        super().__init__(input, name, cache_policy=cache_policy)
 
         # Validate that tool_func is async
         if not inspect.iscoroutinefunction(tool_func):
@@ -61,7 +60,6 @@ class ToolNode[InputModel: BaseModel, OutputModel: BaseModel](
             raise ValueError(msg)
 
         self.tool_func = tool_func
-        self.cache_policy = cache_policy
 
     async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:
         """Stream progress items while executing the tool.

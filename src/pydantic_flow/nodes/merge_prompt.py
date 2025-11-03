@@ -6,6 +6,7 @@ import uuid
 
 from pydantic_ai import Agent
 
+from pydantic_flow.cache.base import CachePolicy
 from pydantic_flow.checkpoints.types import RunId
 from pydantic_flow.checkpoints.types import SnapshotReason
 from pydantic_flow.checkpoints.types import StateSnapshot
@@ -48,6 +49,7 @@ class MergePromptNode[*InputTs, OutputT](MergeNode[*InputTs, OutputT]):
         model: str | None = None,
         config: PromptConfig | None = None,
         name: str | None = None,
+        cache_policy: CachePolicy | None = None,
     ) -> None:
         """Initialize a MergePromptNode.
 
@@ -58,9 +60,10 @@ class MergePromptNode[*InputTs, OutputT](MergeNode[*InputTs, OutputT]):
             model: Optional model identifier (e.g., "openai:gpt-4")
             config: Optional prompt configuration
             name: Optional unique identifier for this node
+            cache_policy: Optional cache policy for this node
 
         """
-        super().__init__(inputs, name)
+        super().__init__(inputs, name, cache_policy=cache_policy)
         self.prompt = prompt
         self.model = model or (config.model if config else "test")
         self.config = config or PromptConfig()

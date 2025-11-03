@@ -6,14 +6,15 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from pydantic_flow.cache.base import CachePolicy
 from pydantic_flow.memory import ConversationMemory
 from pydantic_flow.memory import MemoryMode
 from pydantic_flow.memory import MemoryProtocol
 from pydantic_flow.memory import ReadOnlyConversationMemory
 from pydantic_flow.memory import _active_flow_memory
 from pydantic_flow.nodes.base import BaseNode
+from pydantic_flow.nodes.base import Node
 from pydantic_flow.nodes.base import NodeOutput
-from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import FlowResult
 from pydantic_flow.streaming.core_events import GenericResult
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
 
 
 class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
-    NodeWithInput[InputModel, OutputModel]
+    Node[InputModel, OutputModel]
 ):
     """A node that wraps a Flow, enabling sub-flows within larger workflows.
 
@@ -43,6 +44,7 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
         name: str | None = None,
         memory_mode: MemoryMode = MemoryMode.SHARED,
         seed_isolated_memory: bool = False,
+        cache_policy: CachePolicy | None = None,
     ) -> None:
         """Initialize a FlowNode with a wrapped Flow.
 
@@ -59,6 +61,7 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
             seed_isolated_memory: If True and mode is ISOLATED, seed the
                 sub-flow's memory with parent's message history for context.
                 Default False.
+            cache_policy: Optional cache policy for this node.
 
         """
         # Generate a meaningful default name that includes the wrapped flow info
@@ -66,7 +69,7 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
             flow_repr = repr(flow)
             name = f"FlowNode_{flow_repr}"
 
-        super().__init__(input, name)
+        super().__init__(input, name, cache_policy=cache_policy)
         self.flow = flow
         self.memory_mode = memory_mode
         self.seed_isolated_memory = seed_isolated_memory

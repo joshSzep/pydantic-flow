@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from pydantic_flow.cache.base import CachePolicy
 from pydantic_flow.nodes.base import MergeNode
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.streaming.base import ProgressItem
@@ -43,6 +44,7 @@ class MergeParserNode[*InputTs, OutputModel: BaseModel](
         *,
         inputs: tuple[NodeOutput[Any], ...],
         name: str | None = None,
+        cache_policy: CachePolicy | None = None,
     ) -> None:
         """Initialize a MergeParserNode.
 
@@ -51,9 +53,10 @@ class MergeParserNode[*InputTs, OutputModel: BaseModel](
                         Should accept arguments matching the input types.
             inputs: Tuple of NodeOutput references from upstream nodes
             name: Optional unique identifier for this node
+            cache_policy: Optional cache policy for this node
 
         """
-        super().__init__(inputs, name)
+        super().__init__(inputs, name, cache_policy=cache_policy)
         self.parser_func = parser_func
 
     async def astream(self, input_data: tuple[Any, ...]) -> AsyncIterator[ProgressItem]:

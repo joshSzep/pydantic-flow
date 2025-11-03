@@ -44,6 +44,7 @@ from pydantic_flow.nodes import MergeNode
 from pydantic_flow.nodes import MergeParserNode
 from pydantic_flow.nodes import MergePromptNode
 from pydantic_flow.nodes import MergeToolNode
+from pydantic_flow.nodes import Node
 from pydantic_flow.nodes import NodeOutput
 from pydantic_flow.nodes import NodeWithInput
 from pydantic_flow.nodes import ParserNode
@@ -53,8 +54,6 @@ from pydantic_flow.nodes import RetryNode
 from pydantic_flow.nodes import ToolNode
 from pydantic_flow.nodes.agent import AgentNode
 from pydantic_flow.nodes.agent import LLMNode
-from pydantic_flow.nodes.mixins import CacheableNode
-from pydantic_flow.nodes.mixins import InterruptibleNodeMixin
 from pydantic_flow.nodes.retriever import RetrieverNode
 from pydantic_flow.project_info import ProjectInfo
 from pydantic_flow.project_info import get_project_info
@@ -116,7 +115,6 @@ __all__ = [
     "AsIsParser",
     "BaseMemoryCompressor",
     "BaseNode",
-    "CacheableNode",
     "ChatMessage",
     "ChatPromptTemplate",
     "ChatRole",
@@ -146,7 +144,6 @@ __all__ = [
     "InterruptCallback",
     "InterruptDecision",
     "InterruptHandlerRegistration",
-    "InterruptibleNodeMixin",
     "InterruptionRequested",
     "JoinStrategy",
     "JsonModelParser",
@@ -161,6 +158,7 @@ __all__ = [
     "MergePromptNode",
     "MergeToolNode",
     "Metadata",
+    "Node",
     "NodeOutput",
     "NodeWithInput",
     "NonFatalError",

@@ -13,9 +13,8 @@ from pydantic_flow.checkpoints.types import SnapshotReason
 from pydantic_flow.checkpoints.types import StateSnapshot
 from pydantic_flow.checkpoints.types import generate_snapshot_id
 from pydantic_flow.hitl.interrupts import InterruptionRequested
+from pydantic_flow.nodes.base import Node
 from pydantic_flow.nodes.base import NodeOutput
-from pydantic_flow.nodes.base import NodeWithInput
-from pydantic_flow.nodes.mixins import CacheableNode
 from pydantic_flow.prompt.engines import get_renderer
 from pydantic_flow.prompt.enums import JoinStrategy
 from pydantic_flow.prompt.enums import TemplateFormat
@@ -43,10 +42,7 @@ class PromptConfig(BaseModel):
     chat_join_strategy: JoinStrategy = JoinStrategy.SIMPLE
 
 
-class PromptNode[InputModel: BaseModel, OutputT](
-    CacheableNode,
-    NodeWithInput[InputModel, OutputT],
-):
+class PromptNode[InputModel: BaseModel, OutputT](Node[InputModel, OutputT]):
     """A streaming-native node that calls an LLM using a templated prompt.
 
     This node creates a pydantic-ai agent internally and provides streaming
@@ -84,8 +80,7 @@ class PromptNode[InputModel: BaseModel, OutputT](
             cache_policy: Optional cache policy for this node
 
         """
-        super().__init__(input, name, run_id)
-        self.cache_policy = cache_policy
+        super().__init__(input, name, run_id, cache_policy)
         self.config = config or PromptConfig()
         self.output_parser = output_parser
         self._explicit_output_type = output_type

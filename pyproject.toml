@@ -1,6 +1,6 @@
 [project]
 name = "pydantic-flow"
-version = "0.31.0"
+version = "0.32.0"
 description = "An opinionated pydantic-ai based framework with batteries included."
 readme = "README.md"
 authors = [
@@ -66,10 +66,12 @@ ignore = ["D203","D213"]
 "src/pydantic_flow/flow/flow.py" = ["PLR0912", "PLR0915", "PLC0415"]  # Complex flow execution logic, local imports to avoid circular deps
 "src/pydantic_flow/nodes/agent.py" = ["PLR0913"]  # AgentNode init needs multiple params
 "src/pydantic_flow/nodes/base.py" = ["PLC0415"]  # Local imports for zero-cost telemetry
+"src/pydantic_flow/nodes/conditional.py" = ["PLR0913"]  # IfNode init needs multiple params for cache_policy support
+"src/pydantic_flow/nodes/flow.py" = ["PLR0912", "PLR0913"]  # Complex memory mode handling, FlowNode init needs multiple params
+"src/pydantic_flow/nodes/merge_prompt.py" = ["PLR0913"]  # MergePromptNode init needs multiple params for cache_policy support
 "src/pydantic_flow/cache/middleware.py" = ["UP040", "PLR0912", "PLC0415"]  # TypeVar needed for proper typing, complex branching, local imports for telemetry helpers
 "src/pydantic_flow/telemetry/setup.py" = ["PLR0913", "PLW0603"]  # setup function needs multiple params, singleton pattern requires globals
 "src/pydantic_flow/telemetry/helpers.py" = ["PLC0415"]  # Local imports for zero-cost telemetry
-"src/pydantic_flow/nodes/flow.py" = ["PLR0912"]  # Complex memory mode handling
 "src/pydantic_flow/checkpoints/*.py" = ["PLC0415"]  # Local imports for optional dependencies (asyncpg, aioboto3)
 "src/pydantic_flow/rag/embeddings/huggingface.py" = ["PLC0415"]  # Local import for optional sentence-transformers dependency
 

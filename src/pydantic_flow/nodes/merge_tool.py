@@ -9,6 +9,7 @@ import uuid
 
 from pydantic import BaseModel
 
+from pydantic_flow.cache.base import CachePolicy
 from pydantic_flow.nodes.base import MergeNode
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.streaming.base import ProgressItem
@@ -46,6 +47,7 @@ class MergeToolNode[*InputTs, OutputModel: BaseModel](MergeNode[*InputTs, Output
         *,
         inputs: tuple[NodeOutput[Any], ...],
         name: str | None = None,
+        cache_policy: CachePolicy | None = None,
     ) -> None:
         """Initialize a MergeToolNode.
 
@@ -54,12 +56,13 @@ class MergeToolNode[*InputTs, OutputModel: BaseModel](MergeNode[*InputTs, Output
                       Should accept arguments matching the input types.
             inputs: Tuple of NodeOutput references from upstream nodes
             name: Optional unique identifier for this node
+            cache_policy: Optional cache policy for this node
 
         Raises:
             ValueError: If tool_func is not an async function
 
         """
-        super().__init__(inputs, name)
+        super().__init__(inputs, name, cache_policy=cache_policy)
 
         # Validate that tool_func is async
         if not inspect.iscoroutinefunction(tool_func):
