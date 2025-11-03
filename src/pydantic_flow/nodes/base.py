@@ -80,6 +80,20 @@ class BaseNode[InputT, OutputT](InterruptibleNodeMixin, ABC):
         """Get the typed output reference for this node."""
         return self._output
 
+    @property
+    def dependencies(self) -> list[BaseNode[Any, Any]]:
+        """Get the list of nodes this node depends on.
+
+        This is the canonical dependency interface used by Flow for
+        dependency resolution and execution ordering.
+
+        Returns:
+            List of upstream nodes this node depends on. Empty list means
+            this is an entry node (or has no explicit dependencies).
+
+        """
+        return []
+
     @abstractmethod
     async def astream(self, input_data: InputT) -> AsyncIterator[ProgressItem]:
         """Stream progress items while executing the node's logic.
@@ -199,14 +213,19 @@ class NodeWithInput[InputT, OutputT](BaseNode[InputT, OutputT]):
 
         """
         super().__init__(name, run_id)
-        self.input = input
+        self._input = input
+
+    @property
+    def input(self) -> NodeOutput[InputT] | None:
+        """Get the input node output reference."""
+        return self._input
 
     @property
     def dependencies(self) -> list[BaseNode[Any, Any]]:
         """Get the list of nodes this node depends on."""
-        if self.input is None:
+        if self._input is None:
             return []
-        return [self.input.node]
+        return [self._input.node]
 
 
 class MergeNode[*InputTs, OutputT](BaseNode[tuple[*InputTs], OutputT]):
@@ -239,12 +258,17 @@ class MergeNode[*InputTs, OutputT](BaseNode[tuple[*InputTs], OutputT]):
 
         """
         super().__init__(name, run_id)
-        self.inputs = inputs
+        self._inputs = inputs
+
+    @property
+    def inputs(self) -> tuple[NodeOutput[Any], ...]:
+        """Get the tuple of input node output references."""
+        return self._inputs
 
     @property
     def dependencies(self) -> list[BaseNode[Any, Any]]:
         """Get all dependency nodes from multiple inputs."""
-        return [node_output.node for node_output in self.inputs]
+        return [node_output.node for node_output in self._inputs]
 
 
 # Protocol classes for type safety

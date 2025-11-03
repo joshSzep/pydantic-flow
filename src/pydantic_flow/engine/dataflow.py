@@ -25,8 +25,7 @@ from pydantic_flow.core.routing import Route
 from pydantic_flow.core.routing import T_Route
 from pydantic_flow.core.run_config import RunConfig
 from pydantic_flow.nodes import BaseNode
-from pydantic_flow.nodes.protocols import has_input_dependency
-from pydantic_flow.nodes.protocols import has_multiple_inputs
+from pydantic_flow.nodes.base import MergeNode
 from pydantic_flow.streaming import ProgressItem
 from pydantic_flow.streaming import StreamEnd
 from pydantic_flow.streaming import ToolResult
@@ -181,7 +180,7 @@ class DataflowEngine[InputT: BaseModel, OutputT: BaseModel]:
     ) -> Any:
         """Determine input for a node based on dependencies and routing."""
         # Check if node has explicit input dependencies
-        if has_input_dependency(node) or has_multiple_inputs(node):
+        if node.dependencies:
             return self._get_node_input(node, results)
 
         # Check if this node was routed to conditionally
@@ -454,22 +453,29 @@ class DataflowEngine[InputT: BaseModel, OutputT: BaseModel]:
             FlowError: If required input is missing.
 
         """
-        if has_multiple_inputs(node):
-            # Node expects multiple inputs
-            input_nodes = node.inputs  # type: ignore
-            return tuple(results[inp.node.name] for inp in input_nodes)
-        elif has_input_dependency(node):
-            # Node has single input dependency
-            input_node_name = node.input.node.name  # type: ignore
+        # Determine how to gather input based on dependencies
+        deps = node.dependencies
+
+        if len(deps) == 0:
+            # No dependencies - this shouldn't be called
+            return None
+        elif len(deps) == 1:
+            # Single input dependency - check if node is a MergeNode
+            # MergeNode always expects tuple input, even with single dependency
+            input_node_name = deps[0].name
             if input_node_name not in results:
                 msg = f"Missing input for node {node.name}: {input_node_name}"
                 raise FlowError(msg)
-            return results[input_node_name]
+
+            result_value = results[input_node_name]
+
+            # If this is a MergeNode, wrap single result in tuple
+            if isinstance(node, MergeNode):
+                return (result_value,)
+            return result_value
         else:
-            # For nodes with no explicit dependencies, check if they have
-            # a previous result (for self-loops). If so, use that.
-            # This will be handled by the caller which checks node_name in results
-            return None
+            # Multiple input dependencies - return as tuple
+            return tuple(results[dep.name] for dep in deps)
 
     async def astream(  # noqa: PLR0915
         self,

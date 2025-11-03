@@ -30,8 +30,6 @@ from pydantic_flow.hitl.interrupts import InterruptHandlerRegistration
 from pydantic_flow.memory import ConversationMemory
 from pydantic_flow.memory import MemoryConfig
 from pydantic_flow.nodes import BaseNode
-from pydantic_flow.nodes.protocols import has_input_dependency
-from pydantic_flow.nodes.protocols import has_multiple_inputs
 from pydantic_flow.streaming.base import ProgressItem
 
 InputT = TypeVar("InputT", bound=BaseModel)
@@ -235,8 +233,7 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
         # Add implicit edges from node dependencies
         for node in self.nodes:
-            deps = getattr(node, "dependencies", [])
-            for dep in deps:
+            for dep in node.dependencies:
                 if dep.name not in edges_dict:
                     edges_dict[dep.name] = []
                 if node.name not in edges_dict[dep.name]:
@@ -542,21 +539,12 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
         # Add implicit edges from node dependencies
         for node in self.nodes:
-            if has_input_dependency(node):
-                input_node_name = node.input.node.name
-                if input_node_name not in adj:
-                    adj[input_node_name] = []
-                if node.name not in adj[input_node_name]:
-                    adj[input_node_name].append(node.name)
-
-            # Handle multi-input nodes
-            if has_multiple_inputs(node):
-                for dep in node.inputs:
-                    dep_node_name = dep.node.name
-                    if dep_node_name not in adj:
-                        adj[dep_node_name] = []
-                    if node.name not in adj[dep_node_name]:
-                        adj[dep_node_name].append(node.name)
+            for dep in node.dependencies:
+                dep_node_name = dep.name
+                if dep_node_name not in adj:
+                    adj[dep_node_name] = []
+                if node.name not in adj[dep_node_name]:
+                    adj[dep_node_name].append(node.name)
 
         # Three-color DFS
         WHITE, GRAY, BLACK = 0, 1, 2
@@ -585,8 +573,7 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         """Infer entry nodes from nodes with no dependencies."""
         entry = []
         for node in self.nodes:
-            deps = getattr(node, "dependencies", [])
-            if not deps:
+            if not node.dependencies:
                 entry.append(node)
         return entry if entry else [self.nodes[0]] if self.nodes else []
 
