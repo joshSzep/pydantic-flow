@@ -38,7 +38,7 @@ class NodeA(BaseNode[BaseModel, DataA]):
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
-            result_preview=result.model_dump(),
+            result=result.model_dump(),
         )
 
 
@@ -52,7 +52,7 @@ class NodeB(BaseNode[BaseModel, DataB]):
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
-            result_preview=result.model_dump(),
+            result=result.model_dump(),
         )
 
 

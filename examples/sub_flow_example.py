@@ -72,7 +72,7 @@ class NestedFlowResults(BaseModel):
 
 
 # Helper functions for demonstration
-def mock_research_api(query: UserQuery) -> ResearchData:
+async def mock_research_api(query: UserQuery) -> ResearchData:
     """Mock research API that gathers information."""
     return ResearchData(
         facts=f"Key facts about {query.topic}: Fact 1, Fact 2, Fact 3",
@@ -80,7 +80,7 @@ def mock_research_api(query: UserQuery) -> ResearchData:
     )
 
 
-def parse_research_output(raw_data: str) -> ResearchData:
+async def parse_research_output(raw_data: str) -> ResearchData:
     """Parse raw research data into structured format."""
     lines = raw_data.split("\n")
     facts = lines[0] if lines else "No facts found"
@@ -89,7 +89,7 @@ def parse_research_output(raw_data: str) -> ResearchData:
     return ResearchData(facts=facts, sources=sources)
 
 
-def generate_summary(research_results: ResearchResults) -> SummaryData:
+async def generate_summary(research_results: ResearchResults) -> SummaryData:
     """Generate a summary from research data."""
     research = research_results.research
     word_count = len(research.facts.split()) + len(research.sources.split())

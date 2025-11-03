@@ -39,7 +39,7 @@ async def test_middleware_cache_with_backend():
     """Test flow execution with cache backend configured."""
     cache = InMemoryCache()
 
-    def compute(inp: Input) -> Output:
+    async def compute(inp: Input) -> Output:
         return Output(result=inp.value * 2)
 
     node = ToolNode[Input, Output](
@@ -70,7 +70,7 @@ async def test_middleware_without_cache_backend():
     """Test flow execution without cache backend."""
     call_count = 0
 
-    def compute(inp: Input) -> Output:
+    async def compute(inp: Input) -> Output:
         nonlocal call_count
         call_count += 1
         return Output(result=inp.value * 2)
@@ -102,7 +102,7 @@ async def test_middleware_cache_operations():
     """Test cache operations via flow methods."""
     cache = InMemoryCache()
 
-    def compute(inp: Input) -> Output:
+    async def compute(inp: Input) -> Output:
         return Output(result=inp.value * 2)
 
     node = ToolNode[Input, Output](

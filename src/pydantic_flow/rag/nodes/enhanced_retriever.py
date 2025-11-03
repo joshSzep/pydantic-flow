@@ -267,7 +267,7 @@ class EnhancedRetrieverNode(NodeWithInput[EnhancedQueryInput, EnhancedRetrievalR
         yield StreamEnd(
             run_id=actual_run_id,
             node_id=self.name,
-            result_preview=result.model_dump(),
+            result=result,
         )
 
     def _documents_to_chunks(self, documents: list[Document]) -> list[DocumentChunk]:

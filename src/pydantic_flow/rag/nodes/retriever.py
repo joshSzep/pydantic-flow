@@ -125,5 +125,5 @@ class VectorRetrieverNode(NodeWithInput[QueryInput, RetrievalResult]):
         yield StreamEnd(
             run_id=actual_run_id,
             node_id=self.name,
-            result_preview=result.model_dump(),
+            result=result,
         )

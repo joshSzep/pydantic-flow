@@ -57,8 +57,18 @@ def get_data_a(input_data: Input) -> DataA:
     return DataA(value_a=f"A:{input_data.query}")
 
 
+async def get_data_a_async(input_data: Input) -> DataA:
+    """Async tool function to generate DataA."""
+    return DataA(value_a=f"A:{input_data.query}")
+
+
 def get_data_b(input_data: Input) -> DataB:
     """Tool function to generate DataB."""
+    return DataB(value_b=len(input_data.query))
+
+
+async def get_data_b_async(input_data: Input) -> DataB:
+    """Async tool function to generate DataB."""
     return DataB(value_b=len(input_data.query))
 
 
@@ -67,8 +77,21 @@ def get_data_c(input_data: Input) -> DataC:
     return DataC(value_c=float(len(input_data.query)) * 2.5)
 
 
+async def get_data_c_async(input_data: Input) -> DataC:
+    """Async tool function to generate DataC."""
+    return DataC(value_c=float(len(input_data.query)) * 2.5)
+
+
 def merge_two(data_a: DataA, data_b: DataB) -> MergedResult:
     """Merge two inputs."""
+    return MergedResult(
+        combined=f"{data_a.value_a}+{data_b.value_b}",
+        sum_value=float(data_b.value_b),
+    )
+
+
+async def merge_two_async(data_a: DataA, data_b: DataB) -> MergedResult:
+    """Async merge two inputs."""
     return MergedResult(
         combined=f"{data_a.value_a}+{data_b.value_b}",
         sum_value=float(data_b.value_b),
@@ -83,6 +106,16 @@ def merge_three(data_a: DataA, data_b: DataB, data_c: DataC) -> MergedResult:
     )
 
 
+async def merge_three_async(
+    data_a: DataA, data_b: DataB, data_c: DataC
+) -> MergedResult:
+    """Async merge three inputs."""
+    return MergedResult(
+        combined=f"{data_a.value_a}+{data_b.value_b}+{data_c.value_c}",
+        sum_value=float(data_b.value_b) + data_c.value_c,
+    )
+
+
 class TestBasicMerge:
     """Test basic merge node functionality."""
 
@@ -91,23 +124,26 @@ class TestBasicMerge:
         """Test merging outputs from two nodes."""
         flow = Flow(input_type=Input, output_type=FinalResult)
 
-        node_a = ToolNode[Input, DataA](tool_func=get_data_a, name="node_a")
-        node_b = ToolNode[Input, DataB](tool_func=get_data_b, name="node_b")
+        node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
+        node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
 
         merge_node = MergeToolNode[DataA, DataB, MergedResult](
             inputs=(node_a.output, node_b.output),
-            tool_func=merge_two,
+            tool_func=merge_two_async,
             name="merge_node",
         )
 
+        async def identity_func(x: MergedResult) -> MergedResult:
+            return x
+
         final_node = ToolNode[MergedResult, MergedResult](
-            tool_func=lambda x: x,
+            tool_func=identity_func,
             input=merge_node.output,
             name="final_node",
         )
 
         # Placeholder for remaining results
-        node_c = ToolNode[Input, DataC](tool_func=get_data_c, name="node_c")
+        node_c = ToolNode[Input, DataC](tool_func=get_data_c_async, name="node_c")
 
         flow.add_nodes(node_a, node_b, node_c, merge_node, final_node)
 
@@ -123,18 +159,21 @@ class TestBasicMerge:
         """Test merging outputs from three nodes."""
         flow = Flow(input_type=Input, output_type=FinalResult)
 
-        node_a = ToolNode[Input, DataA](tool_func=get_data_a, name="node_a")
-        node_b = ToolNode[Input, DataB](tool_func=get_data_b, name="node_b")
-        node_c = ToolNode[Input, DataC](tool_func=get_data_c, name="node_c")
+        node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
+        node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
+        node_c = ToolNode[Input, DataC](tool_func=get_data_c_async, name="node_c")
 
         merge_node = MergeToolNode[DataA, DataB, DataC, MergedResult](
             inputs=(node_a.output, node_b.output, node_c.output),
-            tool_func=merge_three,
+            tool_func=merge_three_async,
             name="merge_node",
         )
 
+        async def identity_func_three(x: MergedResult) -> MergedResult:
+            return x
+
         final_node = ToolNode[MergedResult, MergedResult](
-            tool_func=lambda x: x,
+            tool_func=identity_func_three,
             input=merge_node.output,
             name="final_node",
         )
@@ -179,19 +218,19 @@ class TestFanOutFanIn:
             d: ProcessedD
             e: ProcessedE
 
-        def process_a(inp: Input) -> ProcessedA:
+        async def process_a(inp: Input) -> ProcessedA:
             return ProcessedA(data=f"A({inp.query})")
 
-        def process_b(data: ProcessedA) -> ProcessedB:
+        async def process_b(data: ProcessedA) -> ProcessedB:
             return ProcessedB(data_b=f"B({data.data})")
 
-        def process_c(data: ProcessedA) -> ProcessedC:
+        async def process_c(data: ProcessedA) -> ProcessedC:
             return ProcessedC(data_c=f"C({data.data})")
 
-        def process_d(data_b: ProcessedB) -> ProcessedD:
+        async def process_d(data_b: ProcessedB) -> ProcessedD:
             return ProcessedD(merged=f"D({data_b.data_b})")
 
-        def process_e(data_d: ProcessedD, data_c: ProcessedC) -> ProcessedE:
+        async def process_e(data_d: ProcessedD, data_c: ProcessedC) -> ProcessedE:
             return ProcessedE(final=f"E({data_d.merged},{data_c.data_c})")
 
         flow = Flow(input_type=Input, output_type=FlowResult)
@@ -256,10 +295,10 @@ class TestMergeParserNode:
             text_b: TextB
             parsed: Parsed
 
-        def get_text_a(inp: Input) -> TextA:
+        async def get_text_a(inp: Input) -> TextA:
             return TextA(text=f"Hello {inp.query}")
 
-        def get_text_b(inp: Input) -> TextB:
+        async def get_text_b(inp: Input) -> TextB:
             return TextB(text=f"World {inp.query}")
 
         def parse_combined(text_a: TextA, text_b: TextB) -> Parsed:
@@ -292,13 +331,13 @@ class TestDependencyTracking:
 
     def test_merge_node_dependencies(self):
         """Test that merge nodes report all input dependencies."""
-        node_a = ToolNode[Input, DataA](tool_func=get_data_a, name="node_a")
-        node_b = ToolNode[Input, DataB](tool_func=get_data_b, name="node_b")
-        node_c = ToolNode[Input, DataC](tool_func=get_data_c, name="node_c")
+        node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
+        node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
+        node_c = ToolNode[Input, DataC](tool_func=get_data_c_async, name="node_c")
 
         merge_node = MergeToolNode[DataA, DataB, DataC, MergedResult](
             inputs=(node_a.output, node_b.output, node_c.output),
-            tool_func=merge_three,
+            tool_func=merge_three_async,
             name="merge",
         )
 
@@ -313,18 +352,21 @@ class TestDependencyTracking:
         """Test that execution order is correct with merge nodes."""
         flow = Flow(input_type=Input, output_type=FinalResult)
 
-        node_a = ToolNode[Input, DataA](tool_func=get_data_a, name="node_a")
-        node_b = ToolNode[Input, DataB](tool_func=get_data_b, name="node_b")
-        node_c = ToolNode[Input, DataC](tool_func=get_data_c, name="node_c")
+        node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
+        node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
+        node_c = ToolNode[Input, DataC](tool_func=get_data_c_async, name="node_c")
 
         merge_node = MergeToolNode[DataA, DataB, DataC, MergedResult](
             inputs=(node_a.output, node_b.output, node_c.output),
-            tool_func=merge_three,
+            tool_func=merge_three_async,
             name="merge_node",
         )
 
+        async def identity_func3(x: MergedResult) -> MergedResult:
+            return x
+
         final_node = ToolNode[MergedResult, MergedResult](
-            tool_func=lambda x: x,
+            tool_func=identity_func3,
             input=merge_node.output,
             name="final_node",
         )
@@ -350,12 +392,12 @@ class TestEdgeCases:
             node_a: DataA
             merge: DataA
 
-        def identity(data_a: DataA) -> DataA:
+        async def identity(data_a: DataA) -> DataA:
             return data_a
 
         flow = Flow(input_type=Input, output_type=SingleResult)
 
-        node_a = ToolNode[Input, DataA](tool_func=get_data_a, name="node_a")
+        node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
 
         merge_node = MergeToolNode[DataA, DataA](
             inputs=(node_a.output,),
@@ -381,19 +423,19 @@ class TestEdgeCases:
             merge1: MergedResult
             merge2: MergedResult
 
-        def merge_ab(a: DataA, b: DataB) -> MergedResult:
+        async def merge_ab(a: DataA, b: DataB) -> MergedResult:
             return MergedResult(combined=f"{a.value_a}+{b.value_b}", sum_value=0.0)
 
-        def merge_bc(b: DataB, c: DataC) -> MergedResult:
+        async def merge_bc(b: DataB, c: DataC) -> MergedResult:
             return MergedResult(
                 combined=f"{b.value_b}+{c.value_c}", sum_value=c.value_c
             )
 
         flow = Flow(input_type=Input, output_type=MultiMergeResult)
 
-        node_a = ToolNode[Input, DataA](tool_func=get_data_a, name="node_a")
-        node_b = ToolNode[Input, DataB](tool_func=get_data_b, name="node_b")
-        node_c = ToolNode[Input, DataC](tool_func=get_data_c, name="node_c")
+        node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
+        node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
+        node_c = ToolNode[Input, DataC](tool_func=get_data_c_async, name="node_c")
 
         merge1 = MergeToolNode[DataA, DataB, MergedResult](
             inputs=(node_a.output, node_b.output),
@@ -420,8 +462,8 @@ class TestMergePromptNode:
 
     def test_merge_prompt_node_initialization(self):
         """Test that MergePromptNode initializes correctly."""
-        node_a = ToolNode[Input, DataA](tool_func=get_data_a, name="node_a")
-        node_b = ToolNode[Input, DataB](tool_func=get_data_b, name="node_b")
+        node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
+        node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
 
         merge_prompt = MergePromptNode[DataA, DataB, str](
             inputs=(node_a.output, node_b.output),
@@ -437,8 +479,8 @@ class TestMergePromptNode:
 
     def test_merge_prompt_node_dependencies(self):
         """Test that MergePromptNode tracks dependencies correctly."""
-        node_a = ToolNode[Input, DataA](tool_func=get_data_a, name="node_a")
-        node_b = ToolNode[Input, DataB](tool_func=get_data_b, name="node_b")
+        node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
+        node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
 
         merge_prompt = MergePromptNode[DataA, DataB, str](
             inputs=(node_a.output, node_b.output),
@@ -454,8 +496,8 @@ class TestMergePromptNode:
     @pytest.mark.asyncio
     async def test_merge_prompt_node_streams_properly(self):
         """Test that MergePromptNode streams progress items."""
-        node_a = ToolNode[Input, DataA](tool_func=get_data_a, name="node_a")
-        node_b = ToolNode[Input, DataB](tool_func=get_data_b, name="node_b")
+        node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
+        node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
 
         merge_prompt = MergePromptNode[DataA, DataB, str](
             inputs=(node_a.output, node_b.output),

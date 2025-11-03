@@ -43,6 +43,10 @@ class CohereReranker:
 
         """
         if client is None:
+            if api_key is None:
+                msg = "api_key is required when client is not provided"
+                raise ValueError(msg)
+
             try:
                 import cohere  # noqa: PLC0415
             except ImportError as e:
@@ -51,10 +55,6 @@ class CohereReranker:
                     "Install it with: pip install cohere"
                 )
                 raise ImportError(msg) from e
-
-            if api_key is None:
-                msg = "api_key is required when client is not provided"
-                raise ValueError(msg)
 
             self.client = cohere.Client(api_key)
         else:

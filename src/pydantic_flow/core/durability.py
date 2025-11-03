@@ -20,19 +20,20 @@ class DurabilityMode(StrEnum):
     recovery checkpoints, not human intervention checkpoints.
 
     Attributes:
-        ASYNC: Checkpoint in background while next node executes (DEFAULT).
-            Balanced durability and performance. Recommended for most production
-            workloads. Small risk that checkpoint may not complete if process crashes.
-        SYNC: Checkpoint after every node, before next node starts.
-            Highest durability, lowest performance. Use for critical workflows
-            where data loss is unacceptable.
-        EXIT: Checkpoint only on flow completion or error.
-            Highest performance, lowest durability. Use for fast batch processing
-            where intermediate state recovery is not needed.
+        SYNC: Checkpoint after every node completes, flushed synchronously.
+            Highest durability, ensures every node completion is persisted
+            before next node starts. Use for critical workflows where data
+            loss is unacceptable.
+        ASYNC: Checkpoint after every node completes, flushed asynchronously (DEFAULT).
+            Balanced durability and performance. Checkpoints are saved in background
+            while execution continues. Recommended for most production workloads.
+        EXIT: No automatic checkpointing. Checkpoints only created for HITL
+            interrupts or explicit flow termination. Highest performance, use
+            for fast batch processing where intermediate state recovery is not needed.
 
     Examples:
         >>> from pydantic_flow import RunConfig, DurabilityMode
-        >>> # Default: automatic background checkpoints
+        >>> # Default: automatic async checkpoints
         >>> config = RunConfig()  # Uses ASYNC by default
         >>>
         >>> # For critical workflows requiring maximum durability
@@ -43,6 +44,6 @@ class DurabilityMode(StrEnum):
 
     """
 
-    ASYNC = "async"
     SYNC = "sync"
+    ASYNC = "async"
     EXIT = "exit"

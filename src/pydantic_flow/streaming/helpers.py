@@ -53,13 +53,13 @@ async def collect_final_result(stream: AsyncIterator[ProgressItem]) -> Any:
         stream: Progress item stream.
 
     Returns:
-        The result_preview from the StreamEnd item.
+        The result from the StreamEnd item.
 
     """
     final_result = None
     async for item in stream:
         if item.type == ProgressType.END:
-            final_result = item.result_preview  # type: ignore
+            final_result = item.result  # type: ignore
     return final_result
 
 

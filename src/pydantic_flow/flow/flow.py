@@ -1,7 +1,7 @@
 """Flow orchestration for the pydantic-flow framework.
 
 This module provides the Flow class that manages workflow execution
-and dependency resolution using the stepper engine.
+and dependency resolution using the dataflow engine.
 """
 
 from __future__ import annotations
@@ -22,9 +22,7 @@ from pydantic_flow.checkpoints.types import StateSnapshot
 from pydantic_flow.core.errors import FlowError
 from pydantic_flow.core.routing import Route
 from pydantic_flow.core.run_config import RunConfig
-from pydantic_flow.engine.stepper import ConditionalEdge
-from pydantic_flow.engine.stepper import EngineConfig
-from pydantic_flow.engine.stepper import StepperEngine
+from pydantic_flow.engine.dataflow import DataflowEngine
 from pydantic_flow.hitl.decisions import InterruptCallback
 from pydantic_flow.hitl.decisions import InterruptDecision
 from pydantic_flow.hitl.interrupts import HandlerPriority
@@ -198,10 +196,11 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
     async def astream(
         self, inputs: InputT, config: RunConfig | None = None
     ) -> AsyncIterator[ProgressItem]:
-        """Execute the flow and stream progress items.
+        """Execute the flow and stream progress items with eager dataflow execution.
 
-        This is a convenience method that compiles the flow and streams execution.
-        For better performance with multiple runs, compile once and reuse.
+        Nodes execute as soon as their dependencies are satisfied, maximizing
+        parallelism and minimizing total execution time. This method uses the
+        dataflow engine for optimal execution without compilation steps.
 
         Args:
             inputs: The input data for the flow (must match the flow's InputT type)
@@ -216,8 +215,74 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             InterruptionRequested: If a HITL interrupt handler requests stopping
 
         """
-        compiled = self.compile()
-        async for item in compiled.astream(inputs, config=config):
+        from pydantic_flow.engine.dataflow import DataflowEngine
+
+        # Build edge dictionary from node-based edges
+        edges_dict: dict[str, list[str]] = {}
+
+        # Add explicit edges
+        for edge in self._explicit_edges:
+            if edge.source.name not in edges_dict:
+                edges_dict[edge.source.name] = []
+            edges_dict[edge.source.name].append(edge.target.name)
+
+        # Add implicit edges from node dependencies
+        for node in self.nodes:
+            deps = getattr(node, "dependencies", [])
+            for dep in deps:
+                if dep.name not in edges_dict:
+                    edges_dict[dep.name] = []
+                if node.name not in edges_dict[dep.name]:
+                    edges_dict[dep.name].append(node.name)
+
+        # Build conditional edges list
+        conditional_edges_list: list[
+            tuple[str, Callable[[BaseModel], Any], dict[Any, str] | None]
+        ] = []
+        for cond_edge in self._conditional_edges:
+            # Get mapping if exists
+            mapping = None
+            if cond_edge.source in self._conditional_mappings:
+                node_mapping = self._conditional_mappings[cond_edge.source]
+                # Convert node mapping to string mapping
+                mapping = {}
+                for key, value in node_mapping.items():
+                    if isinstance(value, Route):
+                        mapping[key] = value.value
+                    else:
+                        mapping[key] = value.name
+
+            conditional_edges_list.append((
+                cond_edge.source.name,
+                cond_edge.router,
+                mapping,
+            ))
+
+        entry_node_names = [
+            n.name
+            for n in (
+                self._entry_nodes if self._entry_nodes else self._infer_entry_nodes()
+            )
+        ]
+
+        # Create dataflow engine
+        from pydantic_flow.engine.dataflow import DataflowConfig
+
+        engine = DataflowEngine(
+            config=DataflowConfig(
+                nodes=self.nodes,
+                edges=edges_dict,
+                conditional_edges=conditional_edges_list,
+                entry_nodes=entry_node_names,
+                input_type=self._input_type,
+                output_type=self._output_type,
+                cache_backend=self._cache_backend,
+                default_cache_policy=self._default_cache_policy,
+            )
+        )
+
+        # Execute with dataflow engine
+        async for item in engine.astream(inputs, config):
             yield item
 
     async def astream_from_snapshot(
@@ -418,8 +483,11 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 if node.name not in edges_dict[dep.name]:
                     edges_dict[dep.name].append(node.name)
 
-        # Build ConditionalEdge list from node-based conditional edges
-        conditional_edges_list: list[ConditionalEdge[Any]] = []
+        # Build conditional edges list from node-based conditional edges
+        # DataflowEngine expects tuples of (source_name, router_fn, mapping)
+        conditional_edges_tuples: list[
+            tuple[str, Callable[[BaseModel], Any], dict[Any, str] | None]
+        ] = []
         for cond_edge in self._conditional_edges:
             # Get mapping if exists
             mapping = None
@@ -433,9 +501,11 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                     else:
                         mapping[key] = value.name
 
-            conditional_edges_list.append(
-                ConditionalEdge(cond_edge.source.name, cond_edge.router, mapping)
-            )
+            conditional_edges_tuples.append((
+                cond_edge.source.name,
+                cond_edge.router,
+                mapping,
+            ))
 
         entry_node_names = [
             n.name
@@ -443,18 +513,21 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 self._entry_nodes if self._entry_nodes else self._infer_entry_nodes()
             )
         ]
-        engine_config = EngineConfig(
-            nodes=self.nodes,
-            edges=edges_dict,
-            conditional_edges=conditional_edges_list,
-            entry_nodes=entry_node_names,
-            input_type=self._input_type,
-            output_type=self._output_type,
-            cache_backend=self._cache_backend,
-            default_cache_policy=self._default_cache_policy,
-            flow_id=self.flow_id,
+        from pydantic_flow.engine.dataflow import DataflowConfig
+
+        engine = DataflowEngine(
+            config=DataflowConfig(
+                nodes=self.nodes,
+                edges=edges_dict,
+                conditional_edges=conditional_edges_tuples,
+                entry_nodes=entry_node_names,
+                input_type=self._input_type,
+                output_type=self._output_type,
+                cache_backend=self._cache_backend,
+                default_cache_policy=self._default_cache_policy,
+                flow_id=self.flow_id,
+            )
         )
-        engine = StepperEngine(engine_config)
         return CompiledFlow(engine=engine)
 
     async def cache_delete(self, key: str) -> None:
@@ -574,13 +647,13 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
 
 class CompiledFlow[InputT: BaseModel, OutputT: BaseModel]:
-    """Compiled flow ready for execution using the stepper engine."""
+    """Compiled flow ready for execution using the dataflow engine."""
 
-    def __init__(self, engine: StepperEngine[InputT, OutputT]) -> None:
+    def __init__(self, engine: DataflowEngine[InputT, OutputT]) -> None:
         """Initialize compiled flow.
 
         Args:
-            engine: Stepper engine for execution.
+            engine: Dataflow engine for execution.
 
         """
         self._engine = engine
@@ -621,7 +694,7 @@ class CompiledFlow[InputT: BaseModel, OutputT: BaseModel]:
 
             flow_attrs: dict[str, Any] = {
                 str(AttributeKey.RUN_ID): run_id,
-                str(AttributeKey.EXECUTION_MODE): "stepper",
+                str(AttributeKey.EXECUTION_MODE): "dataflow",
                 str(AttributeKey.FLOW_ID): self.engine.flow_id,
             }
 

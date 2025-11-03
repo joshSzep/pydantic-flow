@@ -58,7 +58,7 @@ class Results(BaseModel):
     final_answer: Answer
 
 
-def conduct_research(query: Query) -> Research:
+async def conduct_research(query: Query) -> Research:
     """Simulate research tool."""
     return Research(
         findings=f"Research findings for: {query.question}",

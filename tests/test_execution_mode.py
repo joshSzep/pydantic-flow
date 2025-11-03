@@ -52,7 +52,7 @@ class SimpleNode(BaseNode[SimpleState, SimpleState]):
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
-            result_preview=input_data.model_dump(),
+            result=input_data.model_dump(),
         )
 
 
@@ -194,7 +194,7 @@ class TestFlowCompilation:
         node2 = SimpleNode(name="node2")
 
         # MergeToolNode with inputs from both nodes
-        def merge_func(a: SimpleState, b: SimpleState) -> SimpleState:
+        async def merge_func(a: SimpleState, b: SimpleState) -> SimpleState:
             return SimpleState(value=a.value + b.value)
 
         merge = MergeToolNode[SimpleState, SimpleState, SimpleState](

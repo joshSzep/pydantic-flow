@@ -95,7 +95,7 @@ def parse_weather_response(weather_text: str) -> WeatherInfo:
         )
 
 
-def call_weather_api(query: WeatherQuery) -> WeatherInfo:
+async def call_weather_api(query: WeatherQuery) -> WeatherInfo:
     """Mock weather API call.
 
     In a real implementation, this would call an actual weather service.

@@ -1,11 +1,11 @@
 """Execution engines for pydantic-flow.
 
 This module contains execution engines for running flows, including
-the stepper engine for loop-capable execution.
+the dataflow engine for eager, dependency-driven execution.
 """
 
-from pydantic_flow.engine.stepper import StepperEngine
+from pydantic_flow.engine.dataflow import DataflowEngine
 
 __all__ = [
-    "StepperEngine",
+    "DataflowEngine",
 ]

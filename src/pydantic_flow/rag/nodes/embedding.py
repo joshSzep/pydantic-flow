@@ -101,5 +101,5 @@ class EmbeddingNode(NodeWithInput[EmbeddingInput, EmbeddingOutput]):
         yield StreamEnd(
             run_id=actual_run_id,
             node_id=self.name,
-            result_preview=output.model_dump(),
+            result=output,
         )

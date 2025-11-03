@@ -25,7 +25,7 @@ class SimpleOutput(BaseModel):
 async def test_tool_node_exception_handling():
     """Test that ToolNode handles exceptions in tool_func."""
 
-    def failing_tool(x: SimpleInput) -> SimpleOutput:
+    async def failing_tool(x: SimpleInput) -> SimpleOutput:
         raise ValueError("Something went wrong!")
 
     node = ToolNode[SimpleInput, SimpleOutput](tool_func=failing_tool, name="failing")
@@ -62,7 +62,7 @@ async def test_parser_node_with_non_model_result():
 async def test_tool_node_with_none_result():
     """Test ToolNode when tool returns None."""
 
-    def returns_none(x: SimpleInput) -> None:
+    async def returns_none(x: SimpleInput) -> None:
         return None
 
     node = ToolNode[SimpleInput, None](tool_func=returns_none, name="none_tool")  # type: ignore

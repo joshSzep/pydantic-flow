@@ -10,6 +10,7 @@ from pydantic_flow.cache.base import CachePolicy
 from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.nodes.mixins import CacheableNode
 from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.retrieval_events import RetrievalItem
@@ -81,8 +82,9 @@ class RetrieverNode[QueryModel: BaseModel, ResultModel: BaseModel](
             results.append(item)
 
         # Emit end with aggregated results
+
         yield StreamEnd(
             run_id=actual_run_id,
             node_id=self.name,
-            result_preview={"results": results},
+            result=GenericResult(value=results),
         )

@@ -33,7 +33,7 @@ async def dummy_stream():
     yield StreamEnd(
         run_id="test",
         node_id="test_node",
-        result_preview={"result": "Hello World"},
+        result=DummyOutput(result="Hello World"),
     )
 
 
@@ -74,7 +74,8 @@ async def test_collect_all_tokens():
 async def test_collect_final_result():
     """Test extracting final result from stream."""
     result = await collect_final_result(dummy_stream())
-    assert result == {"result": "Hello World"}
+    assert isinstance(result, DummyOutput)
+    assert result.result == "Hello World"
 
 
 @pytest.mark.asyncio

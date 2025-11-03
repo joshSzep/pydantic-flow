@@ -55,7 +55,7 @@ class ProcessedDocument(BaseModel):
 
 
 # Simulate a risk scoring function
-def calculate_risk_score(input_data: DocumentInput) -> ProcessedDocument:
+async def calculate_risk_score(input_data: DocumentInput) -> ProcessedDocument:
     """Calculate risk score for document."""
     risk = len(input_data.content) // 10  # Simple heuristic
     if "urgent" in input_data.content.lower():

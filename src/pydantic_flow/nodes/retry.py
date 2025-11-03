@@ -58,7 +58,6 @@ class RetryNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
         from pydantic_flow.streaming.tool_events import ToolResult  # noqa: PLC0415
 
         result = None
-        result_preview = None
 
         for attempt in range(self.max_retries + 1):
             try:
@@ -69,7 +68,7 @@ class RetryNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
                         continue
                     elif isinstance(item, StreamEnd):
                         # Capture result on success
-                        result_preview = item.result_preview
+                        result = item.result
                     elif isinstance(item, ToolResult) and item.result is not None:
                         # Capture actual result
                         result = item.result
@@ -109,4 +108,4 @@ class RetryNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
             pass  # Already forwarded above
 
         # Emit our own StreamEnd with the result
-        yield StreamEnd(run_id=run_id, node_id=node_id, result_preview=result_preview)
+        yield StreamEnd(run_id=run_id, node_id=node_id, result=result)

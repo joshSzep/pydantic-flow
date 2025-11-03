@@ -16,6 +16,7 @@ from pydantic_flow.nodes import ParserNode
 from pydantic_flow.nodes import RetryNode
 from pydantic_flow.nodes import ToolNode
 from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.system_events import NonFatalError
@@ -50,10 +51,11 @@ async def test_parser_node_with_primitive_result():
     async for item in node.astream(SimpleInput(value=5)):
         items.append(item)
 
-    # Should have wrapped primitive in {"value": str(result)}
+    # Should have wrapped primitive in GenericResult
     end_items = [item for item in items if isinstance(item, StreamEnd)]
     assert len(end_items) == 1
-    assert end_items[0].result_preview == {"value": "10"}
+    assert isinstance(end_items[0].result, GenericResult)
+    assert end_items[0].result.value == 10
 
 
 @pytest.mark.asyncio
@@ -63,10 +65,10 @@ async def test_if_node_false_branch():
     def always_false(x: SimpleInput) -> bool:
         return False
 
-    def double(x: SimpleInput) -> SimpleOutput:
+    async def double(x: SimpleInput) -> SimpleOutput:
         return SimpleOutput(result=x.value * 2)
 
-    def triple(x: SimpleInput) -> SimpleOutput:
+    async def triple(x: SimpleInput) -> SimpleOutput:
         return SimpleOutput(result=x.value * 3)
 
     true_node = ToolNode[SimpleInput, SimpleOutput](tool_func=double, name="true")
@@ -102,7 +104,7 @@ async def test_retry_node_success_on_retry():
             async for item in super().astream(input_data):
                 yield item
 
-    def process(x: SimpleInput) -> SimpleOutput:
+    async def process(x: SimpleInput) -> SimpleOutput:
         return SimpleOutput(result=x.value + 1)
 
     unreliable = UnreliableNode(tool_func=process, name="unreliable")
@@ -133,7 +135,7 @@ async def test_base_node_run_without_result():
             yield StreamStart(run_id="", node_id=self.name)
             # Don't yield StreamEnd or ToolResult
 
-    def no_result(x: SimpleInput) -> None:
+    async def no_result(x: SimpleInput) -> None:
         return None
 
     node = EmptyNode(tool_func=no_result, name="empty")
@@ -181,7 +183,7 @@ class SimpleNode(BaseNode[SimpleState, SimpleState]):
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
-            result_preview=input_data.model_dump(),
+            result=input_data,
         )
 
 
@@ -285,7 +287,7 @@ async def test_merge_parser_node_string_result():
 async def test_merge_tool_node_with_error():
     """Test MergeToolNode error handling during execution."""
 
-    def failing_tool(a: SimpleState, b: SimpleState) -> SimpleState:
+    async def failing_tool(a: SimpleState, b: SimpleState) -> SimpleState:
         raise ValueError("Tool failed!")
 
     node1 = SimpleNode(name="node1")
@@ -303,10 +305,10 @@ async def test_merge_tool_node_with_error():
 
 
 @pytest.mark.asyncio
-async def test_merge_tool_node_result_preview():
+async def test_merge_tool_node_result():
     """Test MergeToolNode with result to trigger preview path."""
 
-    def tool_merge(a: SimpleState, b: SimpleState) -> SimpleState:
+    async def tool_merge(a: SimpleState, b: SimpleState) -> SimpleState:
         return SimpleState(value=a.value * b.value)
 
     node1 = SimpleNode(name="node1")
@@ -364,7 +366,11 @@ def test_flow_compile_with_execution_mode():
 @pytest.mark.asyncio
 async def test_flow_run_simple_execution():
     """Test a simple flow execution to cover the run method."""
-    node = SimpleNode(name="node")
+
+    async def passthrough(state: SimpleState) -> SimpleState:
+        return state
+
+    node = ToolNode[SimpleState, SimpleState](tool_func=passthrough, name="node")
     flow = Flow(
         input_type=SimpleState,
         output_type=SimpleStateOutput,

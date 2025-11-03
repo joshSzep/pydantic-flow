@@ -80,26 +80,26 @@ class FinalReport(BaseModel):
 
 
 # Tool functions
-def research_topic_a(query: Query) -> ResearchResult:
+async def research_topic_a(query: Query) -> ResearchResult:
     """Research topic A."""
     return ResearchResult(
         findings=FindingsText(text=f"Topic A findings for: {query.question}")
     )
 
 
-def research_topic_b(query: Query) -> ResearchResult:
+async def research_topic_b(query: Query) -> ResearchResult:
     """Research topic B."""
     return ResearchResult(
         findings=FindingsText(text=f"Topic B findings for: {query.question}")
     )
 
 
-def enrich_context(query: Query) -> EnrichedContext:
+async def enrich_context(query: Query) -> EnrichedContext:
     """Enrich context data."""
     return EnrichedContext(context=f"Enriched context: {query.question}")
 
 
-def summarize_findings(research: ParallelResearchOutput) -> SummaryResult:
+async def summarize_findings(research: ParallelResearchOutput) -> SummaryResult:
     """Summarize research findings."""
     combined = f"{research.topic_a.findings} | {research.topic_b.findings}"
     return SummaryResult(summary=f"Summary: {combined}")

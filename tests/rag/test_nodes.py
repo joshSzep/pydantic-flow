@@ -6,7 +6,9 @@ from pydantic_flow.rag.docs import Document
 from pydantic_flow.rag.embeddings.base import EmbeddingProvider
 from pydantic_flow.rag.nodes.embedding import EmbeddingInput
 from pydantic_flow.rag.nodes.embedding import EmbeddingNode
+from pydantic_flow.rag.nodes.embedding import EmbeddingOutput
 from pydantic_flow.rag.nodes.retriever import QueryInput
+from pydantic_flow.rag.nodes.retriever import RetrievalResult
 from pydantic_flow.rag.nodes.retriever import VectorRetrieverNode
 from pydantic_flow.rag.retrievers.base import Retriever
 from pydantic_flow.streaming.core_events import StreamEnd
@@ -69,8 +71,9 @@ async def test_vector_retriever_node():
 
     assert isinstance(items[-1], StreamEnd)
     assert items[-1].node_id == "test-retriever"
-    assert items[-1].result_preview is not None
-    assert "documents" in items[-1].result_preview
+    assert items[-1].result is not None
+    assert isinstance(items[-1].result, RetrievalResult)
+    assert len(items[-1].result.documents) == 3
 
 
 @pytest.mark.asyncio
@@ -107,10 +110,10 @@ async def test_embedding_node():
     assert isinstance(items[0], StreamStart)
     assert isinstance(items[-1], StreamEnd)
 
-    assert items[-1].result_preview is not None
-    assert items[-1].result_preview["dimensions"] == 256
-    assert "embeddings" in items[-1].result_preview
-    assert len(items[-1].result_preview["embeddings"]) == 2
+    assert items[-1].result is not None
+    assert isinstance(items[-1].result, EmbeddingOutput)
+    assert items[-1].result.dimensions == 256
+    assert len(items[-1].result.embeddings) == 2
 
 
 @pytest.mark.asyncio

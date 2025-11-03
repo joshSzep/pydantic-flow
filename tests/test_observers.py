@@ -4,9 +4,11 @@ from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 import uuid
 
+from pydantic import BaseModel
 from pydantic_ai import Agent
 import pytest
 
+from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.core_events import TokenChunk
@@ -32,12 +34,11 @@ async def test_observe_agent_stream_success():
 
     mock_stream.stream_text = mock_stream_text
 
-    # Mock final result with model_dump
-    class MockResult:
-        def model_dump(self):
-            return {"text": "Hello world!"}
+    # Mock final result as BaseModel
+    class MockResult(BaseModel):
+        text: str
 
-    mock_stream.get_output = AsyncMock(return_value=MockResult())
+    mock_stream.get_output = AsyncMock(return_value=MockResult(text="Hello world!"))
 
     # Mock run_stream as async context manager
     mock_agent.run_stream = MagicMock()
@@ -82,7 +83,8 @@ async def test_observe_agent_stream_success():
     assert isinstance(items[4], StreamEnd)
     assert items[4].run_id == "test-run-123"
     assert items[4].node_id == "test-node"
-    assert items[4].result_preview == {"text": "Hello world!"}
+    assert isinstance(items[4].result, BaseModel)
+    assert items[4].result.text == "Hello world!"
 
 
 @pytest.mark.asyncio
@@ -181,9 +183,10 @@ async def test_observe_agent_stream_result_without_model_dump():
     ):
         items.append(item)
 
-    # Check final item is StreamEnd with value preview
+    # Check final item is StreamEnd with GenericResult
     assert isinstance(items[-1], StreamEnd)
-    assert items[-1].result_preview == {"value": "Plain string result"}
+    assert isinstance(items[-1].result, GenericResult)
+    assert items[-1].result.value == "Plain string result"
 
 
 @pytest.mark.asyncio

@@ -168,7 +168,7 @@ class ContentCreationResults(BaseModel):
 # =============================================
 
 
-def gather_research(request: ContentRequest) -> ResearchData:
+async def gather_research(request: ContentRequest) -> ResearchData:
     """Mock research gathering function."""
     return ResearchData(
         facts=[
@@ -189,7 +189,7 @@ def gather_research(request: ContentRequest) -> ResearchData:
     )
 
 
-def validate_research(research_data: ResearchData) -> ValidatedResearch:
+async def validate_research(research_data: ResearchData) -> ValidatedResearch:
     """Mock research validation function."""
     is_high_quality = research_data.credibility_score > RESEARCH_QUALITY_THRESHOLD
     return ValidatedResearch(
@@ -200,7 +200,7 @@ def validate_research(research_data: ResearchData) -> ValidatedResearch:
     )
 
 
-def create_outline(research_results: ResearchResults) -> ContentOutline:
+async def create_outline(research_results: ResearchResults) -> ContentOutline:
     """Mock content outline creation."""
     topic_words = research_results.validated_research.verified_facts[0].split()[:3]
     return ContentOutline(
@@ -217,7 +217,7 @@ def create_outline(research_results: ResearchResults) -> ContentOutline:
     )
 
 
-def develop_strategy(research_results: ResearchResults) -> ContentStrategy:
+async def develop_strategy(research_results: ResearchResults) -> ContentStrategy:
     """Mock content strategy development."""
     return ContentStrategy(
         target_keywords=["primary keyword", "secondary keyword", "long tail keyword"],
@@ -227,7 +227,7 @@ def develop_strategy(research_results: ResearchResults) -> ContentStrategy:
     )
 
 
-def write_draft(planning_results: PlanningResults) -> DraftContent:
+async def write_draft(planning_results: PlanningResults) -> DraftContent:
     """Mock content writing function."""
     intro = planning_results.content_outline.introduction
     return DraftContent(
@@ -238,7 +238,7 @@ def write_draft(planning_results: PlanningResults) -> DraftContent:
     )
 
 
-def review_content(draft_content: DraftContent) -> ReviewedContent:
+async def review_content(draft_content: DraftContent) -> ReviewedContent:
     """Mock content review and editing."""
     return ReviewedContent(
         final_title=f"Revised: {draft_content.title}",
@@ -249,7 +249,7 @@ def review_content(draft_content: DraftContent) -> ReviewedContent:
     )
 
 
-def format_content(writing_results: WritingResults) -> FormattedContent:
+async def format_content(writing_results: WritingResults) -> FormattedContent:
     """Mock content formatting for publishing."""
     final_content = writing_results.reviewed_content.final_content
     return FormattedContent(
@@ -264,7 +264,7 @@ def format_content(writing_results: WritingResults) -> FormattedContent:
     )
 
 
-def create_assets(writing_results: WritingResults) -> PublishingAssets:
+async def create_assets(writing_results: WritingResults) -> PublishingAssets:
     """Mock publishing assets creation."""
     final_title = writing_results.reviewed_content.final_title
     return PublishingAssets(

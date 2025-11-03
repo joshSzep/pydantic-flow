@@ -171,11 +171,19 @@ class TestCohereReranker:
 
     def test_missing_cohere_raises_import_error(self) -> None:
         """Test that missing cohere library raises clear error."""
-        pytest.skip("Cohere is installed in this environment")
+        import sys
+        from unittest.mock import patch
+
+        with (
+            patch.dict(sys.modules, {"cohere": None}),
+            pytest.raises(ImportError, match="cohere library is required"),
+        ):
+            CohereReranker(api_key="test_key")
 
     def test_missing_api_key_raises_value_error(self) -> None:
         """Test that missing API key raises ValueError."""
-        pytest.skip("Cohere test skipped - library has compatibility issues")
+        with pytest.raises(ValueError, match="api_key is required"):
+            CohereReranker(api_key=None, client=None)
 
     @pytest.mark.skipif(
         not os.getenv("COHERE_API_KEY"),

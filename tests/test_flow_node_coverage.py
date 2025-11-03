@@ -50,7 +50,7 @@ async def test_flow_node_astream_with_flow_astream():
             yield StreamEnd(
                 run_id="inner",
                 node_id="inner",
-                result_preview={"result": "test result"},
+                result=SimpleOutput(result="test result"),
             )
 
     mock_flow = MockFlowWithAstream()
@@ -270,8 +270,12 @@ async def test_flow_node_repr():
 async def test_flow_node_dependencies_with_input():
     """Test FlowNode dependencies when it has an input node."""
     sub_flow = Flow(input_type=SimpleInput, output_type=SimpleOutput)
+
+    async def identity(x: SimpleInput) -> SimpleInput:
+        return x
+
     upstream_node = ToolNode[SimpleInput, SimpleInput](
-        tool_func=lambda x: x,
+        tool_func=identity,
         name="upstream_tool",
     )
 

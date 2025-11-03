@@ -32,7 +32,7 @@ class Results(BaseModel):
     node1: Output
 
 
-def double_value(input_data: Input) -> Output:
+async def double_value(input_data: Input) -> Output:
     """Test tool function."""
     return Output(result=input_data.value * 2)
 

@@ -16,6 +16,7 @@ from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import FlowResult
+from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.tool_events import ToolResult
@@ -123,21 +124,25 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
         try:
             # Stream from the flow
             result = None
-            result_preview = None
+            result_model = None
             async for item in self.flow.astream(input_data):  # type: ignore
                 # Handle FlowResult from wrapped flow
                 if isinstance(item, FlowResult):
                     result = item.result
-                    if hasattr(result, "model_dump"):
-                        result_preview = result.model_dump()
-                    elif result is not None:
-                        result_preview = {"value": str(result)}
+                    if isinstance(result, BaseModel):
+                        result_model = result
+                    else:
+                        result_model = GenericResult(value=result)
                 # Don't forward StreamStart/StreamEnd from wrapped flow
                 elif isinstance(item, (StreamStart, StreamEnd)):
                     continue
                 elif isinstance(item, ToolResult) and item.result:
                     # Capture actual result if available
                     result = item.result
+                    if isinstance(result, BaseModel):
+                        result_model = result
+                    else:
+                        result_model = GenericResult(value=result)
                 else:
                     # Forward other progress items
                     yield item
@@ -154,9 +159,7 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
                 )
 
             # Emit our own StreamEnd with the result
-            yield StreamEnd(
-                run_id=run_id, node_id=node_id, result_preview=result_preview
-            )
+            yield StreamEnd(run_id=run_id, node_id=node_id, result=result_model)
         finally:
             # Restore parent memory context
             if memory_token is not None:

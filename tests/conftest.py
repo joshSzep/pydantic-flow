@@ -22,10 +22,10 @@ async def extract_result_from_stream(stream) -> Any:
         elif isinstance(item, ToolResult) and item.result is not None:
             # Node result (preferred)
             result = item.result
-        elif isinstance(item, StreamEnd) and item.result_preview:
+        elif isinstance(item, StreamEnd) and item.result:
             # Node result (fallback)
             if result is None:
-                result = item.result_preview
+                result = item.result
 
     if result is None:
         raise RuntimeError("No result found in stream")

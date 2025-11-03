@@ -11,6 +11,7 @@ import pytest
 
 from pydantic_flow.nodes.agent import AgentNode
 from pydantic_flow.nodes.agent import LLMNode
+from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.core_events import TokenChunk
@@ -64,7 +65,7 @@ async def test_agent_node_basic_streaming():
         StreamEnd(
             run_id="test-run-123",
             node_id="test_agent",
-            result_preview={"value": "Hello world"},
+            result=GenericResult(value="Hello world"),
         ),
     ]
 
@@ -171,7 +172,7 @@ async def test_agent_node_generates_run_id_if_none():
             yield StreamEnd(
                 run_id="gen-id",
                 node_id="test_agent",
-                result_preview={},
+                result=None,
             )
 
         mock_observe.return_value = mock_stream()
@@ -247,8 +248,9 @@ async def test_llm_node_basic_streaming():
 
     # Check StreamEnd
     assert isinstance(items[-1], StreamEnd)
-    expected_preview = {"answer": "The answer is 42", "confidence": 0.95}
-    assert items[-1].result_preview == expected_preview
+    assert isinstance(items[-1].result, OutputModel)
+    assert items[-1].result.answer == "The answer is 42"
+    assert items[-1].result.confidence == 0.95
 
 
 @pytest.mark.asyncio
@@ -385,10 +387,11 @@ async def test_llm_node_result_without_model_dump():
     async for item in node.astream(input_data):
         items.append(item)
 
-    # Check StreamEnd has result_preview with model_dump
+    # Check StreamEnd has result as BaseModel
     stream_end = items[-1]
     assert isinstance(stream_end, StreamEnd)
-    assert stream_end.result_preview == {"value": "plain text"}
+    assert isinstance(stream_end.result, BaseModel)
+    assert stream_end.result.value == "plain text"
 
 
 @pytest.mark.asyncio
@@ -483,7 +486,7 @@ async def test_agent_node_empty_prompt_template():
 
 @pytest.mark.asyncio
 async def test_llm_node_stream_end_with_model_dump():
-    """Test LLMNode StreamEnd includes result_preview from model_dump."""
+    """Test LLMNode StreamEnd includes result from model_dump."""
     mock_agent = MagicMock(spec=Agent)
 
     mock_stream = AsyncMock()
@@ -512,9 +515,10 @@ async def test_llm_node_stream_end_with_model_dump():
 
     stream_end = items[-1]
     assert isinstance(stream_end, StreamEnd)
-    assert stream_end.result_preview is not None
-    assert stream_end.result_preview["answer"] == "detailed answer"
-    assert stream_end.result_preview["confidence"] == 0.88
+    assert stream_end.result is not None
+    assert isinstance(stream_end.result, OutputModel)
+    assert stream_end.result.answer == "detailed answer"
+    assert stream_end.result.confidence == 0.88
 
 
 @pytest.mark.asyncio
@@ -549,8 +553,9 @@ async def test_llm_node_result_truly_no_model_dump():
     # Should complete without error
     stream_end = items[-1]
     assert isinstance(stream_end, StreamEnd)
-    # result_preview should be None since dict doesn't have model_dump
-    assert stream_end.result_preview is None
+    # result should be wrapped in GenericResult since dict is not a BaseModel
+    assert isinstance(stream_end.result, GenericResult)
+    assert stream_end.result.value == {"key": "value"}
 
 
 @pytest.mark.asyncio

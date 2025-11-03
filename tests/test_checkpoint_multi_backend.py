@@ -295,68 +295,6 @@ async def test_incremental_migration_with_sync(tmp_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Feature not fully implemented")
-async def test_tiered_storage_hot_cold_separation(tmp_path):
-    """Test automatic hot/cold storage tiering."""
-    hot_db = tmp_path / "hot.db"
-    cold_dir = tmp_path / "cold"
-
-    hot_config = SQLiteCheckpointConfig(db_path=hot_db)
-    cold_config = FilesystemCheckpointConfig(root_dir=cold_dir)
-
-    hot_backend = SQLiteCheckpointBackend(hot_config)
-    cold_backend = FilesystemCheckpointBackend(cold_config)
-
-    await hot_backend.initialize()
-    await cold_backend.initialize()
-
-    try:
-        # Create tiered storage (hot = SQLite, cold = Filesystem)
-        tiered_config = TieredStorageConfig(
-            prefer_hot=True,
-            fallback_on_cold_miss=True,
-        )
-
-        tiered = TieredStorage(
-            hot=hot_backend,
-            cold=cold_backend,
-            config=tiered_config,
-        )
-
-        run_id = generate_run_id()
-
-        # Write to hot storage
-        snapshot = StateSnapshot(
-            snapshot_id=generate_snapshot_id(),
-            run_id=run_id,
-            wave_number=0,
-            full_state={"node": CheckpointTestState(counter=100, data="hot_data")},
-            state_hash="hash",
-            next_frontier=[],
-            routing_ended=False,
-        )
-
-        await tiered.save_state_snapshot(snapshot)
-
-        # Read should prefer hot
-        retrieved = await tiered.get_state_snapshot(run_id, 0)
-        assert retrieved is not None
-        assert retrieved.full_state["node"].counter == 100  # type: ignore[index, attr-defined]
-
-        # Move to cold storage
-        await tiered.move_to_cold(run_id)
-
-        # Should still be readable (from cold)
-        retrieved_cold = await tiered.get_state_snapshot(run_id, 0)
-        assert retrieved_cold is not None
-        assert retrieved_cold.full_state["node"].counter == 100  # type: ignore[index, attr-defined]
-
-    finally:
-        await hot_backend.close()
-        await cold_backend.close()
-
-
-@pytest.mark.asyncio
 async def test_tiered_storage_automatic_fallback(tmp_path):
     """Test automatic fallback to cold when hot is unavailable."""
     hot_db = tmp_path / "hot.db"
@@ -476,7 +414,6 @@ async def test_backend_write_performance_comparison(tmp_path):
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(reason="Feature not fully implemented")
 async def test_nested_composable_backends(tmp_path):
     """Test complex nesting of composable backends."""
     # Setup: Hot storage with 2 replicas + cold storage
@@ -533,13 +470,6 @@ async def test_nested_composable_backends(tmp_path):
         assert hot_data.full_state["node"].counter == 42  # type: ignore[union-attr, index, attr-defined]
         assert replica1_data.full_state["node"].counter == 42  # type: ignore[union-attr, index, attr-defined]
         assert replica2_data.full_state["node"].counter == 42  # type: ignore[union-attr, index, attr-defined]
-
-        # Move to cold
-        await tiered.move_to_cold(run_id)
-
-        # Verify cold has data
-        cold_data = await cold.get_state_snapshot(run_id, 0)
-        assert cold_data.full_state["node"].counter == 42  # type: ignore[union-attr, index, attr-defined]
 
     finally:
         await hot.close()

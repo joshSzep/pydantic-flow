@@ -58,7 +58,7 @@ async def get_weather_data(query: WeatherQuery) -> WeatherInfo:
     )
 
 
-def get_weather_data_sync(query: WeatherQuery) -> WeatherInfo:
+async def get_weather_data_sync(query: WeatherQuery) -> WeatherInfo:
     """Mock weather API function (synchronous version for ToolNode)."""
     return WeatherInfo(
         location=query.location,

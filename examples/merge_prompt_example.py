@@ -52,7 +52,7 @@ class CombinedReport(BaseModel):
 
 
 # Mock functions for research and analysis
-def gather_research(query: Query) -> ResearchData:
+async def gather_research(query: Query) -> ResearchData:
     """Simulate gathering research data."""
     return ResearchData(
         facts=[
@@ -68,7 +68,7 @@ def gather_research(query: Query) -> ResearchData:
     )
 
 
-def perform_analysis(query: Query) -> AnalysisData:
+async def perform_analysis(query: Query) -> AnalysisData:
     """Simulate performing analysis."""
     return AnalysisData(
         key_points=[

@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.tool_events import ToolResult
@@ -62,11 +63,10 @@ class ParserNode[InputT, OutputModel: BaseModel](NodeWithInput[InputT, OutputMod
             error=None,
         )
 
-        # Prepare result preview for StreamEnd
-        result_preview = None
-        if hasattr(result, "model_dump"):
-            result_preview = result.model_dump()
-        elif result is not None:
-            result_preview = {"value": str(result)}
+        # Prepare result as BaseModel
+        if isinstance(result, BaseModel):
+            result_model = result
+        else:
+            result_model = GenericResult(value=result)
 
-        yield StreamEnd(run_id=run_id, node_id=node_id, result_preview=result_preview)
+        yield StreamEnd(run_id=run_id, node_id=node_id, result=result_model)

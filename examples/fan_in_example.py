@@ -68,7 +68,7 @@ class FinalOutput(BaseModel):
     combined: CombinedReport
 
 
-def gather_research(query: Query) -> ResearchData:
+async def gather_research(query: Query) -> ResearchData:
     """Simulate research gathering."""
     return ResearchData(
         facts=[f"Fact about {query.topic}", f"Another fact about {query.topic}"],
@@ -76,7 +76,7 @@ def gather_research(query: Query) -> ResearchData:
     )
 
 
-def perform_analysis(query: Query) -> AnalysisData:
+async def perform_analysis(query: Query) -> AnalysisData:
     """Simulate analysis."""
     return AnalysisData(
         insights=[f"Insight on {query.topic}", f"Deep insight on {query.topic}"],
@@ -84,12 +84,12 @@ def perform_analysis(query: Query) -> AnalysisData:
     )
 
 
-def collect_metadata(query: Query) -> MetadataData:
+async def collect_metadata(query: Query) -> MetadataData:
     """Simulate metadata collection."""
     return MetadataData(timestamp="2025-10-23T12:00:00Z", version="1.0.0")
 
 
-def combine_all(
+async def combine_all(
     research: ResearchData, analysis: AnalysisData, metadata: MetadataData
 ) -> CombinedReport:
     """Combine all data sources into a unified report."""

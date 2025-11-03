@@ -99,26 +99,26 @@ All flow construction uses direct node references:
 - `flow.set_entry_nodes(node1, node2)` - Node objects as entry points  
 - Router functions return `BaseNode | Route` for control flow decisions
 
-#### Stepper Execution Engine
+#### Dataflow Execution Engine
 
-The framework uses a frontier-based wave execution engine:
+The framework uses eager dependency-based scheduling for optimal parallelism:
 
 **Key Features:**
-- Frontier-based wave execution for maximum flexibility
-- Handles acyclic flows, cycles, loops, and conditional routing
-- Supports `Route.END` sentinel for dynamic termination
-- Optimized for both simple and complex control flow patterns
+- Eager execution: Nodes execute immediately when dependencies are satisfied
+- Automatic parallelism: Independent branches execute concurrently without barriers
+- Real-time streaming: Progress events emitted as work completes
+- Dependency tracking: Explicit edge-based dependency resolution
 - Entry nodes inferred from nodes with no incoming edges
 
-**Design Decision:**
-- Single execution strategy eliminates complexity and mode selection
-- Stepper engine handles all flow patterns efficiently
-- No need for dual engine maintenance or graph analysis overhead
+**Execution Model:**
+- Tracks completed nodes to determine dependency satisfaction
+- Schedules ready nodes as concurrent asyncio tasks
+- Uses `asyncio.wait(FIRST_COMPLETED)` for efficient task management
+- Continues until all nodes complete or error occurs
 
-Users can inspect flow structure via `compiled_flow.explain()` which returns:
-- Detected features (cycles, conditional edges, explicit edges)
-- Inferred entry nodes
-- Node and edge counts
+**Configuration:**
+- `max_concurrent_nodes`: Optional limit on parallel execution (default: unlimited)
+- No artificial synchronization barriers or wave-based execution
 
 #### Type Safety Benefits
 

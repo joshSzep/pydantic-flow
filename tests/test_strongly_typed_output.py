@@ -37,7 +37,7 @@ class SingleNodeResults(BaseModel):
     test_node: OutputModel
 
 
-def multiply_by_two(input_data: InputModel) -> OutputModel:
+async def multiply_by_two(input_data: InputModel) -> OutputModel:
     """Multiply input value by two."""
     return OutputModel(result=input_data.value * 2)
 

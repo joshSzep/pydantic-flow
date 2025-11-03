@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 import uuid
 
+from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from pydantic_flow.memory import _active_flow_memory
@@ -15,6 +16,7 @@ from pydantic_flow.memory import _memory_event_emitter
 from pydantic_flow.memory.events import MemoryCompressionComplete
 from pydantic_flow.memory.events import MemoryCompressionPending
 from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.core_events import TokenChunk
@@ -108,17 +110,16 @@ async def observe_agent_stream(
                 # Silently ignore memory capture errors to avoid breaking flows
                 pass
 
-        # Emit successful end with result preview
-        result_preview = None
-        if hasattr(result, "model_dump"):
-            result_preview = result.model_dump()
-        elif result is not None:
-            result_preview = {"value": str(result)}
+        # Emit successful end with result as BaseModel
+        if isinstance(result, BaseModel):
+            result_model = result
+        else:
+            result_model = GenericResult(value=result)
 
         yield StreamEnd(
             run_id=actual_run_id,
             node_id=node_id,
-            result_preview=result_preview,
+            result=result_model,
         )
 
     except Exception as e:

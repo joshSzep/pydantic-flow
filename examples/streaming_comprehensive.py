@@ -102,11 +102,13 @@ async def example_2_structured_output():
     async for item in node.astream(query):
         if isinstance(item, TokenChunk):
             print(item.text, end="", flush=True)
-        elif isinstance(item, StreamEnd) and item.result_preview:
+        elif isinstance(item, StreamEnd) and item.result:
             print("\n\nFinal structured result:")
-            print(f"  Answer: {item.result_preview.get('answer', 'N/A')}")
-            print(f"  Confidence: {item.result_preview.get('confidence', 0)}")
-            print(f"  Sources: {item.result_preview.get('sources', [])}")
+            result = item.result
+            if isinstance(result, StructuredAnswer):
+                print(f"  Answer: {result.answer}")
+                print(f"  Confidence: {result.confidence}")
+                print(f"  Sources: {result.sources}")
 
     print("-" * 60)
 

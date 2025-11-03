@@ -52,6 +52,16 @@ class RunConfig(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     max_steps: int = Field(default=25, ge=1)
+    max_concurrent_nodes: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Maximum number of nodes that can execute concurrently. "
+            "None means unlimited parallelism (default). "
+            "Set to 1 for sequential execution, or higher values to control "
+            "resource usage while still enabling parallelism."
+        ),
+    )
     timeout_seconds: int | None = Field(default=None, ge=1)
     trace_iterations: bool = Field(default=True)
     recent_events_count: int = Field(

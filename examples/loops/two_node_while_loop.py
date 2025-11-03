@@ -56,7 +56,7 @@ class PlanNode(BaseNode[WorkState, WorkState]):
             iterations=input_data.iterations + 1, total=input_data.total
         )
         print(f"Planning iteration {new_state.iterations}")
-        yield StreamEnd(result_preview=new_state.model_dump())
+        yield StreamEnd(result=new_state)
 
     async def run(self, input_data: WorkState) -> WorkState:
         """Plan the next iteration."""
@@ -76,7 +76,7 @@ class ExecuteNode(NodeWithInput[WorkState, WorkState]):
         new_total = input_data.total + (input_data.iterations * 10)
         new_state = WorkState(iterations=input_data.iterations, total=new_total)
         print(f"Executing: iteration={new_state.iterations}, total={new_total}")
-        yield StreamEnd(result_preview=new_state.model_dump())
+        yield StreamEnd(result=new_state)
 
     async def run(self, input_data: WorkState) -> WorkState:
         """Execute work and accumulate results."""

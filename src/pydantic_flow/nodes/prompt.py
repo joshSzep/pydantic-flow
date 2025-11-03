@@ -23,6 +23,7 @@ from pydantic_flow.prompt.templates import ChatPromptTemplate
 from pydantic_flow.prompt.templates import PromptTemplate
 from pydantic_flow.prompt.types import OutputParser
 from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.core_events import TokenChunk
@@ -246,17 +247,16 @@ class PromptNode[InputModel: BaseModel, OutputT](
                 )
             yield tool_item
 
-            # Emit end with result preview
-            result_preview = None
-            if hasattr(result, "model_dump"):
-                result_preview = result.model_dump()  # type: ignore
-            elif result is not None:
-                result_preview = {"value": str(result)}
+            # Emit end with result as BaseModel
+            if isinstance(result, BaseModel):
+                result_model = result
+            else:
+                result_model = GenericResult(value=result)
 
             end_item = StreamEnd(
                 run_id=actual_run_id,
                 node_id=self.name,
-                result_preview=result_preview,
+                result=result_model,
             )
             decision = await self._check_interrupt_handlers(end_item)
             if decision.should_interrupt:

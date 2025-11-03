@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import pytest
 
 from pydantic_flow.nodes.retriever import RetrieverNode
+from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.retrieval_events import RetrievalItem
@@ -73,13 +74,12 @@ async def test_retriever_node_basic():
     assert isinstance(items[4], StreamEnd)
     assert items[4].run_id == "test-run-123"
     assert items[4].node_id == "test-retriever"
-    assert items[4].result_preview == {
-        "results": [
-            {"id": "doc1", "content": "Result 1", "score": 0.9},
-            {"id": "doc2", "content": "Result 2", "score": 0.8},
-            {"id": "doc3", "content": "Result 3", "score": 0.7},
-        ]
-    }
+    assert isinstance(items[4].result, GenericResult)
+    assert items[4].result.value == [
+        {"id": "doc1", "content": "Result 1", "score": 0.9},
+        {"id": "doc2", "content": "Result 2", "score": 0.8},
+        {"id": "doc3", "content": "Result 3", "score": 0.7},
+    ]
 
 
 @pytest.mark.asyncio
@@ -191,7 +191,8 @@ async def test_retriever_node_empty_results():
     assert len(items) == 2
     assert isinstance(items[0], StreamStart)
     assert isinstance(items[1], StreamEnd)
-    assert items[1].result_preview == {"results": []}
+    assert isinstance(items[1].result, GenericResult)
+    assert items[1].result.value == []
 
 
 @pytest.mark.asyncio

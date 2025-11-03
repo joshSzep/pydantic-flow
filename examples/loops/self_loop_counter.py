@@ -46,7 +46,7 @@ class TickNode(BaseNode[CounterState, CounterState]):
         new_n = input_data.n + 1
         print(f"Tick: n = {new_n}")
         result = CounterState(n=new_n)
-        yield StreamEnd(result_preview=result.model_dump())
+        yield StreamEnd(result=result)
 
     async def run(self, input_data: CounterState) -> CounterState:
         """Increment the counter by 1."""

@@ -73,7 +73,6 @@ class IfNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
 
         # Stream from the chosen branch
         result = None
-        result_preview = None
         async for item in chosen_branch.astream(input_data):
             # Forward all items from the branch, but don't forward its StreamEnd
             if not isinstance(item, StreamEnd):
@@ -83,7 +82,7 @@ class IfNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
                     result = item.result
             else:
                 # Save the result from the branch's StreamEnd
-                result_preview = item.result_preview
+                result = item.result
 
         # Yield ToolResult with actual result if we have it
         if result is not None:
@@ -95,4 +94,4 @@ class IfNode[OutputModel: BaseModel](NodeWithInput[Any, OutputModel]):
             )
 
         # Emit our own StreamEnd with the branch's result
-        yield StreamEnd(run_id=run_id, node_id=node_id, result_preview=result_preview)
+        yield StreamEnd(run_id=run_id, node_id=node_id, result=result)

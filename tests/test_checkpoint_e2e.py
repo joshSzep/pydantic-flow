@@ -51,7 +51,7 @@ class IncrementNode(NodeWithInput[SimpleInput, SimpleInput]):
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
-            result_preview=result.model_dump(),
+            result=result.model_dump(),
         )
 
 

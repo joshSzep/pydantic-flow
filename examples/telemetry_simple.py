@@ -42,7 +42,7 @@ class Answer(BaseModel):
     confidence: float
 
 
-def answer_query(query: Query) -> Answer:
+async def answer_query(query: Query) -> Answer:
     """Simple function that answers queries."""
     return Answer(
         response=f"The answer to '{query.question}' is 42",

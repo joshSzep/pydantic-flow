@@ -14,7 +14,6 @@ from pydantic_flow import RoutingError
 from pydantic_flow import RunConfig
 from pydantic_flow.core.errors import FlowError
 from pydantic_flow.core.routing import T_Route
-from pydantic_flow.engine.stepper import EngineConfig
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import NodeWithInput
 from pydantic_flow.streaming.base import ProgressItem
@@ -46,7 +45,7 @@ class IncrementNode(BaseNode[CounterState, CounterState]):
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
-            result_preview=result.model_dump(),
+            result=result.model_dump(),
         )
 
 
@@ -65,7 +64,7 @@ class StartNode(BaseNode[CounterState, CounterState]):
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
-            result_preview=input_data.model_dump(),
+            result=input_data.model_dump(),
         )
 
 
@@ -85,7 +84,7 @@ class ExecuteNode(BaseNode[CounterState, CounterState]):
         yield StreamEnd(
             run_id=self.run_id or "",
             node_id=self.name,
-            result_preview=result.model_dump(),
+            result=result.model_dump(),
         )
 
 
@@ -184,7 +183,7 @@ class TestLoops:
                 compiled.astream(CounterState(n=0), config)
             )
 
-        assert "Exceeded max_steps=10" in str(exc_info.value)
+        assert "Max steps (10) exceeded" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_router_mapping_dict(self) -> None:
@@ -325,7 +324,7 @@ class TestLoops:
                 yield StreamEnd(
                     run_id=self.run_id or "",
                     node_id=self.name,
-                    result_preview=result.model_dump(),
+                    result=result.model_dump(),
                 )
 
         slow_node = SlowNode(name="tick")
@@ -406,40 +405,6 @@ class TestLoops:
 
         assert "Flow execution failed" in str(exc_info.value)
 
-    def test_engine_config_validates_entry_nodes(self) -> None:
-        """Test that EngineConfig validates entry nodes exist."""
-        tick_node = IncrementNode(name="tick")
-
-        with pytest.raises(ValueError) as exc_info:
-            EngineConfig(
-                nodes=[tick_node],
-                edges={},
-                conditional_edges=[],
-                entry_nodes=["nonexistent"],
-                input_type=CounterState,
-                output_type=OutputState,
-                flow_id="test_flow",
-            )
-
-        assert "Unknown entry nodes" in str(exc_info.value)
-
-    def test_engine_config_validates_edge_targets(self) -> None:
-        """Test that EngineConfig validates edge targets exist."""
-        tick_node = IncrementNode(name="tick")
-
-        with pytest.raises(ValueError) as exc_info:
-            EngineConfig(
-                nodes=[tick_node],
-                edges={"tick": ["nonexistent"]},
-                conditional_edges=[],
-                entry_nodes=["tick"],
-                input_type=CounterState,
-                output_type=OutputState,
-                flow_id="test_flow",
-            )
-
-        assert "Unknown edge targets" in str(exc_info.value)
-
     @pytest.mark.asyncio
     async def test_node_with_explicit_input_dependency(self) -> None:
         """Test node with explicit input dependency in stepper."""
@@ -458,7 +423,7 @@ class TestLoops:
                 yield StreamEnd(
                     run_id=self.run_id or "",
                     node_id=self.name,
-                    result_preview=result.model_dump(),
+                    result=result.model_dump(),
                 )
 
         dependent_node = DependentNode(input=start_node.output, name="dependent")

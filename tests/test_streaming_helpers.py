@@ -1,5 +1,6 @@
 """Tests for streaming helper functions."""
 
+from pydantic import BaseModel
 import pytest
 
 from pydantic_flow.streaming.core_events import PartialFields
@@ -11,6 +12,12 @@ from pydantic_flow.streaming.helpers import collect_final_result
 from pydantic_flow.streaming.helpers import iter_fields
 from pydantic_flow.streaming.helpers import iter_tokens
 from pydantic_flow.streaming.tool_events import ToolCall
+
+
+class StatusResult(BaseModel):
+    """Test result model."""
+
+    status: str
 
 
 @pytest.mark.asyncio
@@ -85,26 +92,27 @@ async def test_collect_all_tokens_empty():
 
 @pytest.mark.asyncio
 async def test_collect_final_result():
-    """Test collect_final_result extracts StreamEnd result_preview."""
+    """Test collect_final_result extracts StreamEnd result."""
 
     async def mock_stream():
         yield StreamStart(run_id="1", node_id="test")
         yield TokenChunk(run_id="1", node_id="test", text="processing")
         yield StreamEnd(
-            run_id="1", node_id="test", result_preview={"status": "complete"}
+            run_id="1", node_id="test", result=StatusResult(status="complete")
         )
 
     result = await collect_final_result(mock_stream())
-    assert result == {"status": "complete"}
+    assert isinstance(result, StatusResult)
+    assert result.status == "complete"
 
 
 @pytest.mark.asyncio
 async def test_collect_final_result_none():
-    """Test collect_final_result with no result_preview."""
+    """Test collect_final_result with no result."""
 
     async def mock_stream():
         yield StreamStart(run_id="1", node_id="test")
-        yield StreamEnd(run_id="1", node_id="test", result_preview=None)
+        yield StreamEnd(run_id="1", node_id="test", result=None)
 
     result = await collect_final_result(mock_stream())
     assert result is None

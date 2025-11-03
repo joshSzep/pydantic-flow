@@ -15,6 +15,7 @@ from pydantic_flow.memory import _active_flow_memory
 from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.nodes.mixins import CacheableNode
 from pydantic_flow.streaming.base import ProgressItem
+from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.core_events import TokenChunk
@@ -237,15 +238,16 @@ class LLMNode[InputModel: BaseModel, OutputModel: BaseModel](
                 # Get final structured result
                 result = await stream.get_output()
 
-            # Emit end with result preview
-            result_preview = None
-            if hasattr(result, "model_dump"):
-                result_preview = result.model_dump()
+            # Emit end with result as BaseModel
+            if isinstance(result, BaseModel):
+                result_model = result
+            else:
+                result_model = GenericResult(value=result)
 
             end_item = StreamEnd(
                 run_id=actual_run_id,
                 node_id=self.name,
-                result_preview=result_preview,
+                result=result_model,
             )
             decision = await self._check_interrupt_handlers(end_item)
             if decision.should_interrupt:

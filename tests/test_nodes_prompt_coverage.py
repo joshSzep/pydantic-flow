@@ -19,6 +19,7 @@ from pydantic_flow import StreamStart
 from pydantic_flow import TemplateFormat
 from pydantic_flow import TokenChunk
 from pydantic_flow import ToolResult
+from pydantic_flow.streaming.core_events import GenericResult
 
 
 class SimpleInput(BaseModel):
@@ -244,8 +245,10 @@ class TestPromptNodeCoverage:
                 stream_end = item
 
         assert stream_end is not None
-        assert stream_end.result_preview is not None
-        assert isinstance(stream_end.result_preview, dict)
+        assert stream_end.result is not None
+        assert isinstance(stream_end.result, StructuredOutput)
+        assert stream_end.result.greeting == "success (no tool calls)"
+        assert stream_end.result.status == "parsed"
 
     async def test_result_without_model_dump(self) -> None:
         """Test result preview generation with simple string result."""
@@ -260,8 +263,9 @@ class TestPromptNodeCoverage:
                 stream_end = item
 
         assert stream_end is not None
-        assert stream_end.result_preview is not None
-        assert "value" in stream_end.result_preview
+        assert stream_end.result is not None
+        assert isinstance(stream_end.result, GenericResult)
+        assert stream_end.result.value is not None
 
     async def test_exception_generates_error_event(self) -> None:
         """Test that exceptions generate NonFatalError events."""

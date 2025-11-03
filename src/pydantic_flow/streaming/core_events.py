@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import BaseModel
 from pydantic import Field
+from pydantic import field_validator
 
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.base import ProgressType
@@ -56,16 +58,38 @@ class PartialFields(ProgressItem):
     fields: dict[str, Any] = Field(default_factory=dict)
 
 
+class GenericResult(BaseModel):
+    """Wrapper for non-BaseModel results.
+
+    Attributes:
+        value: The wrapped result value.
+
+    """
+
+    value: Any
+
+
 class StreamEnd(ProgressItem):
     """Signals successful completion of a node's execution stream.
 
     Attributes:
-        result_preview: Optional preview of final result.
+        result: Optional final result as a BaseModel.
 
     """
 
     type: ProgressType = ProgressType.END
-    result_preview: dict[str, Any] | None = None
+    result: BaseModel | None = None
+
+    @field_validator("result", mode="before")
+    @classmethod
+    def wrap_non_basemodel(cls, v: Any) -> BaseModel | None:
+        """Wrap non-BaseModel values in GenericResult."""
+        if v is None:
+            return None
+        if isinstance(v, BaseModel):
+            return v
+        # Wrap other values (dict, primitives, etc.) in GenericResult
+        return GenericResult(value=v)
 
 
 class FlowResult(ProgressItem):

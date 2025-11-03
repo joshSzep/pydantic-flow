@@ -51,7 +51,7 @@ class Report(BaseModel):
     result: Result
 
 
-def process_text(query: Query) -> ProcessedText:
+async def process_text(query: Query) -> ProcessedText:
     """Process the input text."""
     return ProcessedText(value=f"Processed: {query.text}")
 

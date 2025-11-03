@@ -105,7 +105,7 @@ def parse_weather_string(weather_str: str) -> WeatherInfo:
     )
 
 
-def call_weather_api(query: WeatherQuery) -> WeatherInfo:
+async def call_weather_api(query: WeatherQuery) -> WeatherInfo:
     """Mock weather API call."""
     return WeatherInfo(
         temperature=EXPECTED_TEMPERATURE,
@@ -114,7 +114,7 @@ def call_weather_api(query: WeatherQuery) -> WeatherInfo:
     )
 
 
-def generate_summary(request: SummaryRequest) -> WeatherSummary:
+async def generate_summary(request: SummaryRequest) -> WeatherSummary:
     """Generate a weather summary."""
     return WeatherSummary(
         summary=f"Weather is {request.weather_info}",
@@ -326,7 +326,7 @@ class TestFlow:
 
         # Create a workflow: format -> parser
         # Use ToolNode to format the string
-        def format_weather_string(query: QueryWithTemp) -> FormattedString:
+        async def format_weather_string(query: QueryWithTemp) -> FormattedString:
             return FormattedString(value=f"{query.temperature}|sunny|{query.location}")
 
         def parse_formatted(formatted: FormattedString) -> WeatherInfo:
@@ -465,7 +465,7 @@ class TestAdvancedNodes:
     async def test_retry_node_failure(self):
         """Test RetryNode when the wrapped node always fails."""
 
-        def failing_func(query: WeatherQuery) -> WeatherInfo:
+        async def failing_func(query: WeatherQuery) -> WeatherInfo:
             raise ValueError("API error")
 
         base_node = ToolNode[WeatherQuery, WeatherInfo](
@@ -497,10 +497,11 @@ class TestAdvancedNodes:
             tool_func=call_weather_api, name="true_node"
         )
 
+        async def false_tool_func(x: WeatherQuery) -> WeatherInfo:
+            return WeatherInfo(temperature=0, condition="cold", location=x.location)
+
         false_node = ToolNode[WeatherQuery, WeatherInfo](
-            tool_func=lambda x: WeatherInfo(
-                temperature=0, condition="cold", location=x.location
-            ),
+            tool_func=false_tool_func,
             name="false_node",
         )
 
@@ -523,10 +524,11 @@ class TestAdvancedNodes:
             tool_func=call_weather_api, name="true_node"
         )
 
+        async def false_tool_func2(x: WeatherQuery) -> WeatherInfo:
+            return WeatherInfo(temperature=0, condition="cold", location=x.location)
+
         false_node = ToolNode[WeatherQuery, WeatherInfo](
-            tool_func=lambda x: WeatherInfo(
-                temperature=0, condition="cold", location=x.location
-            ),
+            tool_func=false_tool_func2,
             name="false_node",
         )
 
@@ -649,7 +651,7 @@ class TestCoverageEdgeCases:
 
         query = WeatherQuery(location="Paris")
 
-        with pytest.raises(FlowError, match="Input node node1 has not been executed"):
+        with pytest.raises(KeyError, match="node1"):
             await extract_result_from_stream(flow.astream(query))
 
     @pytest.mark.asyncio
@@ -658,7 +660,7 @@ class TestCoverageEdgeCases:
         flow = Flow(input_type=WeatherQuery, output_type=SimpleFlowResults)
 
         # Create a node that will raise an exception
-        def failing_tool(query: WeatherQuery) -> WeatherInfo:
+        async def failing_tool(query: WeatherQuery) -> WeatherInfo:
             raise ValueError("Simulated tool failure")
 
         failing_node = ToolNode[WeatherQuery, WeatherInfo](
@@ -670,7 +672,9 @@ class TestCoverageEdgeCases:
 
         query = WeatherQuery(location="Paris")
 
-        with pytest.raises(FlowError, match="Flow execution failed"):
+        with pytest.raises(
+            FlowError, match=r"Flow execution failed.*Simulated tool failure"
+        ):
             await extract_result_from_stream(flow.astream(query))
 
     def test_flow_validation_general_error(self):
@@ -922,7 +926,7 @@ class TestFlowNode:
         # Create a sub-flow with a node that will fail
         sub_flow = Flow(input_type=WeatherQuery, output_type=SimpleFlowResults)
 
-        def failing_tool(query: WeatherQuery) -> WeatherInfo:
+        async def failing_tool(query: WeatherQuery) -> WeatherInfo:
             msg = f"Intentional failure for {query.location}"
             raise ValueError(msg)
 
@@ -935,12 +939,11 @@ class TestFlowNode:
         # Create FlowNode
         flow_node = FlowNode[WeatherQuery, SimpleFlowResults](flow=sub_flow)
 
-        # Execution should fail and propagate the error
+        # Execution should fail and propagate the error (wrapped in FlowError)
         query = WeatherQuery(location="ErrorCity")
         with pytest.raises(FlowError) as exc_info:
             await extract_result_from_stream(flow_node.astream(query))
 
-        assert "Flow execution failed" in str(exc_info.value)
         assert "Intentional failure for ErrorCity" in str(exc_info.value)
 
 

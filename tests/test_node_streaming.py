@@ -51,7 +51,7 @@ class MergedOutput(BaseModel):
 async def test_tool_node_astream_sequence():
     """Test that ToolNode emits correct streaming sequence."""
 
-    def multiply_by_two(input_data: SimpleInput) -> SimpleOutput:
+    async def multiply_by_two(input_data: SimpleInput) -> SimpleOutput:
         return SimpleOutput(result=input_data.value * 2)
 
     node = ToolNode[SimpleInput, SimpleOutput](
@@ -77,14 +77,14 @@ async def test_tool_node_astream_sequence():
     assert items[2].error is None
 
     assert isinstance(items[3], StreamEnd)
-    assert items[3].result_preview is not None
+    assert items[3].result is not None
 
 
 @pytest.mark.asyncio
 async def test_tool_node_error_handling():
     """Test that ToolNode emits error in ToolResult on failure."""
 
-    def failing_tool(input_data: SimpleInput) -> SimpleOutput:
+    async def failing_tool(input_data: SimpleInput) -> SimpleOutput:
         raise ValueError("Tool failed!")
 
     node = ToolNode[SimpleInput, SimpleOutput](
@@ -128,8 +128,9 @@ async def test_parser_node_astream_sequence():
     assert items[1].result == TransformedOutput(transformed="value_42")
 
     assert isinstance(items[2], StreamEnd)
-    assert items[2].result_preview is not None
-    assert items[2].result_preview.get("transformed") == "value_42"
+    assert items[2].result is not None
+    assert isinstance(items[2].result, TransformedOutput)
+    assert items[2].result.transformed == "value_42"
 
 
 @pytest.mark.asyncio
@@ -142,9 +143,7 @@ async def test_if_node_astream_forwards_branch_progress():
         async def astream(self, input_data: SimpleInput):
             yield StreamStart(run_id="", node_id=self.name)
             result = SimpleOutput(result=input_data.value * 10)
-            yield StreamEnd(
-                run_id="", node_id=self.name, result_preview=result.model_dump()
-            )
+            yield StreamEnd(run_id="", node_id=self.name, result=result.model_dump())
 
     true_branch = BranchNode(name="true_branch")
     false_branch = BranchNode(name="false_branch")
@@ -202,9 +201,7 @@ async def test_retry_node_emits_errors_on_retry():
             if self.attempt_count < 3:
                 raise RuntimeError(f"Attempt {self.attempt_count} failed")
             result = SimpleOutput(result=input_data.value)
-            yield StreamEnd(
-                run_id="", node_id=self.name, result_preview=result.model_dump()
-            )
+            yield StreamEnd(run_id="", node_id=self.name, result=result.model_dump())
 
     unreliable = UnreliableNode(name="unreliable")
     retry_node = RetryNode[SimpleOutput](
@@ -232,12 +229,15 @@ async def test_retry_node_emits_errors_on_retry():
 async def test_merge_tool_node_astream_sequence():
     """Test that MergeToolNode emits correct streaming sequence."""
 
-    def merge_two_values(a: SimpleInput, b: SimpleInput) -> MergedOutput:
+    async def merge_two_values(a: SimpleInput, b: SimpleInput) -> MergedOutput:
         return MergedOutput(combined=f"{a.value}+{b.value}")
 
+    async def identity(x: SimpleInput) -> SimpleInput:
+        return x
+
     # Create source nodes
-    node_a = ToolNode[SimpleInput, SimpleInput](tool_func=lambda x: x, name="node_a")
-    node_b = ToolNode[SimpleInput, SimpleInput](tool_func=lambda x: x, name="node_b")
+    node_a = ToolNode[SimpleInput, SimpleInput](tool_func=identity, name="node_a")
+    node_b = ToolNode[SimpleInput, SimpleInput](tool_func=identity, name="node_b")
 
     merge_node = MergeToolNode[SimpleInput, SimpleInput, MergedOutput](
         inputs=(node_a.output, node_b.output),
@@ -258,19 +258,23 @@ async def test_merge_tool_node_astream_sequence():
     assert isinstance(items[3], StreamEnd)
 
     # Verify the merge happened
-    assert items[3].result_preview is not None
-    assert items[3].result_preview.get("combined") == "1+2"
+    assert items[3].result is not None
+    assert isinstance(items[3].result, MergedOutput)
+    assert items[3].result.combined == "1+2"
 
 
 @pytest.mark.asyncio
 async def test_merge_parser_node_astream_sequence():
     """Test that MergeParserNode emits correct streaming sequence."""
 
+    async def identity(x: SimpleInput) -> SimpleInput:
+        return x
+
     def parse_combined(a: SimpleInput, b: SimpleInput) -> MergedOutput:
         return MergedOutput(combined=f"a={a.value},b={b.value}")
 
-    node_a = ToolNode[SimpleInput, SimpleInput](tool_func=lambda x: x, name="node_a")
-    node_b = ToolNode[SimpleInput, SimpleInput](tool_func=lambda x: x, name="node_b")
+    node_a = ToolNode[SimpleInput, SimpleInput](tool_func=identity, name="node_a")
+    node_b = ToolNode[SimpleInput, SimpleInput](tool_func=identity, name="node_b")
 
     merge_parser = MergeParserNode[SimpleInput, SimpleInput, MergedOutput](
         inputs=(node_a.output, node_b.output),
@@ -288,15 +292,16 @@ async def test_merge_parser_node_astream_sequence():
     assert isinstance(items[0], StreamStart)
     assert isinstance(items[1], ToolResult)
     assert isinstance(items[2], StreamEnd)
-    assert items[2].result_preview is not None
-    assert items[2].result_preview.get("combined") == "a=10,b=20"
+    assert items[2].result is not None
+    assert isinstance(items[2].result, MergedOutput)
+    assert items[2].result.combined == "a=10,b=20"
 
 
 @pytest.mark.asyncio
 async def test_stream_coherence():
     """Test that all streams have coherent start and end markers."""
 
-    def simple_func(input_data: SimpleInput) -> SimpleOutput:
+    async def simple_func(input_data: SimpleInput) -> SimpleOutput:
         return SimpleOutput(result=input_data.value + 1)
 
     node = ToolNode[SimpleInput, SimpleOutput](
@@ -327,7 +332,7 @@ async def test_stream_coherence():
 async def test_progress_item_metadata():
     """Test that all progress items have proper metadata."""
 
-    def simple_func(input_data: SimpleInput) -> SimpleOutput:
+    async def simple_func(input_data: SimpleInput) -> SimpleOutput:
         return SimpleOutput(result=input_data.value)
 
     node = ToolNode[SimpleInput, SimpleOutput](
@@ -349,7 +354,7 @@ async def test_progress_item_metadata():
 async def test_run_wraps_astream():
     """Test that run() is a convenience wrapper that consumes astream()."""
 
-    def simple_func(input_data: SimpleInput) -> SimpleOutput:
+    async def simple_func(input_data: SimpleInput) -> SimpleOutput:
         return SimpleOutput(result=input_data.value * 3)
 
     node = ToolNode[SimpleInput, SimpleOutput](
@@ -368,10 +373,10 @@ async def test_run_wraps_astream():
 async def test_multiple_tool_calls_in_sequence():
     """Test multiple tool nodes streaming in sequence."""
 
-    def double(input_data: SimpleInput) -> SimpleOutput:
+    async def double(input_data: SimpleInput) -> SimpleOutput:
         return SimpleOutput(result=input_data.value * 2)
 
-    def triple(input_data: SimpleOutput) -> SimpleOutput:
+    async def triple(input_data: SimpleOutput) -> SimpleOutput:
         return SimpleOutput(result=input_data.result * 3)
 
     node1 = ToolNode[SimpleInput, SimpleOutput](tool_func=double, name="node1")

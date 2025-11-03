@@ -73,7 +73,7 @@ class TestEnhancedRetrieverNode:
             items.append(item)
 
         stream_end = next(i for i in items if isinstance(i, StreamEnd))
-        result = EnhancedRetrievalResult.model_validate(stream_end.result_preview)
+        result = EnhancedRetrievalResult.model_validate(stream_end.result)
 
         assert result.chunks
         assert any(stage["name"] == "split" for stage in result.stats["stages"])
@@ -101,7 +101,7 @@ class TestEnhancedRetrieverNode:
             items.append(item)
 
         stream_end = next(i for i in items if isinstance(i, StreamEnd))
-        result = EnhancedRetrievalResult.model_validate(stream_end.result_preview)
+        result = EnhancedRetrievalResult.model_validate(stream_end.result)
 
         assert result.chunks
         assert any(stage["name"] == "split" for stage in result.stats["stages"])
@@ -133,7 +133,7 @@ Content under section."""
             items.append(item)
 
         stream_end = next(i for i in items if isinstance(i, StreamEnd))
-        result = EnhancedRetrievalResult.model_validate(stream_end.result_preview)
+        result = EnhancedRetrievalResult.model_validate(stream_end.result)
 
         assert result.chunks
         assert any(stage["name"] == "split" for stage in result.stats["stages"])
@@ -161,7 +161,7 @@ Content under section."""
             items.append(item)
 
         stream_end = next(i for i in items if isinstance(i, StreamEnd))
-        result = EnhancedRetrievalResult.model_validate(stream_end.result_preview)
+        result = EnhancedRetrievalResult.model_validate(stream_end.result)
 
         assert result.chunks
         assert any(stage["name"] == "rerank" for stage in result.stats["stages"])
@@ -190,7 +190,7 @@ Content under section."""
             items.append(item)
 
         stream_end = next(i for i in items if isinstance(i, StreamEnd))
-        result = EnhancedRetrievalResult.model_validate(stream_end.result_preview)
+        result = EnhancedRetrievalResult.model_validate(stream_end.result)
 
         assert result.chunks
         assert any(stage["name"] == "diversify" for stage in result.stats["stages"])
@@ -220,7 +220,7 @@ Content under section."""
             items.append(item)
 
         stream_end = next(i for i in items if isinstance(i, StreamEnd))
-        result = EnhancedRetrievalResult.model_validate(stream_end.result_preview)
+        result = EnhancedRetrievalResult.model_validate(stream_end.result)
 
         assert result.chunks
         assert any(stage["name"] == "diversify" for stage in result.stats["stages"])
@@ -255,7 +255,7 @@ Content under section."""
             items.append(item)
 
         stream_end = next(i for i in items if isinstance(i, StreamEnd))
-        result = EnhancedRetrievalResult.model_validate(stream_end.result_preview)
+        result = EnhancedRetrievalResult.model_validate(stream_end.result)
 
         assert result.chunks
         assert len(result.stats["stages"]) >= 3
@@ -286,7 +286,7 @@ Content under section."""
             items.append(item)
 
         stream_end = next(i for i in items if isinstance(i, StreamEnd))
-        result = EnhancedRetrievalResult.model_validate(stream_end.result_preview)
+        result = EnhancedRetrievalResult.model_validate(stream_end.result)
 
         assert result.chunks
         assert any(stage["name"] == "split" for stage in result.stats["stages"])
@@ -307,7 +307,7 @@ Content under section."""
             items.append(item)
 
         stream_end = next(i for i in items if isinstance(i, StreamEnd))
-        result = EnhancedRetrievalResult.model_validate(stream_end.result_preview)
+        result = EnhancedRetrievalResult.model_validate(stream_end.result)
 
         assert result.chunks[0]["id"]
         assert result.chunks[0]["text"]

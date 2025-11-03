@@ -35,12 +35,12 @@ class Report(BaseModel):
     merge_summary: str
 
 
-def gather_research(query: Query) -> ResearchData:
+async def gather_research(query: Query) -> ResearchData:
     """Mock research gathering."""
     return ResearchData(findings=f"Research findings about {query.topic}")
 
 
-def perform_analysis(query: Query) -> AnalysisData:
+async def perform_analysis(query: Query) -> AnalysisData:
     """Mock analysis."""
     return AnalysisData(insights=f"Analysis insights for {query.topic}")
 

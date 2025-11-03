@@ -289,9 +289,83 @@ async for item in compiled.astream(input_data):
 result = await extract_result_from_stream(compiled.astream(input_data))
 ```
 
+### Dataflow Execution
+
+pydantic-flow uses eager dependency-based scheduling for optimal parallelism. Independent branches execute concurrently without artificial synchronization barriers, maximizing throughput while maintaining type safety.
+
+**Key Features:**
+- **Eager Execution**: Nodes execute immediately when dependencies are satisfied
+- **Automatic Parallelism**: Independent branches run concurrently without configuration
+- **Real-Time Streaming**: Progress events emitted as work completes
+- **Configurable Concurrency**: Optional `max_concurrent_nodes` limit in RunConfig
+
+#### Example: Diamond Pattern
+
+The diamond pattern demonstrates automatic parallelism:
+
+```python
+from pydantic import BaseModel
+from pydantic_flow import Flow, RunConfig
+from pydantic_flow.nodes import ToolNode, MergeToolNode
+
+class Query(BaseModel):
+    text: str
+
+class SearchResults(BaseModel):
+    hits: list[str]
+
+async def web_search(query: Query) -> SearchResults:
+    """Search the web (parallel with database)."""
+    await asyncio.sleep(2)  # Simulated API call
+    return SearchResults(hits=["result1", "result2"])
+
+async def db_search(query: Query) -> SearchResults:
+    """Search database (parallel with web)."""
+    await asyncio.sleep(2)  # Simulated query
+    return SearchResults(hits=["record1", "record2"])
+
+async def merge_results(web: SearchResults, db: SearchResults) -> SearchResults:
+    """Combine results from both sources."""
+    return SearchResults(hits=web.hits + db.hits)
+
+# Build flow
+flow = Flow[Query, SearchResults](
+    input_type=Query,
+    output_type=SearchResults,
+)
+
+query_node = ToolNode[Query, Query](
+    tool_func=lambda q: q,  # Pass-through
+    name="query",
+)
+web_node = ToolNode[Query, SearchResults](
+    tool_func=web_search,
+    name="web",
+)
+db_node = ToolNode[Query, SearchResults](
+    tool_func=db_search,
+    name="db",
+)
+merge_node = MergeToolNode[SearchResults](
+    tool_func=merge_results,
+    inputs=(web_node.output, db_node.output),
+    name="merge",
+)
+
+flow.add_nodes(query_node, web_node, db_node, merge_node)
+flow.add_edge(query_node, web_node)
+flow.add_edge(query_node, db_node)
+flow.add_edge(web_node, merge_node)
+flow.add_edge(db_node, merge_node)
+
+# Execute - web and db searches run in parallel
+result = await extract_result_from_stream(flow.astream(Query(text="pydantic")))
+# Total time: ~2 seconds (not 4 seconds sequential)
+```
+
 ### Loops and Conditional Routing
 
-pydantic-flow supports cycles and conditional control flow using a stepper-based execution engine. This enables patterns like while-loops, retry logic, and dynamic routing based on state.
+pydantic-flow supports cycles and conditional control flow. This enables patterns like while-loops, retry logic, and dynamic routing based on state.
 
 #### Self-Loop Counter Example
 
@@ -489,7 +563,7 @@ flow.add_conditional_edges("start", bad_router)
 # FlowTimeoutError: Raised when execution exceeds time limit
 config = RunConfig(timeout_seconds=30)
 try:
-    result = await extract_result_from_stream(compiled.astream(input_data, config))
+    result = await extract_result_from_stream(flow.astream(input_data, config))
 except FlowTimeoutError:
     print("Flow execution timed out")
 ```
@@ -499,14 +573,13 @@ except FlowTimeoutError:
 - **Route.END**: Special sentinel to terminate flow execution
 - **Conditional Edges**: Dynamic routing based on current state
 - **RunConfig**: Control `max_steps`, `timeout_seconds`, and `trace_iterations`
-- **Stepper Engine**: Automatically selected for flows with cycles or conditional edges
 - **Type Safety**: Router functions receive and return typed values
 
 See `examples/loops/` for complete runnable examples.
 
 ### Flow Construction Patterns
 
-pydantic-flow provides a **unified node-reference API** for building flows. You always work with node objects, and the framework automatically selects the optimal execution engine based on your flow's structure.
+pydantic-flow provides a **unified node-reference API** for building flows. You always work with node objects directly.
 
 #### Basic Pattern: Node References
 
@@ -558,9 +631,8 @@ def should_continue(state: BaseModel) -> Route | BaseNode:
 
 flow.add_conditional_edges(execute, should_continue)
 
-# Compile (auto-detects loop, uses stepper engine)
-compiled = flow.compile()
-result = await extract_result_from_stream(compiled.astream(initial_state, config))
+# Execute the flow
+result = await extract_result_from_stream(flow.astream(initial_state, config))
 ```
 
 **Router functions return:**
@@ -568,27 +640,30 @@ result = await extract_result_from_stream(compiled.astream(initial_state, config
 - `BaseNode` object - Direct reference to target node
 - `list[Route | BaseNode]` - Multiple targets for fan-out
 
-#### Automatic Engine Selection
+#### Execution Model
 
-The framework analyzes your flow and picks the best execution engine:
+The framework uses eager dependency-based scheduling:
 
 ```python
-# Simple acyclic flow → uses fast DAG engine (O(V+E) topological sort)
+# Simple chain - sequential execution
 flow = Flow(...)
 flow.add_nodes(a, b, c)
 flow.add_edge(a, b)
 flow.add_edge(b, c)
-compiled = flow.compile()  # Auto-detects DAG, uses topological sort
+result = await extract_result_from_stream(flow.astream(input_data))
 
-# Flow with loop → uses stepper engine (frontier-based execution)
+# Diamond pattern - automatic parallelism
 flow = Flow(...)
-flow.add_nodes(plan, execute)
-flow.add_edge(plan, execute)
-flow.add_conditional_edges(execute, lambda s: plan if s.continue else Route.END)
-compiled = flow.compile()  # Auto-detects cycle, uses stepper
+flow.add_nodes(a, b, c, d)
+flow.add_edge(a, b)
+flow.add_edge(a, c)
+flow.add_edge(b, d)
+flow.add_edge(c, d)
+result = await extract_result_from_stream(flow.astream(input_data))  # b and c execute in parallel
 
-# See why a particular engine was chosen
-compiled.explain()  # Shows: engine, reasons, detected features
+# Control concurrency with RunConfig
+config = RunConfig(max_concurrent_nodes=2)
+result = await extract_result_from_stream(flow.astream(input_data, config))
 ```
 
 #### Understanding explain()
