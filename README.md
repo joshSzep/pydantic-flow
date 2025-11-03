@@ -277,16 +277,13 @@ The `Flow` class manages execution with automatic dependency resolution:
 flow = Flow()
 flow.add_nodes(node1, node2, node3)
 
-# Compile the flow
-compiled = flow.compile()
-
 # Type-safe streaming execution
-async for item in compiled.astream(input_data):
+async for item in flow.astream(input_data):
     # Process progress items
     pass
 
 # Or extract final result
-result = await extract_result_from_stream(compiled.astream(input_data))
+result = await extract_result_from_stream(flow.astream(input_data))
 ```
 
 ### Dataflow Execution
@@ -403,9 +400,8 @@ def router(state: BaseModel) -> T_Route:
 flow.add_conditional_edges("tick", router)
 
 # Compile and execute
-compiled = flow.compile()
 config = RunConfig(max_steps=50)
-result = await extract_result_from_stream(compiled.astream(CounterState(n=0), config))
+result = await extract_result_from_stream(flow.astream(CounterState(n=0), config))
 # result.tick.n == 5
 ```
 
@@ -457,9 +453,8 @@ def router(state: BaseModel) -> T_Route:
 flow.add_conditional_edges("execute", router)
 
 # Execute with safety limits
-compiled = flow.compile()
 config = RunConfig(max_steps=50, trace_iterations=True)
-result = await extract_result_from_stream(compiled.astream(WorkState(iterations=0, total=0)), config)
+result = await extract_result_from_stream(flow.astream(WorkState(iterations=0, total=0)), config)
 ```
 
 #### Routing with Mapping Dictionaries
@@ -495,7 +490,6 @@ logger = logging.getLogger(__name__)
 async def run_with_error_handling():
     """Example of proper error handling for loop-capable flows."""
     flow = create_my_flow()
-    compiled = flow.compile()
     
     config = RunConfig(
         max_steps=100,
@@ -504,7 +498,7 @@ async def run_with_error_handling():
     )
     
     try:
-        result = await extract_result_from_stream(compiled.astream(initial_state, config))
+        result = await extract_result_from_stream(flow.astream(initial_state, config))
         logger.info(f"Flow completed successfully: {result}")
         return result
         
@@ -549,7 +543,7 @@ async def run_with_error_handling():
 # RecursionLimitError: Raised when max_steps is exceeded
 config = RunConfig(max_steps=25)  # Default limit
 try:
-    result = await extract_result_from_stream(compiled.astream(input_data, config))
+    result = await extract_result_from_stream(flow.astream(input_data, config))
 except RecursionLimitError as e:
     print(f"Loop exceeded limit: {e}")
     # e includes recent iteration trace
@@ -600,8 +594,7 @@ flow.set_entry_nodes(fetch)  # Entry point
 flow.add_edge(fetch, process)  # Static edge
 
 # Compile and run (automatically picks optimal engine)
-compiled = flow.compile()
-result = await extract_result_from_stream(compiled.astream(input_data, config))
+result = await extract_result_from_stream(flow.astream(input_data, config))
 ```
 
 #### Conditional Routing and Loops
@@ -666,29 +659,10 @@ config = RunConfig(max_concurrent_nodes=2)
 result = await extract_result_from_stream(flow.astream(input_data, config))
 ```
 
-#### Understanding explain()
-
-The `explain()` method shows how your flow will execute:
-
-```python
-compiled = flow.compile()
-analysis = compiled.explain()
-
-# Returns a structured explanation:
-# {
-#   "has_cycles": True,
-#   "has_conditional_edges": True,
-#   "entry_nodes": ["plan"],
-#   "node_count": 3,
-#   "edge_count": 4
-# }
-```
-
 #### 📌 Best Practices
 
 **✅ DO:**
 - Use node references everywhere: `flow.add_edge(node_a, node_b)`
-- Let the framework auto-detect the optimal engine
 - Return node objects from router functions: `return target_node`
 - Use `Route.END` to terminate flows
 

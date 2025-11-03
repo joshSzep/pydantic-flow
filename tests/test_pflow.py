@@ -252,8 +252,7 @@ class TestFlow:
         flow.add_nodes(node1, node2)
 
         # Verify flow compiles
-        compiled = flow.compile()
-        assert compiled is not None
+        # Flows execute directly - no compilation needed
         assert len(flow.nodes) == EXPECTED_NODES_COUNT
 
     def test_execution_order_complex(self):
@@ -280,8 +279,7 @@ class TestFlow:
         flow.add_nodes(node1, node2, node3, node4)
 
         # Verify flow compiles with complex dependencies
-        compiled = flow.compile()
-        assert compiled is not None
+        # Flows execute directly - no compilation needed
         assert len(flow.nodes) == EXPECTED_COMPLEX_NODES_COUNT
 
     @pytest.mark.asyncio
@@ -368,8 +366,7 @@ class TestFlow:
         flow.add_nodes(node1, node2)
 
         # Verify flow compiles without errors
-        compiled = flow.compile()
-        assert compiled is not None
+        # Flows execute directly - no compilation needed
 
     def test_cyclic_dependency_detection(self):
         """Test that flow compiles successfully with single node."""
@@ -380,8 +377,7 @@ class TestFlow:
         flow.add_nodes(node1)
 
         # This should compile without errors
-        compiled = flow.compile()
-        assert compiled is not None
+        # Flows execute directly - no compilation needed
 
     def test_flow_repr(self):
         """Test Flow string representation."""
@@ -611,8 +607,7 @@ class TestCoverageEdgeCases:
         flow.add_edge(node2, node1)
 
         # Stepper engine handles cycles - should compile successfully
-        compiled = flow.compile()
-        assert compiled is not None
+        # Flows execute directly - no compilation needed
 
     def test_cyclic_dependency_error_in_validate(self):
         """Test that flows with explicit cycles compile successfully.
@@ -630,8 +625,7 @@ class TestCoverageEdgeCases:
         flow.add_edge(node2, node1)
 
         # Should compile successfully - stepper handles cycles
-        compiled = flow.compile()
-        assert compiled is not None
+        # Flows execute directly - no compilation needed
 
     @pytest.mark.asyncio
     async def test_missing_input_node_error(self):
@@ -686,8 +680,7 @@ class TestCoverageEdgeCases:
         flow.add_nodes(node)
 
         # Compilation should work
-        compiled = flow.compile()
-        assert compiled is not None
+        # Flows execute directly - no compilation needed
 
     def test_node_type_hint_property(self):
         """Test the type_hint property of NodeOutput."""
@@ -740,7 +733,7 @@ class TestCoverageEdgeCases:
         assert "WeatherQuery" in str(exc_info.value)
         assert "WrongInputType" in str(exc_info.value)
 
-    def test_flow_validation_exception_wrapping(self):
+    async def test_flow_validation_exception_wrapping(self):
         """Test the exception wrapping in flow validation."""
         flow = Flow(input_type=WeatherQuery, output_type=GenericFlowResults)
 
@@ -760,9 +753,10 @@ class TestCoverageEdgeCases:
         # Add the bad node
         flow.nodes.append(BadNode())  # type: ignore
 
-        # Compilation should fail with bad node
+        # Execution should fail with bad node
         with pytest.raises(RuntimeError, match="Intentional failure"):
-            flow.compile()
+            async for _ in flow.astream(WeatherQuery(location="Test")):
+                pass
 
 
 class TestFlowNode:

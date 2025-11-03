@@ -76,7 +76,7 @@ async def demonstrate_shared_mode():
     )
     processor = ToolNode[Query, ProcessedText](tool_func=process_text, name="processed")
     sub_flow.add_nodes(processor)
-    sub_flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Create FlowNode with SHARED mode (default)
     flow_node = FlowNode[Query, Result](
@@ -84,7 +84,7 @@ async def demonstrate_shared_mode():
     )
 
     parent_flow.add_nodes(flow_node)
-    parent_flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Add a message to parent memory before running
     if parent_flow._conversation_memory:
@@ -125,7 +125,7 @@ async def demonstrate_isolated_mode():
     )
     processor = ToolNode[Query, ProcessedText](tool_func=process_text, name="processed")
     sub_flow.add_nodes(processor)
-    sub_flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Create FlowNode with ISOLATED mode
     flow_node = FlowNode[Query, Result](
@@ -136,7 +136,7 @@ async def demonstrate_isolated_mode():
     )
 
     parent_flow.add_nodes(flow_node)
-    parent_flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Add messages to parent memory
     if parent_flow._conversation_memory:
@@ -180,7 +180,7 @@ async def demonstrate_isolated_with_seed():
     )
     processor = ToolNode[Query, ProcessedText](tool_func=process_text, name="processed")
     sub_flow.add_nodes(processor)
-    sub_flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Create FlowNode with ISOLATED mode + seeding
     flow_node = FlowNode[Query, Result](
@@ -191,7 +191,7 @@ async def demonstrate_isolated_with_seed():
     )
 
     parent_flow.add_nodes(flow_node)
-    parent_flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Add messages to parent memory
     if parent_flow._conversation_memory:
@@ -231,7 +231,7 @@ async def demonstrate_readonly_mode():
     )
     processor = ToolNode[Query, ProcessedText](tool_func=process_text, name="processed")
     sub_flow.add_nodes(processor)
-    sub_flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Create FlowNode with READONLY mode
     flow_node = FlowNode[Query, Result](
@@ -239,7 +239,7 @@ async def demonstrate_readonly_mode():
     )
 
     parent_flow.add_nodes(flow_node)
-    parent_flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Add messages to parent memory
     if parent_flow._conversation_memory:

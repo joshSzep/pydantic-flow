@@ -81,7 +81,7 @@ async def test_flow_execution_with_checkpoints(temp_checkpoint_backend):
     flow.add_nodes(node_a, node_b, node_c)
 
     # Compile - should auto-select DAG engine (now has checkpoint v2)
-    compiled = flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Configure checkpoint v2
     checkpoint_config = CheckpointConfig(
@@ -97,7 +97,7 @@ async def test_flow_execution_with_checkpoints(temp_checkpoint_backend):
 
     # Execute flow
     result = await extract_result_from_stream(
-        compiled.astream(SimpleInput(value=1), run_config)
+        flow.astream(SimpleInput(value=1), run_config)
     )
 
     # Verify result - each node increments by 1
@@ -147,7 +147,7 @@ async def test_state_reconstruction_from_real_execution(temp_checkpoint_backend)
 
     flow.add_nodes(node_a, node_b, node_c)
 
-    compiled = flow.compile()
+    # Flows execute directly - no compilation needed
 
     checkpoint_config = CheckpointConfig(
         trace_sample_rate=0.0,
@@ -160,9 +160,7 @@ async def test_state_reconstruction_from_real_execution(temp_checkpoint_backend)
         run_id="test_reconstruction_run",
     )
 
-    await extract_result_from_stream(
-        compiled.astream(SimpleInput(value=10), run_config)
-    )
+    await extract_result_from_stream(flow.astream(SimpleInput(value=10), run_config))
 
     # Reconstruct state at wave 1 (after nodes a and b)
     from pydantic_flow.checkpoints.types import RunId
@@ -199,7 +197,7 @@ async def test_full_snapshot_every_nth_wave_with_real_flow(temp_checkpoint_backe
 
     flow.add_nodes(node_a, node_b, node_c)
 
-    compiled = flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Configure full snapshot every 2nd wave
     checkpoint_config = CheckpointConfig(
@@ -213,7 +211,7 @@ async def test_full_snapshot_every_nth_wave_with_real_flow(temp_checkpoint_backe
         run_id="test_full_snapshot_run",
     )
 
-    await extract_result_from_stream(compiled.astream(SimpleInput(value=1), run_config))
+    await extract_result_from_stream(flow.astream(SimpleInput(value=1), run_config))
 
     # Verify snapshot types
     from pydantic_flow.checkpoints.types import RunId

@@ -200,7 +200,7 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
 
         Nodes execute as soon as their dependencies are satisfied, maximizing
         parallelism and minimizing total execution time. This method uses the
-        dataflow engine for optimal execution without compilation steps.
+        dataflow engine for optimal execution.
 
         Args:
             inputs: The input data for the flow (must match the flow's InputT type)
@@ -215,7 +215,14 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
             InterruptionRequested: If a HITL interrupt handler requests stopping
 
         """
-        from pydantic_flow.engine.dataflow import DataflowEngine
+        from contextlib import nullcontext
+
+        from pydantic_flow.engine.dataflow import DataflowConfig
+        from pydantic_flow.telemetry.setup import is_enabled
+
+        # Prepare config
+        config = config or RunConfig()
+        run_id = config.run_id or str(uuid.uuid4())
 
         # Build edge dictionary from node-based edges
         edges_dict: dict[str, list[str]] = {}
@@ -266,8 +273,6 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         ]
 
         # Create dataflow engine
-        from pydantic_flow.engine.dataflow import DataflowConfig
-
         engine = DataflowEngine(
             config=DataflowConfig(
                 nodes=self.nodes,
@@ -278,12 +283,39 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
                 output_type=self._output_type,
                 cache_backend=self._cache_backend,
                 default_cache_policy=self._default_cache_policy,
+                flow_id=self.flow_id,
             )
         )
 
-        # Execute with dataflow engine
-        async for item in engine.astream(inputs, config):
-            yield item
+        # Telemetry: check if enabled before importing/instrumenting
+        if is_enabled():
+            from pydantic_flow.telemetry.attributes import AttributeKey
+            from pydantic_flow.telemetry.attributes import MetricName
+            from pydantic_flow.telemetry.attributes import SpanKind
+            from pydantic_flow.telemetry.helpers import create_span_async
+            from pydantic_flow.telemetry.helpers import measure_duration_async
+            from pydantic_flow.telemetry.helpers import record_counter
+
+            flow_attrs: dict[str, Any] = {
+                str(AttributeKey.RUN_ID): run_id,
+                str(AttributeKey.EXECUTION_MODE): "dataflow",
+                str(AttributeKey.FLOW_ID): self.flow_id,
+            }
+
+            record_counter(MetricName.FLOW_RUNS, attributes=flow_attrs)
+
+            span_ctx = create_span_async(SpanKind.FLOW_RUN, attributes=flow_attrs)
+            duration_ctx = measure_duration_async(
+                MetricName.FLOW_DURATION, attributes=flow_attrs
+            )
+        else:
+            span_ctx = nullcontext()
+            duration_ctx = nullcontext()
+
+        # Execute with dataflow engine and telemetry
+        async with span_ctx, duration_ctx:
+            async for item in engine.astream(inputs, config):
+                yield item
 
     async def astream_from_snapshot(
         self,
@@ -455,81 +487,6 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         # Store entry nodes
         self._entry_nodes = resolved_nodes
 
-    def compile(self) -> CompiledFlow[InputT, OutputT]:
-        """Compile the flow into an executable form using the stepper engine.
-
-        Returns:
-            CompiledFlow instance ready for execution.
-
-        Raises:
-            FlowError: If flow structure is invalid.
-
-        """
-        # Build edge dictionary from node-based edges for stepper
-        edges_dict: dict[str, list[str]] = {}
-
-        # Add explicit edges
-        for edge in self._explicit_edges:
-            if edge.source.name not in edges_dict:
-                edges_dict[edge.source.name] = []
-            edges_dict[edge.source.name].append(edge.target.name)
-
-        # Add implicit edges from node dependencies
-        for node in self.nodes:
-            deps = getattr(node, "dependencies", [])
-            for dep in deps:
-                if dep.name not in edges_dict:
-                    edges_dict[dep.name] = []
-                if node.name not in edges_dict[dep.name]:
-                    edges_dict[dep.name].append(node.name)
-
-        # Build conditional edges list from node-based conditional edges
-        # DataflowEngine expects tuples of (source_name, router_fn, mapping)
-        conditional_edges_tuples: list[
-            tuple[str, Callable[[BaseModel], Any], dict[Any, str] | None]
-        ] = []
-        for cond_edge in self._conditional_edges:
-            # Get mapping if exists
-            mapping = None
-            if cond_edge.source in self._conditional_mappings:
-                node_mapping = self._conditional_mappings[cond_edge.source]
-                # Convert node mapping to string mapping
-                mapping = {}
-                for key, value in node_mapping.items():
-                    if isinstance(value, Route):
-                        mapping[key] = value.value
-                    else:
-                        mapping[key] = value.name
-
-            conditional_edges_tuples.append((
-                cond_edge.source.name,
-                cond_edge.router,
-                mapping,
-            ))
-
-        entry_node_names = [
-            n.name
-            for n in (
-                self._entry_nodes if self._entry_nodes else self._infer_entry_nodes()
-            )
-        ]
-        from pydantic_flow.engine.dataflow import DataflowConfig
-
-        engine = DataflowEngine(
-            config=DataflowConfig(
-                nodes=self.nodes,
-                edges=edges_dict,
-                conditional_edges=conditional_edges_tuples,
-                entry_nodes=entry_node_names,
-                input_type=self._input_type,
-                output_type=self._output_type,
-                cache_backend=self._cache_backend,
-                default_cache_policy=self._default_cache_policy,
-                flow_id=self.flow_id,
-            )
-        )
-        return CompiledFlow(engine=engine)
-
     async def cache_delete(self, key: str) -> None:
         """Delete a specific cache entry.
 
@@ -644,70 +601,3 @@ class Flow[InputT: BaseModel, OutputT: BaseModel]:
         )
 
         return f"Flow[{input_type_name}, {output_type_name}](nodes={node_count})"
-
-
-class CompiledFlow[InputT: BaseModel, OutputT: BaseModel]:
-    """Compiled flow ready for execution using the dataflow engine."""
-
-    def __init__(self, engine: DataflowEngine[InputT, OutputT]) -> None:
-        """Initialize compiled flow.
-
-        Args:
-            engine: Dataflow engine for execution.
-
-        """
-        self._engine = engine
-        self.engine = engine  # Backward compatibility
-
-    async def astream(
-        self, inputs: InputT, config: RunConfig | None = None
-    ) -> AsyncIterator[ProgressItem]:
-        """Execute the compiled flow and stream progress items.
-
-        Args:
-            inputs: Input data.
-            config: Optional execution configuration.
-
-        Yields:
-            ProgressItem objects from flow execution, ending with FlowResult.
-
-        Raises:
-            InterruptionRequested: If a HITL interrupt occurs.
-
-        """
-        from contextlib import nullcontext
-
-        from pydantic_flow.telemetry.setup import is_enabled
-
-        # Prepare config
-        config = config or RunConfig()
-        run_id = config.run_id or str(uuid.uuid4())
-
-        # Telemetry: check if enabled before importing/instrumenting
-        if is_enabled():
-            from pydantic_flow.telemetry.attributes import AttributeKey
-            from pydantic_flow.telemetry.attributes import MetricName
-            from pydantic_flow.telemetry.attributes import SpanKind
-            from pydantic_flow.telemetry.helpers import create_span_async
-            from pydantic_flow.telemetry.helpers import measure_duration_async
-            from pydantic_flow.telemetry.helpers import record_counter
-
-            flow_attrs: dict[str, Any] = {
-                str(AttributeKey.RUN_ID): run_id,
-                str(AttributeKey.EXECUTION_MODE): "dataflow",
-                str(AttributeKey.FLOW_ID): self.engine.flow_id,
-            }
-
-            record_counter(MetricName.FLOW_RUNS, attributes=flow_attrs)
-
-            span_ctx = create_span_async(SpanKind.FLOW_RUN, attributes=flow_attrs)
-            duration_ctx = measure_duration_async(
-                MetricName.FLOW_DURATION, attributes=flow_attrs
-            )
-        else:
-            span_ctx = nullcontext()
-            duration_ctx = nullcontext()
-
-        async with span_ctx, duration_ctx:
-            async for item in self.engine.astream(inputs, config):
-                yield item

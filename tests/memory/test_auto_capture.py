@@ -198,7 +198,6 @@ async def test_agent_node_auto_capture_integration():
     )
 
     flow.add_nodes(node)
-    flow.compile()
 
     # Set memory context manually (normally done by Flow.run())
     token = _active_flow_memory.set(flow._conversation_memory)

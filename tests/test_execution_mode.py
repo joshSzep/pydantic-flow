@@ -67,10 +67,8 @@ class TestFlowCompilation:
         flow.add_nodes(node)
 
         # Compile and run
-        compiled = flow.compile()
-        result = await extract_result_from_stream(
-            compiled.astream(SimpleState(value=42))
-        )
+        # Flows execute directly - no compilation needed
+        result = await extract_result_from_stream(flow.astream(SimpleState(value=42)))
 
         assert result.simple.value == 42
 
@@ -83,10 +81,8 @@ class TestFlowCompilation:
         flow.set_entry_nodes("simple")
 
         # Compile and run
-        compiled = flow.compile()
-        result = await extract_result_from_stream(
-            compiled.astream(SimpleState(value=42))
-        )
+        # Flows execute directly - no compilation needed
+        result = await extract_result_from_stream(flow.astream(SimpleState(value=42)))
 
         assert result.simple.value == 42
 
@@ -104,10 +100,8 @@ class TestFlowCompilation:
         flow.add_conditional_edges("simple", router)
 
         # Stepper handles conditional edges
-        compiled = flow.compile()
-        result = await extract_result_from_stream(
-            compiled.astream(SimpleState(value=42))
-        )
+        # Flows execute directly - no compilation needed
+        result = await extract_result_from_stream(flow.astream(SimpleState(value=42)))
 
         assert result.simple.value == 42
 
@@ -135,10 +129,8 @@ class TestFlowCompilation:
         flow.add_conditional_edges("node2", router)
 
         # Stepper handles cycles
-        compiled = flow.compile()
-        result = await extract_result_from_stream(
-            compiled.astream(SimpleState(value=42))
-        )
+        # Flows execute directly - no compilation needed
+        result = await extract_result_from_stream(flow.astream(SimpleState(value=42)))
 
         assert result.node1.value == 42
         assert result.node2.value == 42
@@ -157,10 +149,8 @@ class TestFlowCompilation:
         flow.add_conditional_edges("simple", router)
 
         # Compile and run
-        compiled = flow.compile()
-        result = await extract_result_from_stream(
-            compiled.astream(SimpleState(value=42))
-        )
+        # Flows execute directly - no compilation needed
+        result = await extract_result_from_stream(flow.astream(SimpleState(value=42)))
 
         assert result.simple.value == 42
 
@@ -179,10 +169,8 @@ class TestFlowCompilation:
         flow.add_conditional_edges("node", router)
 
         # Compile and run
-        compiled = flow.compile()
-        result = await extract_result_from_stream(
-            compiled.astream(SimpleState(value=42))
-        )
+        # Flows execute directly - no compilation needed
+        result = await extract_result_from_stream(flow.astream(SimpleState(value=42)))
 
         assert result.node.value == 42
 
@@ -205,9 +193,7 @@ class TestFlowCompilation:
         flow.add_nodes(node1, node2, merge)
 
         # Compile and run
-        compiled = flow.compile()
-        result = await extract_result_from_stream(
-            compiled.astream(SimpleState(value=10))
-        )
+        # Flows execute directly - no compilation needed
+        result = await extract_result_from_stream(flow.astream(SimpleState(value=10)))
 
         assert result.merge.value == 20  # 10 + 10

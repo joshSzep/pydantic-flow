@@ -349,7 +349,7 @@ async def test_flow_run_type_mismatch():
 
 # Test flow compile with ExecutionMode (flow.py lines 443-449)
 def test_flow_compile_with_execution_mode():
-    """Test compiling a flow in DAG mode."""
+    """Test flow execution in dataflow mode."""
     node = SimpleNode(name="node")
     flow = Flow(
         input_type=SimpleState,
@@ -357,9 +357,9 @@ def test_flow_compile_with_execution_mode():
     )
     flow.add_nodes(node)
 
-    compiled = flow.compile()
-
-    assert compiled is not None
+    # Flows execute directly - no compilation needed
+    assert flow is not None
+    assert len(flow.nodes) == 1
 
 
 # Test flow execution with simple node (flow.py lines 283-348)
@@ -492,10 +492,10 @@ async def test_stepper_input_type_validation():
 
     flow.add_conditional_edges("node", router)
 
-    compiled = flow.compile()
+    # Flows execute directly - no compilation needed
 
     # This should work
-    result = await extract_result_from_stream(compiled.astream(SimpleState(value=100)))
+    result = await extract_result_from_stream(flow.astream(SimpleState(value=100)))
     assert result.node.value == 100
 
 
@@ -519,10 +519,10 @@ async def test_stepper_with_list_routing():
 
     flow.add_conditional_edges("node1", router)
 
-    compiled = flow.compile()
+    # Flows execute directly - no compilation needed
 
     # This should work and execute both node2 and node3
-    result = await extract_result_from_stream(compiled.astream(SimpleState(value=100)))
+    result = await extract_result_from_stream(flow.astream(SimpleState(value=100)))
     assert result.node1.value == 100
     assert result.node2.value == 100
     assert result.node3.value == 100

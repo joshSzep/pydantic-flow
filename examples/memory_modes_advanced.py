@@ -147,7 +147,7 @@ async def scenario_parallel_research():
         tool_func=research_topic_a, name="findings"
     )
     sub_flow_a.add_nodes(researcher_a)
-    sub_flow_a.compile()
+    # Flows execute directly - no compilation needed
 
     # Create sub-flow B with ISOLATED memory
     sub_flow_b = Flow[Query, ResearchResult](
@@ -159,7 +159,7 @@ async def scenario_parallel_research():
         tool_func=research_topic_b, name="findings"
     )
     sub_flow_b.add_nodes(researcher_b)
-    sub_flow_b.compile()
+    # Flows execute directly - no compilation needed
 
     # Wrap sub-flows with ISOLATED mode
     flow_node_a = FlowNode[Query, ResearchResult](
@@ -177,7 +177,7 @@ async def scenario_parallel_research():
     )
 
     parent_flow.add_nodes(flow_node_a, flow_node_b)
-    parent_flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Execute
     result = await extract_result_from_stream(
@@ -235,7 +235,7 @@ async def scenario_context_enrichment():
         tool_func=enrich_context, name="context"
     )
     enrichment_flow.add_nodes(enricher)
-    enrichment_flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Wrap with READONLY mode
     enrichment_node = FlowNode[Query, EnrichedContext](
@@ -245,7 +245,7 @@ async def scenario_context_enrichment():
     )
 
     parent_flow.add_nodes(enrichment_node)
-    parent_flow.compile()
+    # Flows execute directly - no compilation needed
 
     print("Parent memory before enrichment: 2 messages")
 
@@ -297,7 +297,7 @@ async def scenario_sequential_conversation():
         tool_func=research_topic_b, name="topic_b"
     )
     research_flow.add_nodes(researcher_a, researcher_b)
-    research_flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Create summary sub-flow
     summary_flow = Flow[ParallelResearchOutput, SummaryResult](
@@ -309,7 +309,7 @@ async def scenario_sequential_conversation():
         tool_func=summarize_findings, name="summary"
     )
     summary_flow.add_nodes(summarizer)
-    summary_flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Wrap with SHARED mode (default)
     research_node = FlowNode[Query, ParallelResearchOutput](
@@ -326,7 +326,7 @@ async def scenario_sequential_conversation():
     )
 
     parent_flow.add_nodes(research_node, summary_node)  # type: ignore[arg-type]
-    parent_flow.compile()
+    # Flows execute directly - no compilation needed
 
     # Execute
     result = await extract_result_from_stream(

@@ -82,12 +82,8 @@ async def main() -> None:
     router = create_counter_router(max_count=5)
     flow.add_conditional_edges("tick", router)
 
-    compiled = flow.compile()
-
     config = RunConfig(max_steps=50, trace_iterations=True)
-    result = await extract_result_from_stream(
-        compiled.astream(CounterState(n=0), config)
-    )
+    result = await extract_result_from_stream(flow.astream(CounterState(n=0), config))
 
     print(f"\nFinal result: n = {result.tick.n}")
 

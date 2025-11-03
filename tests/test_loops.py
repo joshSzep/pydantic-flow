@@ -134,9 +134,7 @@ class TestLoops:
 
         flow.add_conditional_edges("tick", router)
 
-        compiled = flow.compile()
-        result = await extract_result_from_stream(compiled.astream(CounterState(n=0)))
-
+        result = await extract_result_from_stream(flow.astream(CounterState(n=0)))
         assert result.tick.n == 5
 
     @pytest.mark.asyncio
@@ -157,9 +155,7 @@ class TestLoops:
 
         flow.add_conditional_edges("execute", router)
 
-        compiled = flow.compile()
-        result = await extract_result_from_stream(compiled.astream(CounterState(n=0)))
-
+        result = await extract_result_from_stream(flow.astream(CounterState(n=0)))
         assert result.execute.n >= 10
 
     @pytest.mark.asyncio
@@ -175,14 +171,9 @@ class TestLoops:
 
         flow.add_conditional_edges("tick", router)
 
-        compiled = flow.compile()
         config = RunConfig(max_steps=10)
-
         with pytest.raises(RecursionLimitError) as exc_info:
-            await extract_result_from_stream(
-                compiled.astream(CounterState(n=0), config)
-            )
-
+            await extract_result_from_stream(flow.astream(CounterState(n=0), config))
         assert "Max steps (10) exceeded" in str(exc_info.value)
 
     @pytest.mark.asyncio
@@ -203,9 +194,7 @@ class TestLoops:
         flow.add_conditional_edges("a", router, mapping={"true": "b", "false": "a"})
         flow.add_conditional_edges("b", lambda s: Route.END)
 
-        compiled = flow.compile()
-        result = await extract_result_from_stream(compiled.astream(CounterState(n=0)))
-
+        result = await extract_result_from_stream(flow.astream(CounterState(n=0)))
         assert result.a is not None
         assert result.a.n >= 3
         assert result.b is not None
@@ -223,11 +212,8 @@ class TestLoops:
 
         flow.add_conditional_edges("tick", router)
 
-        compiled = flow.compile()
-
         with pytest.raises(RoutingError) as exc_info:
-            await extract_result_from_stream(compiled.astream(CounterState(n=0)))
-
+            await extract_result_from_stream(flow.astream(CounterState(n=0)))
         assert "not a valid node name" in str(exc_info.value)
 
     @pytest.mark.asyncio
@@ -237,7 +223,6 @@ class TestLoops:
         tick_node = IncrementNode(name="tick")
         flow.add_nodes(tick_node)
         flow.set_entry_nodes("tick")
-
         iterations_seen = []
 
         def router(state: BaseModel) -> T_Route:
@@ -250,12 +235,10 @@ class TestLoops:
 
         flow.add_conditional_edges("tick", router)
 
-        compiled = flow.compile()
         config = RunConfig(trace_iterations=True)
         result = await extract_result_from_stream(
-            compiled.astream(CounterState(n=0), config)
+            flow.astream(CounterState(n=0), config)
         )
-
         assert result.tick.n == 3
         assert len(iterations_seen) > 0
 
@@ -272,11 +255,8 @@ class TestLoops:
 
         flow.add_conditional_edges("tick", router, mapping={"known": "tick"})
 
-        compiled = flow.compile()
-
         with pytest.raises(RoutingError) as exc_info:
-            await extract_result_from_stream(compiled.astream(CounterState(n=0)))
-
+            await extract_result_from_stream(flow.astream(CounterState(n=0)))
         assert "not in mapping" in str(exc_info.value)
 
     def test_set_entry_nodes_with_unknown_node_raises(self) -> None:
@@ -284,20 +264,16 @@ class TestLoops:
         flow = Flow(input_type=CounterState, output_type=OutputState)
         tick_node = IncrementNode(name="tick")
         flow.add_nodes(tick_node)
-
         with pytest.raises(ValueError) as exc_info:
             flow.set_entry_nodes("nonexistent")
-
         assert "Unknown node name" in str(exc_info.value)
         assert "nonexistent" in str(exc_info.value)
 
     def test_set_entry_nodes_with_no_nodes_raises(self) -> None:
         """Test that set_entry_nodes requires at least one node."""
         flow = Flow(input_type=CounterState, output_type=OutputState)
-
         with pytest.raises(ValueError) as exc_info:
             flow.set_entry_nodes()
-
         assert "Must specify at least one entry node" in str(exc_info.value)
 
     @pytest.mark.asyncio
@@ -339,14 +315,9 @@ class TestLoops:
 
         flow.add_conditional_edges("tick", router)
 
-        compiled = flow.compile()
         config = RunConfig(timeout_seconds=1, max_steps=50)
-
         with pytest.raises(FlowTimeoutError) as exc_info:
-            await extract_result_from_stream(
-                compiled.astream(CounterState(n=0), config)
-            )
-
+            await extract_result_from_stream(flow.astream(CounterState(n=0), config))
         assert "timeout" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
@@ -362,16 +333,13 @@ class TestLoops:
 
         flow.add_conditional_edges("tick", router)
 
-        compiled = flow.compile()
-
         class WrongState(BaseModel):
             """Wrong state type."""
 
             x: str
 
         with pytest.raises(TypeError) as exc_info:
-            await extract_result_from_stream(compiled.astream(WrongState(x="wrong")))  # type: ignore[arg-type]
-
+            await extract_result_from_stream(flow.astream(WrongState(x="wrong")))  # type: ignore[arg-type]
         assert "Input type mismatch" in str(exc_info.value)
 
     @pytest.mark.asyncio
@@ -398,11 +366,8 @@ class TestLoops:
 
         flow.add_conditional_edges("tick", router)
 
-        compiled = flow.compile()
-
         with pytest.raises(FlowError) as exc_info:
-            await extract_result_from_stream(compiled.astream(CounterState(n=0)))
-
+            await extract_result_from_stream(flow.astream(CounterState(n=0)))
         assert "Flow execution failed" in str(exc_info.value)
 
     @pytest.mark.asyncio
@@ -436,10 +401,8 @@ class TestLoops:
 
         flow.add_conditional_edges("dependent", router)
 
-        compiled = flow.compile()
         result = await extract_result_from_stream(
-            compiled.astream(CounterState(n=5), RunConfig())
+            flow.astream(CounterState(n=5), RunConfig())
         )
-
         assert result.start.n == 5
         assert result.dependent.n == 15

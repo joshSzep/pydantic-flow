@@ -15,7 +15,6 @@ from pydantic_flow.core import Route
 from pydantic_flow.core import RouterFunction
 from pydantic_flow.core import RoutingError
 from pydantic_flow.core import RunConfig
-from pydantic_flow.flow import CompiledFlow
 from pydantic_flow.flow import CyclicDependencyError
 from pydantic_flow.flow import Flow
 from pydantic_flow.flow import FlowError
@@ -122,7 +121,6 @@ __all__ = [
     "ChatPromptTemplate",
     "ChatRole",
     "CohereEmbeddings",
-    "CompiledFlow",
     "CompressionMetrics",
     "ConversationMemory",
     "CyclicDependencyError",

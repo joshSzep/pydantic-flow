@@ -131,7 +131,6 @@ async def main():
     )
 
     flow.add_nodes(research_node, analysis_node, metadata_node, merge_node)
-    flow.compile()
 
     print("\nRunning flow...")
     result = await extract_result_from_stream(flow.astream(Query(topic="AI Workflows")))

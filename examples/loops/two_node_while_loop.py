@@ -123,11 +123,9 @@ async def main() -> None:
     router = create_loop_router(max_iterations=5)
     flow.add_conditional_edges("execute", router)
 
-    compiled = flow.compile()
-
     config = RunConfig(max_steps=50, trace_iterations=True)
     result = await extract_result_from_stream(
-        compiled.astream(WorkState(iterations=0, total=0), config)
+        flow.astream(WorkState(iterations=0, total=0), config)
     )
 
     print("\nFinal result:")

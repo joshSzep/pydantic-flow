@@ -178,9 +178,7 @@ async def test_flow_compile_passes_cache_to_stepper():
     flow.add_nodes(node)
     flow.set_entry_nodes("test")
 
-    compiled = flow.compile()
-
-    # Verify engine has cache backend (always stepper now)
-    if compiled.engine is not None:
-        assert compiled.engine.cache_backend is cache
-        assert compiled.engine.default_cache_policy is policy
+    # Flow now executes directly without compilation
+    # Cache backend is passed to DataflowEngine in astream()
+    assert flow._cache_backend is cache
+    assert flow._default_cache_policy is policy
