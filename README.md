@@ -216,6 +216,52 @@ weather_branch = IfNode(
 )
 ```
 
+#### Fan-In Pattern (N Inputs)
+All node types support multiple inputs natively, enabling fan-in patterns:
+
+```python
+# Multiple nodes producing different data
+analysis_node = ToolNode[Input, Analysis](
+    tool_func=analyze_data,
+    name="analysis"
+)
+
+facts_node = ToolNode[Input, Facts](
+    tool_func=gather_facts,
+    name="facts"
+)
+
+metadata_node = ToolNode[Input, Metadata](
+    tool_func=get_metadata,
+    name="metadata"
+)
+
+# ToolNode with multiple inputs
+async def combine_all(analysis: Analysis, facts: Facts, metadata: Metadata) -> Report:
+    return Report(
+        analysis=analysis,
+        facts=facts,
+        metadata=metadata
+    )
+
+merge_node = ToolNode(
+    inputs=(analysis_node.output, facts_node.output, metadata_node.output),
+    tool_func=combine_all,
+    name="merge"
+)
+
+# AgentNode with multiple inputs for LLM prompts
+merge_prompt = AgentNode.from_prompt(
+    model="openai:gpt-4",
+    inputs=(analysis_node.output, facts_node.output),
+    prompt_template="Analyze: {0}\nFacts: {1}\nProvide summary:",
+    name="llm_merge"
+)
+```
+
+> **Note:** The specialized `MergeToolNode`, `MergeParserNode`, and `MergePromptNode` classes are deprecated. Use the base node types with the `inputs` parameter instead.
+```
+
 #### MergeToolNode & MergeParserNode
 Enable fan-in patterns where multiple node outputs combine into one:
 
@@ -303,7 +349,7 @@ The diamond pattern demonstrates automatic parallelism:
 ```python
 from pydantic import BaseModel
 from pydantic_flow import Flow, RunConfig
-from pydantic_flow.nodes import ToolNode, MergeToolNode
+from pydantic_flow.nodes import ToolNode
 
 class Query(BaseModel):
     text: str
@@ -343,7 +389,7 @@ db_node = ToolNode[Query, SearchResults](
     tool_func=db_search,
     name="db",
 )
-merge_node = MergeToolNode[SearchResults](
+merge_node = ToolNode(
     tool_func=merge_results,
     inputs=(web_node.output, db_node.output),
     name="merge",

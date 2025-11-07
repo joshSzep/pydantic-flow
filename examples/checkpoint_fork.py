@@ -15,8 +15,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from pydantic_flow import AgentNode
 from pydantic_flow import Flow
-from pydantic_flow import PromptNode
 from pydantic_flow.checkpoints import CheckpointDebugger
 from pydantic_flow.checkpoints import SQLiteCheckpointBackend
 from pydantic_flow.checkpoints import SQLiteCheckpointConfig
@@ -60,15 +60,17 @@ async def run_initial_flow(
     flow = Flow(input_type=Query, output_type=Result)
 
     # Step 1: Choose strategy
-    strategize = PromptNode[Query, Strategy](
+    strategize = AgentNode.from_prompt(
+        model="openai:gpt-4",
+        prompt_template="Choose an approach for: {text}",
         name="strategize",
-        prompt="Choose an approach for: {text}",
     )
 
     # Step 2: Execute strategy
-    execute = PromptNode[Strategy, Result](
+    execute = AgentNode.from_prompt(
+        model="openai:gpt-4",
+        prompt_template="Execute {approach} approach",
         name="execute",
-        prompt="Execute {approach} approach",
     )
 
     flow.add_nodes(strategize, execute)

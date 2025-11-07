@@ -4,12 +4,13 @@ from collections.abc import AsyncIterator
 from collections.abc import Awaitable
 from collections.abc import Callable
 import inspect
+from typing import Any
 import uuid
 
 from pydantic import BaseModel
 
 from pydantic_flow.cache.base import CachePolicy
-from pydantic_flow.nodes.base import Node
+from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import GenericResult
@@ -20,35 +21,47 @@ from pydantic_flow.streaming.tool_events import ToolResult
 
 
 class ToolNode[InputModel: BaseModel, OutputModel: BaseModel](
-    Node[InputModel, OutputModel]
+    BaseNode[InputModel, OutputModel]
 ):
     """A node that calls an external tool using an async function.
 
     This node enables integration with external APIs, databases, or other services.
     As an async-first framework, only async functions are supported.
+
+    Supports single or multiple inputs via the inputs parameter:
+    - Single input: inputs=node.output, tool_func takes one argument
+    - Multiple inputs: inputs=(node1.output, node2.output, ...),
+                      tool_func takes multiple arguments (unpacked from tuple)
+    - Entry node: inputs=None
     """
 
     def __init__(
         self,
-        tool_func: Callable[[InputModel], Awaitable[OutputModel]],
+        tool_func: Callable[[InputModel], Awaitable[OutputModel]]
+        | Callable[..., Awaitable[OutputModel]],
         *,
-        input: NodeOutput[InputModel] | None = None,
+        inputs: tuple[NodeOutput, ...] | None = None,
         name: str | None = None,
         cache_policy: CachePolicy | None = None,
     ) -> None:
         """Initialize a ToolNode.
 
         Args:
-            tool_func: Async function that implements the tool call
-            input: Optional input from another node's output
+            tool_func: Async function that implements the tool call.
+                      For single input: takes one InputModel argument.
+                      For multiple inputs: takes multiple arguments (will be unpacked).
+            inputs: Optional tuple of inputs from other nodes:
+                   - None: Entry node with no dependencies
+                   - (node.output,): Single input dependency
+                   - (node1.output, node2.output, ...): Multiple inputs (fan-in)
             name: Optional unique identifier for this node
             cache_policy: Optional cache policy for this node
 
         Raises:
-            ValueError: If tool_func is not an async function
+            ValueError: If tool_func is not an async function.
 
         """
-        super().__init__(input, name, cache_policy=cache_policy)
+        super().__init__(inputs, name, cache_policy=cache_policy)
 
         # Validate that tool_func is async
         if not inspect.iscoroutinefunction(tool_func):
@@ -61,7 +74,9 @@ class ToolNode[InputModel: BaseModel, OutputModel: BaseModel](
 
         self.tool_func = tool_func
 
-    async def astream(self, input_data: InputModel) -> AsyncIterator[ProgressItem]:
+    async def astream(
+        self, input_data: InputModel | tuple[Any, ...]
+    ) -> AsyncIterator[ProgressItem]:
         """Stream progress items while executing the tool.
 
         Yields:
@@ -84,7 +99,14 @@ class ToolNode[InputModel: BaseModel, OutputModel: BaseModel](
 
         # Execute the tool (await the async function)
         try:
-            result = await self.tool_func(input_data)
+            # Handle both single input and multiple inputs
+            if isinstance(input_data, tuple):
+                # Multiple inputs: unpack them
+                result = await self.tool_func(*input_data)
+            else:
+                # Single input
+                result = await self.tool_func(input_data)
+
             yield ToolResult(
                 run_id=run_id,
                 node_id=node_id,

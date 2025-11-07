@@ -1,15 +1,15 @@
-"""Example demonstrating MergePromptNode for combining multiple inputs.
+"""Example demonstrating AgentNode for combining multiple inputs.
 
-This example shows how to use MergePromptNode to merge outputs from multiple
-upstream nodes and send them to an LLM for processing.
+This example shows how to use AgentNode with multiple inputs to merge outputs
+from multiple upstream nodes and send them to an LLM for processing.
 """
 
 import asyncio
 
 from pydantic import BaseModel
 
+from pydantic_flow import AgentNode
 from pydantic_flow import Flow
-from pydantic_flow import MergePromptNode
 from pydantic_flow import ToolNode
 
 
@@ -82,7 +82,7 @@ async def perform_analysis(query: Query) -> AnalysisData:
 async def main():
     """Run the merge prompt example."""
     print("=" * 60)
-    print("MergePromptNode Example: Combining Research and Analysis")
+    print("AgentNode Multi-Input Example: Combining Research and Analysis")
     print("=" * 60)
     print()
 
@@ -97,10 +97,11 @@ async def main():
         name="analysis",
     )
 
-    # Create a MergePromptNode that combines both outputs
+    # Create an AgentNode that combines both outputs
     # The prompt can reference inputs by index {0}, {1} or by field names
-    merge_node = MergePromptNode[ResearchData, AnalysisData, str](
-        prompt="""Based on the following information, create a comprehensive summary:
+    merge_node = AgentNode.from_prompt(
+        model="test",  # In production, use "openai:gpt-4" or similar
+        prompt_template="""Based on the following information, create a comprehensive summary:
 
 RESEARCH DATA:
 Facts: {0.facts}
@@ -113,7 +114,6 @@ Conclusion: {1.conclusion}
 Provide a clear, concise summary that integrates both the research
 findings and analysis.""",
         inputs=(research_node.output, analysis_node.output),
-        model="test",  # In production, use "openai:gpt-4" or similar
         name="merge_summary",
     )
 
@@ -136,7 +136,7 @@ findings and analysis.""",
     # For demonstration without API keys:
     print("✓ Research node would gather facts and sources")
     print("✓ Analysis node would extract key points and conclusions")
-    print("✓ MergePromptNode would combine both into a prompt")
+    print("✓ AgentNode would combine both into a prompt")
     print("✓ LLM would generate a comprehensive summary")
     print()
     print("Example prompt format:")
@@ -171,10 +171,10 @@ async def main_simple():
     )
 
     # Use simple positional references {0} and {1}
-    merge_node = MergePromptNode[ResearchData, AnalysisData, str](
-        prompt="Summarize this research: {0}\n\nAnd this analysis: {1}",
-        inputs=(research_node.output, analysis_node.output),
+    merge_node = AgentNode.from_prompt(
         model="test",
+        prompt_template="Summarize this research: {0}\n\nAnd this analysis: {1}",
+        inputs=(research_node.output, analysis_node.output),
         name="simple_merge",
     )
 
@@ -191,7 +191,7 @@ async def main_simple():
 
 
 if __name__ == "__main__":
-    print("Pydantic-Flow MergePromptNode Examples")
+    print("Pydantic-Flow AgentNode Multi-Input Examples")
     print()
     asyncio.run(main())
     asyncio.run(main_simple())

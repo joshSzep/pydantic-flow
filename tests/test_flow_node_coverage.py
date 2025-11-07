@@ -282,7 +282,7 @@ async def test_flow_node_dependencies_with_input():
     # Create a flow node with input dependency
     flow_node = FlowNode[SimpleInput, SimpleOutput](
         flow=sub_flow,
-        input=upstream_node.output,  # type: ignore
+        inputs=(upstream_node.output,),  # type: ignore
         name="dependent_flow_node",
     )
 

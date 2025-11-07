@@ -40,20 +40,11 @@ from pydantic_flow.memory import SummarizationCompressor
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import FlowNode
 from pydantic_flow.nodes import IfNode
-from pydantic_flow.nodes import MergeNode
-from pydantic_flow.nodes import MergeParserNode
-from pydantic_flow.nodes import MergePromptNode
-from pydantic_flow.nodes import MergeToolNode
-from pydantic_flow.nodes import Node
 from pydantic_flow.nodes import NodeOutput
-from pydantic_flow.nodes import NodeWithInput
 from pydantic_flow.nodes import ParserNode
-from pydantic_flow.nodes import PromptConfig
-from pydantic_flow.nodes import PromptNode
 from pydantic_flow.nodes import RetryNode
 from pydantic_flow.nodes import ToolNode
 from pydantic_flow.nodes.agent import AgentNode
-from pydantic_flow.nodes.agent import LLMNode
 from pydantic_flow.nodes.retriever import RetrieverNode
 from pydantic_flow.project_info import ProjectInfo
 from pydantic_flow.project_info import get_project_info
@@ -100,6 +91,7 @@ from pydantic_flow.streaming import ToolCall
 from pydantic_flow.streaming import ToolResult
 from pydantic_flow.streaming.helpers import collect_all_tokens
 from pydantic_flow.streaming.helpers import collect_final_result
+from pydantic_flow.streaming.helpers import collect_result
 from pydantic_flow.streaming.helpers import iter_fields
 from pydantic_flow.streaming.helpers import iter_tokens
 from pydantic_flow.streaming.parser import StreamingParser
@@ -147,20 +139,13 @@ __all__ = [
     "InterruptionRequested",
     "JoinStrategy",
     "JsonModelParser",
-    "LLMNode",
     "Loader",
     "MemoryCompressionComplete",
     "MemoryCompressionPending",
     "MemoryCompressor",
     "MemoryConfig",
-    "MergeNode",
-    "MergeParserNode",
-    "MergePromptNode",
-    "MergeToolNode",
     "Metadata",
-    "Node",
     "NodeOutput",
-    "NodeWithInput",
     "NonFatalError",
     "OllamaEmbeddings",
     "OpenAIEmbeddings",
@@ -171,8 +156,6 @@ __all__ = [
     "ProgressItem",
     "ProgressType",
     "ProjectInfo",
-    "PromptConfig",
-    "PromptNode",
     "PromptTemplate",
     "RecursionLimitError",
     "RetrievalItem",
@@ -201,6 +184,7 @@ __all__ = [
     "WebLoader",
     "collect_all_tokens",
     "collect_final_result",
+    "collect_result",
     "from_template",
     "get_project_info",
     "iter_fields",

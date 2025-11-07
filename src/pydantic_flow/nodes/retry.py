@@ -6,14 +6,14 @@ from typing import Any
 from pydantic import BaseModel
 
 from pydantic_flow.cache.base import CachePolicy
-from pydantic_flow.nodes.base import Node
+from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 from pydantic_flow.streaming.system_events import NonFatalError
 
 
-class RetryNode[OutputModel: BaseModel](Node[Any, OutputModel]):
+class RetryNode[OutputModel: BaseModel](BaseNode[Any, OutputModel]):
     """A node that wraps another node and retries on failure.
 
     This node provides resilience by retrying operations that may fail intermittently.
@@ -21,7 +21,7 @@ class RetryNode[OutputModel: BaseModel](Node[Any, OutputModel]):
 
     def __init__(
         self,
-        wrapped_node: Node[Any, OutputModel],
+        wrapped_node: BaseNode[Any, OutputModel],
         *,
         max_retries: int = 3,
         name: str | None = None,
@@ -36,7 +36,7 @@ class RetryNode[OutputModel: BaseModel](Node[Any, OutputModel]):
             cache_policy: Optional cache policy for this node
 
         """
-        super().__init__(wrapped_node.input, name, cache_policy=cache_policy)
+        super().__init__(wrapped_node._inputs, name, cache_policy=cache_policy)
         self.wrapped_node = wrapped_node
         self.max_retries = max_retries
 

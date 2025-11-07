@@ -151,7 +151,7 @@ async def demonstrate_simple_sub_flow():
     summary_sub_flow = await create_summary_sub_flow()
     summary_flow_node = FlowNode[ResearchResults, SummaryResults](
         flow=summary_sub_flow,
-        input=research_flow_node.output,  # Chain flows together
+        inputs=(research_flow_node.output,),  # Chain flows together
         name="summary_flow",
     )
 
@@ -189,7 +189,7 @@ async def demonstrate_nested_sub_flows():
     summary_sub_flow = await create_summary_sub_flow()
     summary_node = FlowNode[ResearchResults, SummaryResults](
         flow=summary_sub_flow,
-        input=level1_node.output,
+        inputs=(level1_node.output,),
         name="summary_flow",
     )
 
@@ -246,13 +246,13 @@ async def demonstrate_reusable_sub_flows():
 
     summary_node_a = FlowNode[ResearchResults, SummaryResults](
         flow=summary_flow,
-        input=research_node_a.output,
+        inputs=(research_node_a.output,),
         name="summary_flow",
     )
 
     summary_node_b = FlowNode[ResearchResults, SummaryResults](
         flow=summary_flow,
-        input=research_node_b.output,
+        inputs=(research_node_b.output,),
         name="summary_flow",
     )
 

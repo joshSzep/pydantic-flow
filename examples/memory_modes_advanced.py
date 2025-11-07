@@ -320,7 +320,7 @@ async def scenario_sequential_conversation():
 
     summary_node = FlowNode[ParallelResearchOutput, SummaryResult](
         flow=summary_flow,
-        input=research_node.output,
+        inputs=(research_node.output,),
         name="result",
         memory_mode=MemoryMode.SHARED,  # Also shares parent memory
     )

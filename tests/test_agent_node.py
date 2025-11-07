@@ -1,4 +1,4 @@
-"""Comprehensive tests for AgentNode and LLMNode with mocked pydantic-ai."""
+"""Comprehensive tests for AgentNode and AgentNode with mocked pydantic-ai."""
 
 from typing import Any
 from unittest.mock import AsyncMock
@@ -10,7 +10,6 @@ from pydantic_ai import Agent
 import pytest
 
 from pydantic_flow.nodes.agent import AgentNode
-from pydantic_flow.nodes.agent import LLMNode
 from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
@@ -194,7 +193,7 @@ async def test_agent_node_generates_run_id_if_none():
 
 @pytest.mark.asyncio
 async def test_llm_node_basic_streaming():
-    """Test LLMNode streams tokens and returns structured output."""
+    """Test AgentNode streams tokens and returns structured output."""
     # Create mock agent with structured output
     mock_agent = MagicMock(spec=Agent)
 
@@ -218,8 +217,8 @@ async def test_llm_node_basic_streaming():
 
     mock_agent.run_stream = MagicMock(return_value=mock_stream)
 
-    # Create LLMNode
-    node = LLMNode[InputModel, OutputModel](
+    # Create AgentNode
+    node = AgentNode[InputModel, OutputModel](
         agent=mock_agent,
         prompt_template="Question: {query}",
         name="llm_node",
@@ -255,7 +254,7 @@ async def test_llm_node_basic_streaming():
 
 @pytest.mark.asyncio
 async def test_llm_node_formats_prompt():
-    """Test LLMNode formats prompt template with input fields."""
+    """Test AgentNode formats prompt template with input fields."""
     mock_agent = MagicMock(spec=Agent)
 
     # Set up minimal mock
@@ -271,7 +270,7 @@ async def test_llm_node_formats_prompt():
     mock_stream.get_output = AsyncMock(return_value=output_model)
     mock_agent.run_stream = MagicMock(return_value=mock_stream)
 
-    node = LLMNode[InputModel, OutputModel](
+    node = AgentNode[InputModel, OutputModel](
         agent=mock_agent,
         prompt_template="Query: {query}, Context: {context}",
     )
@@ -289,7 +288,7 @@ async def test_llm_node_formats_prompt():
 
 @pytest.mark.asyncio
 async def test_llm_node_generates_run_id():
-    """Test LLMNode generates run_id if not provided."""
+    """Test AgentNode generates run_id if not provided."""
     mock_agent = MagicMock(spec=Agent)
 
     mock_stream = AsyncMock()
@@ -304,7 +303,7 @@ async def test_llm_node_generates_run_id():
     mock_stream.get_output = AsyncMock(return_value=output_model)
     mock_agent.run_stream = MagicMock(return_value=mock_stream)
 
-    node = LLMNode[InputModel, OutputModel](
+    node = AgentNode[InputModel, OutputModel](
         agent=mock_agent,
         prompt_template="Query: {query}",
         # No run_id provided
@@ -324,7 +323,7 @@ async def test_llm_node_generates_run_id():
 
 @pytest.mark.asyncio
 async def test_llm_node_handles_exception():
-    """Test LLMNode emits NonFatalError and re-raises on exception."""
+    """Test AgentNode emits NonFatalError and re-raises on exception."""
     mock_agent = MagicMock(spec=Agent)
 
     # Make run_stream raise an exception
@@ -332,7 +331,7 @@ async def test_llm_node_handles_exception():
     mock_stream.__aenter__ = AsyncMock(side_effect=ValueError("LLM API error"))
     mock_agent.run_stream = MagicMock(return_value=mock_stream)
 
-    node = LLMNode[InputModel, OutputModel](
+    node = AgentNode[InputModel, OutputModel](
         agent=mock_agent,
         prompt_template="Query: {query}",
         name="error_node",
@@ -351,14 +350,14 @@ async def test_llm_node_handles_exception():
     assert len(items) >= 2
     assert isinstance(items[0], StreamStart)
     assert isinstance(items[-1], NonFatalError)
-    assert "LLM execution failed" in items[-1].message
+    assert "Agent stream failed" in items[-1].message
     assert "LLM API error" in items[-1].message
     assert items[-1].recoverable is False
 
 
 @pytest.mark.asyncio
 async def test_llm_node_result_without_model_dump():
-    """Test LLMNode handles results without model_dump method."""
+    """Test AgentNode handles results without model_dump method."""
     mock_agent = MagicMock(spec=Agent)
 
     mock_stream = AsyncMock()
@@ -377,7 +376,7 @@ async def test_llm_node_result_without_model_dump():
     mock_stream.get_output = AsyncMock(return_value=StringResult(value="plain text"))
     mock_agent.run_stream = MagicMock(return_value=mock_stream)
 
-    node = LLMNode[InputModel, StringResult](
+    node = AgentNode[InputModel, StringResult](
         agent=mock_agent,
         prompt_template="Query: {query}",
     )
@@ -396,7 +395,7 @@ async def test_llm_node_result_without_model_dump():
 
 @pytest.mark.asyncio
 async def test_llm_node_empty_token_stream():
-    """Test LLMNode handles empty token stream."""
+    """Test AgentNode handles empty token stream."""
     mock_agent = MagicMock(spec=Agent)
 
     mock_stream = AsyncMock()
@@ -413,7 +412,7 @@ async def test_llm_node_empty_token_stream():
     mock_stream.get_output = AsyncMock(return_value=output_model)
     mock_agent.run_stream = MagicMock(return_value=mock_stream)
 
-    node = LLMNode[InputModel, OutputModel](
+    node = AgentNode[InputModel, OutputModel](
         agent=mock_agent,
         prompt_template="Query: {query}",
     )
@@ -442,28 +441,28 @@ async def test_agent_node_with_input_parameter():
     node = AgentNode[InputModel, str](
         agent=mock_agent,
         prompt_template="Query: {query}",
-        input=mock_input,  # Pass input parameter
+        inputs=(mock_input,),  # Pass inputs parameter
         name="test_node",
     )
 
-    # Verify input was set (from NodeWithInput base class)
-    assert node.input == mock_input
+    # Verify inputs was set (from BaseNode base class)
+    assert node.inputs == (mock_input,)
 
 
 @pytest.mark.asyncio
 async def test_llm_node_with_input_parameter():
-    """Test LLMNode accepts input parameter in constructor."""
+    """Test AgentNode accepts input parameter in constructor."""
     mock_agent = MagicMock(spec=Agent)
     mock_input = MagicMock()
 
-    node = LLMNode[InputModel, OutputModel](
+    node = AgentNode[InputModel, OutputModel](
         agent=mock_agent,
         prompt_template="Query: {query}",
-        input=mock_input,
+        inputs=(mock_input,),
         name="test_node",
     )
 
-    assert node.input == mock_input
+    assert node.inputs == (mock_input,)
 
 
 @pytest.mark.asyncio
@@ -486,7 +485,7 @@ async def test_agent_node_empty_prompt_template():
 
 @pytest.mark.asyncio
 async def test_llm_node_stream_end_with_model_dump():
-    """Test LLMNode StreamEnd includes result from model_dump."""
+    """Test AgentNode StreamEnd includes result from model_dump."""
     mock_agent = MagicMock(spec=Agent)
 
     mock_stream = AsyncMock()
@@ -503,7 +502,7 @@ async def test_llm_node_stream_end_with_model_dump():
     mock_stream.get_output = AsyncMock(return_value=result)
     mock_agent.run_stream = MagicMock(return_value=mock_stream)
 
-    node = LLMNode[InputModel, OutputModel](
+    node = AgentNode[InputModel, OutputModel](
         agent=mock_agent,
         prompt_template="Query: {query}",
     )
@@ -523,7 +522,7 @@ async def test_llm_node_stream_end_with_model_dump():
 
 @pytest.mark.asyncio
 async def test_llm_node_result_truly_no_model_dump():
-    """Test LLMNode with result that has no model_dump attribute."""
+    """Test AgentNode with result that has no model_dump attribute."""
     mock_agent = MagicMock(spec=Agent)
 
     mock_stream = AsyncMock()
@@ -540,7 +539,7 @@ async def test_llm_node_result_truly_no_model_dump():
     mock_agent.run_stream = MagicMock(return_value=mock_stream)
 
     # Use Any for output type to allow dict
-    node = LLMNode[InputModel, Any](
+    node = AgentNode[InputModel, Any](
         agent=mock_agent,
         prompt_template="Query: {query}",
     )
@@ -599,7 +598,7 @@ async def test_agent_node_without_cache_policy():
 
 @pytest.mark.asyncio
 async def test_llm_node_with_cache_policy():
-    """Test LLMNode accepts cache_policy parameter."""
+    """Test AgentNode accepts cache_policy parameter."""
     from datetime import timedelta
 
     from pydantic_flow.cache import CachePolicy
@@ -607,7 +606,7 @@ async def test_llm_node_with_cache_policy():
     mock_agent = MagicMock(spec=Agent)
 
     policy = CachePolicy(enabled=True, ttl=timedelta(hours=1))
-    node = LLMNode[InputModel, OutputModel](
+    node = AgentNode[InputModel, OutputModel](
         agent=mock_agent,
         prompt_template="Query: {query}",
         name="cached_llm",
@@ -623,10 +622,10 @@ async def test_llm_node_with_cache_policy():
 
 @pytest.mark.asyncio
 async def test_llm_node_without_cache_policy():
-    """Test LLMNode works without cache_policy."""
+    """Test AgentNode works without cache_policy."""
     mock_agent = MagicMock(spec=Agent)
 
-    node = LLMNode[InputModel, OutputModel](
+    node = AgentNode[InputModel, OutputModel](
         agent=mock_agent,
         prompt_template="Query: {query}",
         name="uncached_llm",

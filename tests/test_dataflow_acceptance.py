@@ -104,19 +104,19 @@ async def test_diamond_pattern_optimal_execution():
 
     a1_node = ToolNode(
         tool_func=make_delay_func(0.5, NumericOutput(result=2)),
-        input=start_node.output,
+        inputs=(start_node.output,),
         name="a1",
     )
 
     a2_node = ToolNode(
         tool_func=make_delay_func(0.5, NumericOutput(result=3)),
-        input=a1_node.output,
+        inputs=(a1_node.output,),
         name="a2",
     )
 
     b1_node = ToolNode(
         tool_func=make_delay_func(1.0, NumericOutput(result=4)),
-        input=start_node.output,
+        inputs=(start_node.output,),
         name="b1",
     )
 
@@ -124,7 +124,7 @@ async def test_diamond_pattern_optimal_execution():
         await asyncio.sleep(0.1)
         return NumericOutput(result=a2_result.result + b1_result.result)
 
-    from pydantic_flow import MergeToolNode
+    from pydantic_flow import ToolNode as MergeToolNode
 
     merge_node = MergeToolNode(
         tool_func=merge_func,
@@ -176,19 +176,19 @@ async def test_fan_out_pattern_full_parallelism():
     # Different durations for branches
     a_node = ToolNode(
         tool_func=make_delay_func(2.0, NumericOutput(result=1)),
-        input=start_node.output,
+        inputs=(start_node.output,),
         name="a",
     )
 
     b_node = ToolNode(
         tool_func=make_delay_func(3.0, NumericOutput(result=2)),
-        input=start_node.output,
+        inputs=(start_node.output,),
         name="b",
     )
 
     c_node = ToolNode(
         tool_func=make_delay_func(4.0, NumericOutput(result=3)),
-        input=start_node.output,
+        inputs=(start_node.output,),
         name="c",
     )
 
@@ -196,7 +196,7 @@ async def test_fan_out_pattern_full_parallelism():
         await asyncio.sleep(0.1)
         return NumericOutput(result=a_result.result + b_result.result + c_result.result)
 
-    from pydantic_flow import MergeToolNode
+    from pydantic_flow import ToolNode as MergeToolNode
 
     merge_node = MergeToolNode(
         tool_func=merge_func,
@@ -241,19 +241,19 @@ async def test_chain_pattern_sequential_execution():
 
     b_node = ToolNode(
         tool_func=make_delay_func(1.0, NumericOutput(result=2)),
-        input=a_node.output,
+        inputs=(a_node.output,),
         name="b",
     )
 
     c_node = ToolNode(
         tool_func=make_delay_func(1.0, NumericOutput(result=3)),
-        input=b_node.output,
+        inputs=(b_node.output,),
         name="c",
     )
 
     d_node = ToolNode(
         tool_func=make_delay_func(1.0, NumericOutput(result=4)),
-        input=c_node.output,
+        inputs=(c_node.output,),
         name="d",
     )
 
@@ -304,31 +304,31 @@ async def test_complex_dag_full_parallelism():
 
     a_node = ToolNode(
         tool_func=make_delay_func(2.0, NumericOutput(result=1)),
-        input=start_node.output,
+        inputs=(start_node.output,),
         name="a",
     )
 
     b_node = ToolNode(
         tool_func=make_delay_func(1.0, NumericOutput(result=2)),
-        input=start_node.output,
+        inputs=(start_node.output,),
         name="b",
     )
 
     c_node = ToolNode(
         tool_func=make_delay_func(1.0, NumericOutput(result=3)),
-        input=a_node.output,
+        inputs=(a_node.output,),
         name="c",
     )
 
     d_node = ToolNode(
         tool_func=make_delay_func(1.0, NumericOutput(result=4)),
-        input=b_node.output,
+        inputs=(b_node.output,),
         name="d",
     )
 
     e_node = ToolNode(
         tool_func=make_delay_func(2.0, NumericOutput(result=5)),
-        input=b_node.output,
+        inputs=(b_node.output,),
         name="e",
     )
 
@@ -336,7 +336,7 @@ async def test_complex_dag_full_parallelism():
         await asyncio.sleep(0.5)
         return NumericOutput(result=c_result.result + d_result.result)
 
-    from pydantic_flow import MergeToolNode
+    from pydantic_flow import ToolNode as MergeToolNode
 
     f_node = MergeToolNode(
         tool_func=merge_cd,
@@ -391,7 +391,7 @@ async def test_max_concurrent_nodes_limit():
     for i in range(5):
         node = ToolNode(
             tool_func=make_delay_func(1.0, NumericOutput(result=i + 1)),
-            input=start_node.output,
+            inputs=(start_node.output,),
             name=f"branch_{i}",
         )
         nodes.append(node)
@@ -400,7 +400,7 @@ async def test_max_concurrent_nodes_limit():
         total = sum(r.result for r in results)
         return NumericOutput(result=total)
 
-    from pydantic_flow import MergeToolNode
+    from pydantic_flow import ToolNode as MergeToolNode
 
     merge_node = MergeToolNode(
         tool_func=merge_all,

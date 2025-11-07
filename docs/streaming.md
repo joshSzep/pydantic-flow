@@ -89,12 +89,12 @@ async for token in iter_tokens(node.astream(query)):
 result = await extract_result_from_stream(node.astream(query)
 ```
 
-### LLMNode
+### AgentNode
 
 Agent node with structured output support:
 
 ```python
-node = LLMNode[Query, Answer](
+node = AgentNode[Query, Answer](
     agent=agent,                    # Agent configured for structured output
     prompt_template="Answer: {question}",
     name="structured_answer"
@@ -270,7 +270,7 @@ class Answer(BaseModel):
     confidence: float
 
 agent = Agent("openai:gpt-4", output_type=Answer)
-node = LLMNode[Query, Answer](agent=agent, prompt_template="{question}")
+node = AgentNode[Query, Answer](agent=agent, prompt_template="{question}")
 
 # Get validated result
 result = await extract_result_from_stream(node.astream(query)
@@ -285,7 +285,7 @@ async def search(query):
         yield {"id": result.id, "content": result.text, "score": result.score}
 
 retriever = RetrieverNode(retriever_fn=search)
-llm = LLMNode(agent=agent, prompt_template="Summarize: {results}")
+llm = AgentNode(agent=agent, prompt_template="Summarize: {results}")
 
 # Connect nodes
 llm.input = retriever.output

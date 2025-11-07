@@ -7,14 +7,14 @@ from typing import Any
 from pydantic import BaseModel
 
 from pydantic_flow.cache.base import CachePolicy
-from pydantic_flow.nodes.base import Node
+from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
 
 
-class IfNode[OutputModel: BaseModel](Node[Any, OutputModel]):
+class IfNode[OutputModel: BaseModel](BaseNode[Any, OutputModel]):
     """A node that evaluates a predicate and branches to different nodes.
 
     This node enables conditional execution paths in workflows.
@@ -23,10 +23,10 @@ class IfNode[OutputModel: BaseModel](Node[Any, OutputModel]):
     def __init__(
         self,
         predicate: Callable[[Any], bool],
-        if_true: Node[Any, OutputModel],
-        if_false: Node[Any, OutputModel],
+        if_true: BaseNode[Any, OutputModel],
+        if_false: BaseNode[Any, OutputModel],
         *,
-        input: NodeOutput[Any] | None = None,
+        inputs: tuple[NodeOutput, ...] | None = None,
         name: str | None = None,
         cache_policy: CachePolicy | None = None,
     ) -> None:
@@ -36,12 +36,12 @@ class IfNode[OutputModel: BaseModel](Node[Any, OutputModel]):
             predicate: Function that evaluates the condition
             if_true: Node to execute if predicate returns True
             if_false: Node to execute if predicate returns False
-            input: Optional input from another node's output
+            inputs: Optional tuple of inputs from other nodes
             name: Optional unique identifier for this node
             cache_policy: Optional cache policy for this node
 
         """
-        super().__init__(input, name, cache_policy=cache_policy)
+        super().__init__(inputs, name, cache_policy=cache_policy)
         self.predicate = predicate
         self.if_true = if_true
         self.if_false = if_false
@@ -50,7 +50,7 @@ class IfNode[OutputModel: BaseModel](Node[Any, OutputModel]):
     def dependencies(self) -> list[Any]:
         """Get the list of nodes this node depends on."""
         deps = []
-        if self.input:
+        if self._inputs:
             deps.extend(super().dependencies)
         deps.extend(self.if_true.dependencies)
         deps.extend(self.if_false.dependencies)

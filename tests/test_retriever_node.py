@@ -202,17 +202,23 @@ async def test_retriever_node_with_input_dependency():
     async def mock_retriever(query: SearchQuery):
         yield {"id": "doc1", "content": f"Result for {query.query}"}
 
-    # Simulate input from another node
-    class MockOutputNode:
-        output = SearchQuery(query="dependency query")
+    # Simulate input from another node - create a simple ParserNode
+    async def identity_func(x: SearchQuery) -> SearchQuery:
+        return x
+
+    from pydantic_flow.nodes import ParserNode
+
+    input_node = ParserNode[SearchQuery, SearchQuery](
+        parser_func=lambda x: x, name="input_node"
+    )
 
     node = RetrieverNode(
         retriever_fn=mock_retriever,
-        input=MockOutputNode.output,
+        inputs=(input_node.output,),
         name="retriever",
     )
 
-    assert node.input == MockOutputNode.output
+    assert node.inputs == (input_node.output,)
 
 
 @pytest.mark.asyncio

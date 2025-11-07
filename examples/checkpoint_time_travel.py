@@ -15,8 +15,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from pydantic_flow import AgentNode
 from pydantic_flow import Flow
-from pydantic_flow import PromptNode
 from pydantic_flow.checkpoints import CheckpointDebugger
 from pydantic_flow.checkpoints import SQLiteCheckpointBackend
 from pydantic_flow.checkpoints import SQLiteCheckpointConfig
@@ -61,21 +61,23 @@ async def run_flow_with_checkpoints(
     """Run flow and return backend, run_id."""
     flow = Flow(input_type=Question, output_type=Answer)
 
-    analyze = PromptNode[Question, Analysis](
-        name="analyze",
-        prompt=(
+    analyze = AgentNode.from_prompt(
+        model="openai:gpt-4",
+        prompt_template=(
             "Analyze this question:\n{text}\n\n"
             "Provide category and complexity (simple/medium/complex)."
         ),
+        name="analyze",
     )
 
-    answer = PromptNode[Analysis, Answer](
-        name="answer",
-        prompt=(
+    answer = AgentNode.from_prompt(
+        model="openai:gpt-4",
+        prompt_template=(
             "Generate an answer for a {category} question.\n"
             "Complexity level: {complexity}\n\n"
             "Provide response and confidence score (0-1)."
         ),
+        name="answer",
     )
 
     flow.add_nodes(analyze, answer)

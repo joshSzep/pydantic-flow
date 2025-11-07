@@ -6,7 +6,7 @@ from datetime import timedelta
 from pydantic import BaseModel
 
 from pydantic_flow.cache.base import CachePolicy
-from pydantic_flow.nodes.base import Node
+from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
@@ -24,7 +24,7 @@ class SampleOutput(BaseModel):
     result: str
 
 
-class ConcreteTestNode(Node[SampleInput, SampleOutput]):
+class ConcreteTestNode(BaseNode[SampleInput, SampleOutput]):
     """Concrete test node with minimal astream implementation."""
 
     async def astream(self, input_data: SampleInput) -> AsyncIterator[ProgressItem]:
@@ -38,14 +38,14 @@ class ConcreteTestNode(Node[SampleInput, SampleOutput]):
 
 
 def test_node_no_policy():
-    """Test Node with no policy set."""
+    """Test BaseNode with no policy set."""
     node = ConcreteTestNode(name="test")
     assert node.cache_policy is None
     assert node.is_cacheable() is False
 
 
 def test_node_with_disabled_policy():
-    """Test Node with disabled policy."""
+    """Test BaseNode with disabled policy."""
     policy = CachePolicy(enabled=False, ttl=timedelta(seconds=60))
     node = ConcreteTestNode(name="test", cache_policy=policy)
     assert node.cache_policy is not None

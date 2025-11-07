@@ -252,7 +252,7 @@ from typing import Any
 from pydantic import BaseModel
 from pydantic import Field
 
-from pydantic_flow.nodes.base import NodeWithInput
+from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.streaming.events import Heartbeat
 from pydantic_flow.streaming.events import ProgressItem
 from pydantic_flow.streaming.events import StreamEnd
@@ -272,7 +272,7 @@ class HumanDecision[T](BaseModel):
 HumanDecisionFunc[T] = Callable[[T, dict[str, Any]], Awaitable[HumanDecision[T]]]
 
 
-class HumanApprovalNode[InputT, OutputT](NodeWithInput[InputT, OutputT]):
+class HumanApprovalNode[InputT, OutputT](BaseNode[InputT, OutputT]):
     """Node that requires human approval before proceeding.
     
     This node stops execution and calls a user-provided async function
@@ -433,7 +433,7 @@ class HumanApprovalNode[InputT, OutputT](NodeWithInput[InputT, OutputT]):
             )
 
 
-class HumanReviewNode[InputT, OutputT](NodeWithInput[InputT, OutputT]):
+class HumanReviewNode[InputT, OutputT](BaseNode[InputT, OutputT]):
     """Node that allows human to review and optionally modify data.
     
     Unlike HumanApprovalNode, this always proceeds but gives humans

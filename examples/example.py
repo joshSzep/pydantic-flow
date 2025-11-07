@@ -8,9 +8,9 @@ import asyncio
 
 from pydantic import BaseModel
 
+from pydantic_flow import AgentNode
 from pydantic_flow import Flow
 from pydantic_flow import ParserNode
-from pydantic_flow import PromptNode
 from pydantic_flow import ToolNode
 
 
@@ -173,25 +173,26 @@ async def main():
 
     summary_node = ParserNode[WeatherInfo, WeatherSummary](
         parser_func=generate_summary,
-        input=api_node.output,
+        inputs=(api_node.output,),
         name="summary_generator",
     )
 
     # Option 2: LLM-based workflow (for demonstration)
-    llm_node = PromptNode[WeatherQuery, str](
-        prompt="22.5|sunny|{location}",  # Mock LLM response format
+    llm_node = AgentNode.from_prompt(
+        model="openai:gpt-4",
+        prompt_template="22.5|sunny|{location}",  # Mock LLM response format
         name="weather_llm",
     )
 
     parser_node = ParserNode[str, WeatherInfo](
         parser_func=parse_weather_response,
-        input=llm_node.output,
+        inputs=(llm_node.output,),
         name="weather_parser",
     )
 
     summary_node_2 = ParserNode[WeatherInfo, WeatherSummary](
         parser_func=generate_summary,
-        input=parser_node.output,
+        inputs=(parser_node.output,),
         name="summary_generator_2",
     )
 

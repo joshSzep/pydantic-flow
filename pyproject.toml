@@ -1,6 +1,6 @@
 [project]
 name = "pydantic-flow"
-version = "0.32.0"
+version = "0.33.0"
 description = "An opinionated pydantic-ai based framework with batteries included."
 readme = "README.md"
 authors = [
@@ -68,7 +68,6 @@ ignore = ["D203","D213"]
 "src/pydantic_flow/nodes/base.py" = ["PLC0415"]  # Local imports for zero-cost telemetry
 "src/pydantic_flow/nodes/conditional.py" = ["PLR0913"]  # IfNode init needs multiple params for cache_policy support
 "src/pydantic_flow/nodes/flow.py" = ["PLR0912", "PLR0913"]  # Complex memory mode handling, FlowNode init needs multiple params
-"src/pydantic_flow/nodes/merge_prompt.py" = ["PLR0913"]  # MergePromptNode init needs multiple params for cache_policy support
 "src/pydantic_flow/cache/middleware.py" = ["UP040", "PLR0912", "PLC0415"]  # TypeVar needed for proper typing, complex branching, local imports for telemetry helpers
 "src/pydantic_flow/telemetry/setup.py" = ["PLR0913", "PLW0603"]  # setup function needs multiple params, singleton pattern requires globals
 "src/pydantic_flow/telemetry/helpers.py" = ["PLC0415"]  # Local imports for zero-cost telemetry

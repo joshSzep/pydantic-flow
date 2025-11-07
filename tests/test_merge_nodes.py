@@ -4,9 +4,7 @@ from pydantic import BaseModel
 import pytest
 
 from pydantic_flow import Flow
-from pydantic_flow import MergeParserNode
-from pydantic_flow import MergePromptNode
-from pydantic_flow import MergeToolNode
+from pydantic_flow import ParserNode
 from pydantic_flow import ToolNode
 from tests.conftest import extract_result_from_stream
 
@@ -127,7 +125,7 @@ class TestBasicMerge:
         node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
         node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
 
-        merge_node = MergeToolNode[DataA, DataB, MergedResult](
+        merge_node = ToolNode[tuple[DataA, DataB], MergedResult](  # type: ignore[type-var]
             inputs=(node_a.output, node_b.output),
             tool_func=merge_two_async,
             name="merge_node",
@@ -138,7 +136,7 @@ class TestBasicMerge:
 
         final_node = ToolNode[MergedResult, MergedResult](
             tool_func=identity_func,
-            input=merge_node.output,
+            inputs=(merge_node.output,),
             name="final_node",
         )
 
@@ -163,7 +161,7 @@ class TestBasicMerge:
         node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
         node_c = ToolNode[Input, DataC](tool_func=get_data_c_async, name="node_c")
 
-        merge_node = MergeToolNode[DataA, DataB, DataC, MergedResult](
+        merge_node = ToolNode[tuple[DataA, DataB, DataC], MergedResult](  # type: ignore[type-var]
             inputs=(node_a.output, node_b.output, node_c.output),
             tool_func=merge_three_async,
             name="merge_node",
@@ -174,7 +172,7 @@ class TestBasicMerge:
 
         final_node = ToolNode[MergedResult, MergedResult](
             tool_func=identity_func_three,
-            input=merge_node.output,
+            inputs=(merge_node.output,),
             name="final_node",
         )
 
@@ -240,19 +238,19 @@ class TestFanOutFanIn:
 
         # A fans out to B and C
         node_b = ToolNode[ProcessedA, ProcessedB](
-            tool_func=process_b, input=node_a.output, name="b"
+            tool_func=process_b, inputs=(node_a.output,), name="b"
         )
         node_c = ToolNode[ProcessedA, ProcessedC](
-            tool_func=process_c, input=node_a.output, name="c"
+            tool_func=process_c, inputs=(node_a.output,), name="c"
         )
 
         # B goes to D
         node_d = ToolNode[ProcessedB, ProcessedD](
-            tool_func=process_d, input=node_b.output, name="d"
+            tool_func=process_d, inputs=(node_b.output,), name="d"
         )
 
         # D and C fan in to E
-        node_e = MergeToolNode[ProcessedD, ProcessedC, ProcessedE](
+        node_e = ToolNode[tuple[ProcessedD, ProcessedC], ProcessedE](  # type: ignore[type-var]
             inputs=(node_d.output, node_c.output), tool_func=process_e, name="e"
         )
 
@@ -272,8 +270,8 @@ class TestFanOutFanIn:
         assert result.e.final == "E(D(B(A(test))),C(A(test)))"
 
 
-class TestMergeParserNode:
-    """Test MergeParserNode functionality."""
+class TestParserNode:
+    """Test ParserNode functionality."""
 
     @pytest.mark.asyncio
     async def test_merge_parser_node(self):
@@ -309,7 +307,7 @@ class TestMergeParserNode:
         node_a = ToolNode[Input, TextA](tool_func=get_text_a, name="text_a")
         node_b = ToolNode[Input, TextB](tool_func=get_text_b, name="text_b")
 
-        parser = MergeParserNode[TextA, TextB, Parsed](
+        parser = ParserNode[tuple[TextA, TextB], Parsed](
             inputs=(node_a.output, node_b.output),
             parser_func=parse_combined,
             name="parsed",
@@ -334,7 +332,7 @@ class TestDependencyTracking:
         node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
         node_c = ToolNode[Input, DataC](tool_func=get_data_c_async, name="node_c")
 
-        merge_node = MergeToolNode[DataA, DataB, DataC, MergedResult](
+        merge_node = ToolNode[tuple[DataA, DataB, DataC], MergedResult](  # type: ignore[type-var]
             inputs=(node_a.output, node_b.output, node_c.output),
             tool_func=merge_three_async,
             name="merge",
@@ -355,7 +353,7 @@ class TestDependencyTracking:
         node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
         node_c = ToolNode[Input, DataC](tool_func=get_data_c_async, name="node_c")
 
-        merge_node = MergeToolNode[DataA, DataB, DataC, MergedResult](
+        merge_node = ToolNode[tuple[DataA, DataB, DataC], MergedResult](  # type: ignore[type-var]
             inputs=(node_a.output, node_b.output, node_c.output),
             tool_func=merge_three_async,
             name="merge_node",
@@ -366,7 +364,7 @@ class TestDependencyTracking:
 
         final_node = ToolNode[MergedResult, MergedResult](
             tool_func=identity_func3,
-            input=merge_node.output,
+            inputs=(merge_node.output,),
             name="final_node",
         )
 
@@ -397,7 +395,7 @@ class TestEdgeCases:
 
         node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
 
-        merge_node = MergeToolNode[DataA, DataA](
+        merge_node = ToolNode[DataA, DataA](
             inputs=(node_a.output,),
             tool_func=identity,
             name="merge",
@@ -435,13 +433,13 @@ class TestEdgeCases:
         node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
         node_c = ToolNode[Input, DataC](tool_func=get_data_c_async, name="node_c")
 
-        merge1 = MergeToolNode[DataA, DataB, MergedResult](
+        merge1 = ToolNode[tuple[DataA, DataB], MergedResult](  # type: ignore[type-var]
             inputs=(node_a.output, node_b.output),
             tool_func=merge_ab,
             name="merge1",
         )
 
-        merge2 = MergeToolNode[DataB, DataC, MergedResult](
+        merge2 = ToolNode[tuple[DataB, DataC], MergedResult](  # type: ignore[type-var]
             inputs=(node_b.output, node_c.output),
             tool_func=merge_bc,
             name="merge2",
@@ -453,67 +451,3 @@ class TestEdgeCases:
 
         assert result.merge1.combined == "A:test+4"
         assert result.merge2.combined == "4+10.0"
-
-
-class TestMergePromptNode:
-    """Test MergePromptNode initialization and structure."""
-
-    def test_merge_prompt_node_initialization(self):
-        """Test that MergePromptNode initializes correctly."""
-        node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
-        node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
-
-        merge_prompt = MergePromptNode[DataA, DataB, str](
-            inputs=(node_a.output, node_b.output),
-            prompt="Combine {0} and {1}",
-            model="test",
-            name="merge_prompt",
-        )
-
-        assert merge_prompt.name == "merge_prompt"
-        assert merge_prompt.prompt == "Combine {0} and {1}"
-        assert merge_prompt.model == "test"
-        assert len(merge_prompt.inputs) == 2
-
-    def test_merge_prompt_node_dependencies(self):
-        """Test that MergePromptNode tracks dependencies correctly."""
-        node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
-        node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
-
-        merge_prompt = MergePromptNode[DataA, DataB, str](
-            inputs=(node_a.output, node_b.output),
-            prompt="Combine {0} and {1}",
-            name="merge_prompt",
-        )
-
-        deps = merge_prompt.dependencies
-        assert len(deps) == 2
-        assert node_a in deps
-        assert node_b in deps
-
-    @pytest.mark.asyncio
-    async def test_merge_prompt_node_streams_properly(self):
-        """Test that MergePromptNode streams progress items."""
-        node_a = ToolNode[Input, DataA](tool_func=get_data_a_async, name="node_a")
-        node_b = ToolNode[Input, DataB](tool_func=get_data_b_async, name="node_b")
-
-        merge_prompt = MergePromptNode[DataA, DataB, str](
-            inputs=(node_a.output, node_b.output),
-            prompt="Combine {0} and {1}",
-            model="test",
-            name="merge_prompt",
-        )
-
-        data_a = DataA(value_a="test_a")
-        data_b = DataB(value_b=42)
-
-        # Collect a few items from the stream
-        items = []
-        async for item in merge_prompt.astream((data_a, data_b)):
-            items.append(item)
-            if len(items) >= 2:
-                break
-
-        # Should have at least a StreamStart
-        assert len(items) >= 1
-        assert items[0].type == "start"

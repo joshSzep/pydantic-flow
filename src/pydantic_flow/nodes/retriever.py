@@ -7,7 +7,8 @@ import uuid
 from pydantic import BaseModel
 
 from pydantic_flow.cache.base import CachePolicy
-from pydantic_flow.nodes.base import Node
+from pydantic_flow.nodes.base import BaseNode
+from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import GenericResult
 from pydantic_flow.streaming.core_events import StreamEnd
@@ -16,7 +17,7 @@ from pydantic_flow.streaming.retrieval_events import RetrievalItem
 
 
 class RetrieverNode[QueryModel: BaseModel, ResultModel: BaseModel](
-    Node[QueryModel, ResultModel]
+    BaseNode[QueryModel, ResultModel]
 ):
     """Streaming retriever that yields search results progressively.
 
@@ -28,7 +29,7 @@ class RetrieverNode[QueryModel: BaseModel, ResultModel: BaseModel](
         self,
         retriever_fn: Any,
         *,
-        input: Any = None,
+        inputs: tuple[NodeOutput, ...] | None = None,
         name: str | None = None,
         run_id: str | None = None,
         cache_policy: CachePolicy | None = None,
@@ -37,13 +38,13 @@ class RetrieverNode[QueryModel: BaseModel, ResultModel: BaseModel](
 
         Args:
             retriever_fn: Async function that yields retrieval results.
-            input: Optional input from another node's output.
+            inputs: Optional tuple of inputs from other nodes.
             name: Optional unique identifier for this node.
             run_id: Optional run identifier for tracking execution.
             cache_policy: Optional cache policy for this node.
 
         """
-        super().__init__(input, name, run_id, cache_policy)
+        super().__init__(inputs, name, run_id, cache_policy)
         self.retriever_fn = retriever_fn
 
     async def astream(self, input_data: QueryModel) -> AsyncIterator[ProgressItem]:

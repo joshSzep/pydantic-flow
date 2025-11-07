@@ -12,9 +12,8 @@ from datetime import timedelta
 
 from pydantic import BaseModel
 
+from pydantic_flow import AgentNode
 from pydantic_flow import Flow
-from pydantic_flow import PromptConfig
-from pydantic_flow import PromptNode
 from pydantic_flow import ToolNode
 from pydantic_flow.cache.base import CachePolicy
 from pydantic_flow.cache.memory import InMemoryCache
@@ -104,10 +103,11 @@ async def main():
         cache_policy=cache_policy,
     )
 
-    answer_node = PromptNode[Research, Answer](
-        prompt="Based on this research: {findings}, provide a concise answer.",
-        config=PromptConfig(model="test", result_type=Answer),
-        input=research_node.output,
+    answer_node = AgentNode.from_prompt(
+        model="openai:gpt-4",
+        prompt_template="Based on this research: {findings}, provide a concise answer.",
+        output_type=Answer,
+        inputs=(research_node.output,),
         name="answer",
         cache_policy=cache_policy,
     )

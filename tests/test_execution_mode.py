@@ -8,7 +8,7 @@ import pytest
 from pydantic_flow import Flow
 from pydantic_flow import Route
 from pydantic_flow.nodes import BaseNode
-from pydantic_flow.nodes import MergeToolNode
+from pydantic_flow.nodes import ToolNode
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
@@ -185,7 +185,7 @@ class TestFlowCompilation:
         async def merge_func(a: SimpleState, b: SimpleState) -> SimpleState:
             return SimpleState(value=a.value + b.value)
 
-        merge = MergeToolNode[SimpleState, SimpleState, SimpleState](
+        merge = ToolNode[tuple[SimpleState, SimpleState], SimpleState](  # type: ignore[type-var]
             tool_func=merge_func,
             inputs=(node1.output, node2.output),
             name="merge",

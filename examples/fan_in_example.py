@@ -1,6 +1,6 @@
-"""Example demonstrating fan-in patterns with MergeToolNode.
+"""Example demonstrating fan-in patterns with ToolNode.
 
-This example shows how to use MergeToolNode and MergeParserNode to combine
+This example shows how to use ToolNode with multiple inputs to combine
 outputs from multiple nodes into a single processing step.
 """
 
@@ -9,7 +9,6 @@ import asyncio
 from pydantic import BaseModel
 
 from pydantic_flow import Flow
-from pydantic_flow import MergeToolNode
 from pydantic_flow import ToolNode
 
 
@@ -105,7 +104,7 @@ async def combine_all(
 async def main():
     """Run the fan-in example."""
     print("=" * 60)
-    print("Fan-In Pattern Example with MergeToolNode")
+    print("Fan-In Pattern Example with ToolNode")
     print("=" * 60)
 
     flow = Flow(input_type=Query, output_type=FinalOutput)
@@ -122,9 +121,9 @@ async def main():
         tool_func=collect_metadata, name="metadata"
     )
 
-    merge_node = MergeToolNode[
-        ResearchData, AnalysisData, MetadataData, CombinedReport
-    ](
+    # Use ToolNode with inputs parameter for fan-in pattern
+    # Use Any for input type since we're combining multiple inputs
+    merge_node = ToolNode(
         inputs=(research_node.output, analysis_node.output, metadata_node.output),
         tool_func=combine_all,
         name="combined",
@@ -134,6 +133,10 @@ async def main():
 
     print("\nRunning flow...")
     result = await extract_result_from_stream(flow.astream(Query(topic="AI Workflows")))
+
+    if result is None:
+        print("Error: No result received")
+        return
 
     print("\n" + "=" * 60)
     print("Results:")

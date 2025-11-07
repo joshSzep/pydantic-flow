@@ -6,8 +6,6 @@ from pydantic import BaseModel
 import pytest
 
 from pydantic_flow import Flow
-from pydantic_flow import MergeParserNode
-from pydantic_flow import MergeToolNode
 from pydantic_flow.core.routing import Route
 from pydantic_flow.hitl.decisions import InterruptDecision
 from pydantic_flow.nodes import BaseNode
@@ -140,7 +138,7 @@ async def test_base_node_run_without_result():
 
     node = EmptyNode(tool_func=no_result, name="empty")
 
-    with pytest.raises(RuntimeError, match="No result found in stream"):
+    with pytest.raises(ValueError, match="Stream completed without producing a result"):
         await extract_result_from_stream(node.astream(SimpleInput(value=1)))
 
 
@@ -257,17 +255,17 @@ def test_should_use_stepper_with_conditional():
     # assert flow._should_use_stepper() is True  # Removed: unified stepper engine
 
 
-# Test MergeParserNode and MergeToolNode result preview paths
+# Test ParserNode and MergeToolNode result preview paths
 @pytest.mark.asyncio
 async def test_merge_parser_node_string_result():
-    """Test MergeParserNode with result to trigger result preview path."""
+    """Test ParserNode with result to trigger result preview path."""
 
     def merge_states(a: SimpleState, b: SimpleState) -> SimpleState:
         return SimpleState(value=a.value + b.value)
 
     node1 = SimpleNode(name="node1")
     node2 = SimpleNode(name="node2")
-    merge = MergeParserNode[SimpleState](
+    merge = ParserNode[tuple[SimpleState, SimpleState], SimpleState](
         name="merge",
         parser_func=merge_states,
         inputs=(node1.output, node2.output),
@@ -292,7 +290,7 @@ async def test_merge_tool_node_with_error():
 
     node1 = SimpleNode(name="node1")
     node2 = SimpleNode(name="node2")
-    merge = MergeToolNode[SimpleState](
+    merge = ToolNode[tuple[SimpleState, SimpleState], SimpleState](  # type: ignore[type-var]
         name="merge",
         tool_func=failing_tool,
         inputs=(node1.output, node2.output),
@@ -313,7 +311,7 @@ async def test_merge_tool_node_result():
 
     node1 = SimpleNode(name="node1")
     node2 = SimpleNode(name="node2")
-    merge = MergeToolNode[SimpleState](
+    merge = ToolNode[tuple[SimpleState, SimpleState], SimpleState](  # type: ignore[type-var]
         name="merge",
         tool_func=tool_merge,
         inputs=(node1.output, node2.output),

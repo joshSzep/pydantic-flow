@@ -114,5 +114,6 @@ async def test_collect_final_result_none():
         yield StreamStart(run_id="1", node_id="test")
         yield StreamEnd(run_id="1", node_id="test", result=None)
 
-    result = await collect_final_result(mock_stream())
-    assert result is None
+    # New behavior: None results raise ValueError
+    with pytest.raises(ValueError, match="Stream completed without producing a result"):
+        await collect_final_result(mock_stream())

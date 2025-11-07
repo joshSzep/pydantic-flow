@@ -69,12 +69,14 @@ The framework uses entry points for auto-discovery, designed for seamless extern
 
 ### API Design
 
-- **Streaming-Only**: `astream()` as the sole interface - events are the fundamental unit
+- **Streaming-Only**: `astream()` as the sole interface - events are the fundamental unit. Use `collect_result()` helper for non-streaming consumption
 - **Direct Instantiation**: `Agent(...)` over builder patterns
 - **Dual Import Paths**: Support both `from pydantic_flow import Agent` and `from pydantic_flow.agents import Agent`
 - **Functional + Class-Based**: Solid class foundation with functional helpers
 - **Method Clarity**: Explicit operations over implicit state changes
 - **Progress Visibility**: Small vocabulary of progress items for observability
+- **Minimal Node Hierarchy**: `BaseNode` abstract base with specialized nodes (AgentNode, ToolNode, etc.) - no wrapper classes
+- **User-Supplied Agents**: Use `AgentNode` with pydantic-ai agents directly, not internal agent creation
 
 ### Error Handling
 

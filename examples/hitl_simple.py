@@ -11,9 +11,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from pydantic_flow import AgentNode
 from pydantic_flow import Flow
-from pydantic_flow import PromptConfig
-from pydantic_flow import PromptNode
 from pydantic_flow.checkpoints.backends.sqlite import SQLiteCheckpointBackend
 from pydantic_flow.checkpoints.backends.sqlite import SQLiteCheckpointConfig
 from pydantic_flow.checkpoints.debugger import CheckpointDebugger
@@ -164,9 +163,9 @@ async def main() -> None:
 
     try:
         # Create a processing node
-        processor = PromptNode[ContentInput, Summary](
-            prompt="Summarize this text: {text}",
-            config=PromptConfig(model="openai:gpt-4"),
+        processor = AgentNode.from_prompt(
+            model="openai:gpt-4",
+            prompt_template="Summarize this text: {text}",
             name="processor",
         )
 

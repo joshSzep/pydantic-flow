@@ -12,8 +12,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from pydantic_flow import AgentNode
 from pydantic_flow import Flow
-from pydantic_flow import PromptNode
 from pydantic_flow.checkpoints.backends.sqlite import SQLiteCheckpointBackend
 from pydantic_flow.checkpoints.backends.sqlite import SQLiteCheckpointConfig
 from pydantic_flow.checkpoints.inspection import CheckpointInspector
@@ -56,9 +56,10 @@ async def main() -> None:
         # Create a simple flow with a prompt node
         flow = Flow(input_type=Query, output_type=Response)
 
-        prompt_node = PromptNode[Query, Response](
+        prompt_node = AgentNode.from_prompt(
+            model="openai:gpt-4",
+            prompt_template="Answer this question briefly: {question}",
             name="answer",
-            prompt="Answer this question briefly: {question}",
         )
         flow.add_nodes(prompt_node)
 

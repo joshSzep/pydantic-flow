@@ -15,8 +15,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from pydantic_flow import AgentNode
 from pydantic_flow import Flow
-from pydantic_flow import PromptNode
 from pydantic_flow.checkpoints import CheckpointDebugger
 from pydantic_flow.checkpoints import SQLiteCheckpointBackend
 from pydantic_flow.checkpoints import SQLiteCheckpointConfig
@@ -53,9 +53,10 @@ async def create_checkpoint_session(
     """Create checkpoint session and return backend, run_id."""
     flow = Flow(input_type=Input, output_type=Output)
 
-    process = PromptNode[Input, Output](
+    process = AgentNode.from_prompt(
+        model="openai:gpt-4",
+        prompt_template="Process: {value}",
         name="process",
-        prompt="Process: {value}",
     )
     flow.add_nodes(process)
     flow.set_entry_nodes(process)

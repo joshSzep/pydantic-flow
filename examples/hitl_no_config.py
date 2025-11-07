@@ -9,9 +9,8 @@ import asyncio
 
 from pydantic import BaseModel
 
+from pydantic_flow import AgentNode
 from pydantic_flow import Flow
-from pydantic_flow import PromptConfig
-from pydantic_flow import PromptNode
 from pydantic_flow.hitl.decisions import InterruptDecision
 from pydantic_flow.hitl.interrupts import HandlerPriority
 from pydantic_flow.hitl.interrupts import InterruptionRequested
@@ -53,9 +52,9 @@ async def main():
     print()
 
     # Create a simple flow
-    summarizer = PromptNode[ContentInput, Summary](
-        prompt="Summarize this briefly: {input.text}",
-        config=PromptConfig(model="openai:gpt-4"),
+    summarizer = AgentNode.from_prompt(
+        model="openai:gpt-4",
+        prompt_template="Summarize this briefly: {text}",
         name="summarizer",
     )
 

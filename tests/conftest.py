@@ -4,32 +4,16 @@ from typing import Any
 
 import pytest
 
-from pydantic_flow.streaming.core_events import FlowResult
-from pydantic_flow.streaming.core_events import StreamEnd
-from pydantic_flow.streaming.tool_events import ToolResult
+from pydantic_flow.streaming.helpers import collect_result
 
 
 async def extract_result_from_stream(stream) -> Any:
     """Extract final result from node or flow astream.
 
-    Works for both nodes (ToolResult/StreamEnd) and flows (FlowResult).
+    DEPRECATED: Use collect_result() from pydantic_flow.streaming.helpers instead.
+    This is maintained for backward compatibility during test migration.
     """
-    result = None
-    async for item in stream:
-        if isinstance(item, FlowResult):
-            # Flow result
-            result = item.result
-        elif isinstance(item, ToolResult) and item.result is not None:
-            # Node result (preferred)
-            result = item.result
-        elif isinstance(item, StreamEnd) and item.result:
-            # Node result (fallback)
-            if result is None:
-                result = item.result
-
-    if result is None:
-        raise RuntimeError("No result found in stream")
-    return result
+    return await collect_result(stream)
 
 
 # V1 checkpoint imports commented out - V1 system deprecated

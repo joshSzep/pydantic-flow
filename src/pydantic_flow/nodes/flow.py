@@ -13,7 +13,6 @@ from pydantic_flow.memory import MemoryProtocol
 from pydantic_flow.memory import ReadOnlyConversationMemory
 from pydantic_flow.memory import _active_flow_memory
 from pydantic_flow.nodes.base import BaseNode
-from pydantic_flow.nodes.base import Node
 from pydantic_flow.nodes.base import NodeOutput
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import FlowResult
@@ -27,7 +26,7 @@ if TYPE_CHECKING:
 
 
 class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
-    Node[InputModel, OutputModel]
+    BaseNode[InputModel, OutputModel]
 ):
     """A node that wraps a Flow, enabling sub-flows within larger workflows.
 
@@ -40,7 +39,7 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
         self,
         flow: Flow[InputModel, OutputModel],
         *,
-        input: NodeOutput[InputModel] | None = None,
+        inputs: tuple[NodeOutput, ...] | None = None,
         name: str | None = None,
         memory_mode: MemoryMode = MemoryMode.SHARED,
         seed_isolated_memory: bool = False,
@@ -51,7 +50,10 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
         Args:
             flow: The Flow to wrap as a node. The flow's input and output types
                  must match the FlowNode's type parameters.
-            input: Optional input from another node's output
+            inputs: Optional tuple of inputs from other nodes:
+                   - None: Entry node with no dependencies
+                   - (node.output,): Single input dependency
+                   - (node1.output, node2.output, ...): Multiple inputs (fan-in)
             name: Optional unique identifier for this node. If not provided,
                  will use the format "FlowNode_{flow_repr}"
             memory_mode: How to handle conversation memory for the sub-flow.
@@ -69,7 +71,7 @@ class FlowNode[InputModel: BaseModel, OutputModel: BaseModel](
             flow_repr = repr(flow)
             name = f"FlowNode_{flow_repr}"
 
-        super().__init__(input, name, cache_policy=cache_policy)
+        super().__init__(inputs, name, cache_policy=cache_policy)
         self.flow = flow
         self.memory_mode = memory_mode
         self.seed_isolated_memory = seed_isolated_memory

@@ -6,8 +6,8 @@ import uuid
 
 from pydantic import BaseModel
 
+from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.nodes.base import NodeOutput
-from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.rag.diversify import DiversifyConfig
 from pydantic_flow.rag.diversify import diversify_by_source
 from pydantic_flow.rag.diversify import mmr_select
@@ -61,7 +61,7 @@ class EnhancedRetrievalResult(BaseModel):
     stats: dict
 
 
-class EnhancedRetrieverNode(NodeWithInput[EnhancedQueryInput, EnhancedRetrievalResult]):
+class EnhancedRetrieverNode(BaseNode[EnhancedQueryInput, EnhancedRetrievalResult]):
     """Enhanced retriever with splitting, reranking, and diversification.
 
     This node extends the basic retriever with:
@@ -85,7 +85,7 @@ class EnhancedRetrieverNode(NodeWithInput[EnhancedQueryInput, EnhancedRetrievalR
         rerank_config: RerankConfig | None = None,
         diversify_config: DiversifyConfig | None = None,
         *,
-        input: NodeOutput[EnhancedQueryInput] | None = None,
+        inputs: tuple[NodeOutput, ...] | None = None,
         name: str | None = None,
         run_id: str | None = None,
     ) -> None:
@@ -96,12 +96,12 @@ class EnhancedRetrieverNode(NodeWithInput[EnhancedQueryInput, EnhancedRetrievalR
             split_config: Optional splitting configuration.
             rerank_config: Optional reranking configuration.
             diversify_config: Optional diversification configuration.
-            input: Optional input from another node's output.
+            inputs: Optional tuple of inputs from other nodes.
             name: Optional unique identifier for this node.
             run_id: Optional run identifier for tracking execution.
 
         """
-        super().__init__(input, name, run_id)
+        super().__init__(inputs, name, run_id)
         self.retriever = retriever
         self.split_config = split_config
         self.rerank_config = rerank_config

@@ -5,14 +5,14 @@ and edge cases to ensure the framework works as expected.
 """
 
 from pydantic import BaseModel
+from pydantic_ai import Agent
 import pytest
 
+from pydantic_flow import AgentNode
 from pydantic_flow import Flow
 from pydantic_flow import FlowNode
 from pydantic_flow import IfNode
 from pydantic_flow import ParserNode
-from pydantic_flow import PromptConfig
-from pydantic_flow import PromptNode
 from pydantic_flow import RetryNode
 from pydantic_flow import ToolNode
 from pydantic_flow.flow.exceptions import FlowError
@@ -94,6 +94,12 @@ class NestedFlowResults(BaseModel):
 
 
 # Test helper functions
+def create_test_agent_node(prompt_template: str, name: str | None = None) -> AgentNode:
+    """Create a test AgentNode with the 'test' model."""
+    agent = Agent("test", instructions="Be helpful")
+    return AgentNode(agent=agent, prompt_template=prompt_template, name=name)
+
+
 def parse_weather_string(weather_str: str) -> WeatherInfo:
     """Parse a weather string into structured data."""
     # Simple parser for testing
@@ -125,20 +131,24 @@ async def generate_summary(request: SummaryRequest) -> WeatherSummary:
 class TestNodes:
     """Test individual node functionality."""
 
-    def test_prompt_node_initialization(self):
-        """Test PromptNode initialization."""
-        node = PromptNode[WeatherQuery, str](
-            prompt="What's the weather in {location}?",
+    def test_agent_node_initialization(self):
+        """Test AgentNode initialization."""
+        agent = Agent("test", instructions="Be helpful")
+        node = AgentNode[WeatherQuery, str](
+            agent=agent,
+            prompt_template="What's the weather in {location}?",
             name="weather_prompt",
         )
         assert node.name == "weather_prompt"
-        assert node._raw_prompt == "What's the weather in {location}?"
+        assert node.prompt_template == "What's the weather in {location}?"
 
     @pytest.mark.asyncio
-    async def test_prompt_node_execution(self):
-        """Test PromptNode execution."""
-        node = PromptNode[WeatherQuery, str](
-            prompt="What's the weather in {location}?",
+    async def test_agent_node_execution(self):
+        """Test AgentNode execution."""
+        agent = Agent("test", instructions="Be helpful")
+        node = AgentNode[WeatherQuery, str](
+            agent=agent,
+            prompt_template="What's the weather in {location}?",
         )
 
         query = WeatherQuery(location="Paris")
@@ -198,16 +208,19 @@ class TestNodes:
 
     def test_node_output_wiring(self):
         """Test that nodes can be wired together using outputs."""
-        node1 = PromptNode[WeatherQuery, str](
-            prompt="What's the weather in {location}?",
+        agent = Agent("test", instructions="Be helpful")
+        node1 = AgentNode[WeatherQuery, str](
+            agent=agent,
+            prompt_template="What's the weather in {location}?",
         )
         node2 = ParserNode[str, WeatherInfo](
             parser_func=parse_weather_string,
-            input=node1.output,
+            inputs=(node1.output,),
         )
 
-        assert node2.input is not None
-        assert node2.input.node == node1
+        assert node2.inputs is not None
+        assert len(node2.inputs) == 1
+        assert node2.inputs[0].node == node1
         assert node1 in node2.dependencies
 
 
@@ -223,8 +236,10 @@ class TestFlow:
     def test_add_nodes(self):
         """Test adding nodes to a flow."""
         flow = Flow(input_type=WeatherQuery, output_type=GenericFlowResults)
-        node1 = PromptNode[WeatherQuery, str](
-            prompt="What's the weather in {location}?",
+        agent = Agent("test", instructions="Be helpful")
+        node1 = AgentNode[WeatherQuery, str](
+            agent=agent,
+            prompt_template="What's the weather in {location}?",
         )
         node2 = ToolNode[WeatherQuery, WeatherInfo](
             tool_func=call_weather_api,
@@ -239,13 +254,15 @@ class TestFlow:
     def test_execution_order_simple(self):
         """Test execution order calculation for simple workflow."""
         flow = Flow(input_type=WeatherQuery, output_type=SimpleFlowResults)
-        node1 = PromptNode[WeatherQuery, str](
-            prompt="What's the weather in {location}?",
+        agent = Agent("test", instructions="Be helpful")
+        node1 = AgentNode[WeatherQuery, str](
+            agent=agent,
+            prompt_template="What's the weather in {location}?",
             name="prompt",
         )
         node2 = ParserNode[str, WeatherInfo](
             parser_func=parse_weather_string,
-            input=node1.output,
+            inputs=(node1.output,),
             name="parser",
         )
 
@@ -260,10 +277,10 @@ class TestFlow:
         flow = Flow(input_type=WeatherQuery, output_type=ComplexFlowResults)
 
         # Create a more complex dependency graph
-        node1 = PromptNode[WeatherQuery, str](prompt="test", name="node1")
+        node1 = create_test_agent_node("test", name="node1")
         node2 = ParserNode[str, WeatherInfo](
             parser_func=parse_weather_string,
-            input=node1.output,
+            inputs=(node1.output,),
             name="node2",
         )
         node3 = ToolNode[WeatherQuery, WeatherInfo](
@@ -272,7 +289,7 @@ class TestFlow:
         )
         node4 = ParserNode[WeatherInfo, WeatherInfo](
             parser_func=lambda x: x,  # identity function
-            input=node2.output,
+            inputs=(node2.output,),
             name="node4",
         )
 
@@ -336,7 +353,7 @@ class TestFlow:
         )
         node2 = ParserNode[FormattedString, WeatherInfo](
             parser_func=parse_formatted,
-            input=node1.output,
+            inputs=(node1.output,),
             name="parser",
         )
 
@@ -357,10 +374,10 @@ class TestFlow:
     def test_flow_validation(self):
         """Test flow compilation."""
         flow = Flow(input_type=WeatherQuery, output_type=GenericFlowResults)
-        node1 = PromptNode[WeatherQuery, str](prompt="test")
+        node1 = create_test_agent_node("test")
         node2 = ParserNode[str, WeatherInfo](
             parser_func=parse_weather_string,
-            input=node1.output,
+            inputs=(node1.output,),
         )
 
         flow.add_nodes(node1, node2)
@@ -373,7 +390,7 @@ class TestFlow:
         flow = Flow(input_type=WeatherQuery, output_type=GenericFlowResults)
 
         # Simple single node flow
-        node1 = PromptNode[WeatherQuery, str](prompt="test", name="node1")
+        node1 = create_test_agent_node("test", name="node1")
         flow.add_nodes(node1)
 
         # This should compile without errors
@@ -382,7 +399,7 @@ class TestFlow:
     def test_flow_repr(self):
         """Test Flow string representation."""
         flow = Flow(input_type=WeatherQuery, output_type=GenericFlowResults)
-        node1 = PromptNode[WeatherQuery, str](prompt="test")
+        node1 = create_test_agent_node("test")
         flow.add_nodes(node1)
 
         repr_str = repr(flow)
@@ -408,7 +425,7 @@ class TestEdgeCases:
     def test_duplicate_node_addition(self):
         """Test adding the same node multiple times."""
         flow = Flow(input_type=WeatherQuery, output_type=GenericFlowResults)
-        node = PromptNode[WeatherQuery, str](prompt="test")
+        node = create_test_agent_node("test")
 
         flow.add_nodes(node)
         flow.add_nodes(node)  # Add again
@@ -418,19 +435,19 @@ class TestEdgeCases:
     def test_node_naming(self):
         """Test node naming behavior."""
         # Without explicit name
-        node1 = PromptNode[WeatherQuery, str](prompt="test")
-        assert node1.name.startswith("PromptNode_")
+        node1 = create_test_agent_node("test")
+        assert node1.name.startswith("AgentNode_")
 
         # With explicit name
-        node2 = PromptNode[WeatherQuery, str](prompt="test", name="custom_name")
+        node2 = create_test_agent_node("test", name="custom_name")
         assert node2.name == "custom_name"
 
     def test_node_dependencies_property(self):
         """Test node dependencies property."""
-        node1 = PromptNode[WeatherQuery, str](prompt="test")
+        node1 = create_test_agent_node("test")
         node2 = ParserNode[str, WeatherInfo](
             parser_func=parse_weather_string,
-            input=node1.output,
+            inputs=(node1.output,),
         )
 
         assert len(node1.dependencies) == 0
@@ -543,10 +560,12 @@ class TestAdvancedNodes:
 
     def test_if_node_dependencies(self):
         """Test IfNode dependencies include both branches."""
-        prompt_node = PromptNode[WeatherQuery, str](prompt="test")
+        prompt_node = create_test_agent_node("test")
 
         true_node = ParserNode[str, WeatherInfo](
-            parser_func=parse_weather_string, input=prompt_node.output, name="true_node"
+            parser_func=parse_weather_string,
+            inputs=(prompt_node.output,),
+            name="true_node",
         )
 
         false_node = ToolNode[WeatherQuery, WeatherInfo](
@@ -557,7 +576,7 @@ class TestAdvancedNodes:
             predicate=lambda x: True,
             if_true=true_node,
             if_false=false_node,
-            input=prompt_node.output,
+            inputs=(prompt_node.output,),
             name="if_node",
         )
 
@@ -566,28 +585,28 @@ class TestAdvancedNodes:
         assert prompt_node in dependencies
         assert prompt_node in dependencies  # true_node also depends on prompt_node
 
-    def test_prompt_config(self):
-        """Test PromptConfig functionality."""
-        config = PromptConfig(
-            model="test", system_prompt="You are helpful", result_type=str
+    def test_agent_node_with_custom_instructions(self):
+        """Test AgentNode with custom instructions."""
+        agent = Agent("test", instructions="You are helpful")
+        node = AgentNode[WeatherQuery, str](
+            agent=agent, prompt_template="Test prompt", name="test_node"
         )
 
-        node = PromptNode[WeatherQuery, str](
-            prompt="Test prompt", config=config, name="test_node"
-        )
+        # Check that we have an agent with the test model
+        assert hasattr(node.agent.model, "model_name")
+        assert node.agent.model.model_name == "test"
+        assert node.prompt_template == "Test prompt"
+        assert node.name == "test_node"
 
-        assert node.config.model == "test"
-        assert node.config.system_prompt == "You are helpful"
-        assert node.config.result_type is str
+    def test_agent_node_defaults(self):
+        """Test AgentNode default values."""
+        node = create_test_agent_node("Test prompt", name="test_node")
 
-    def test_prompt_config_defaults(self):
-        """Test PromptConfig default values."""
-        node = PromptNode[WeatherQuery, str](prompt="Test prompt", name="test_node")
-
-        # Should use default config
-        assert node.config.model == "test"
-        assert node.config.system_prompt is None
-        assert node.config.result_type is None
+        # Should use test agent
+        assert hasattr(node.agent.model, "model_name")
+        assert node.agent.model.model_name == "test"
+        assert node.prompt_template == "Test prompt"
+        assert node.name == "test_node"
 
 
 class TestCoverageEdgeCases:
@@ -598,8 +617,8 @@ class TestCoverageEdgeCases:
         flow = Flow(input_type=WeatherQuery, output_type=GenericFlowResults)
 
         # Create nodes that form a cycle via explicit edges
-        node1 = PromptNode[WeatherQuery, str](prompt="test1", name="node1")
-        node2 = PromptNode[WeatherQuery, str](prompt="test2", name="node2")
+        node1 = create_test_agent_node("test1", name="node1")
+        node2 = create_test_agent_node("test2", name="node2")
 
         flow.add_nodes(node1, node2)
         # Add explicit cycle
@@ -617,8 +636,8 @@ class TestCoverageEdgeCases:
         flow = Flow(input_type=WeatherQuery, output_type=GenericFlowResults)
 
         # Create nodes with explicit cycle edges
-        node1 = PromptNode[WeatherQuery, str](prompt="test1", name="node1")
-        node2 = PromptNode[WeatherQuery, str](prompt="test2", name="node2")
+        node1 = create_test_agent_node("test1", name="node1")
+        node2 = create_test_agent_node("test2", name="node2")
 
         flow.add_nodes(node1, node2)
         flow.add_edge(node1, node2)
@@ -633,10 +652,10 @@ class TestCoverageEdgeCases:
         flow = Flow(input_type=WeatherQuery, output_type=ComplexFlowResults)
 
         # Create nodes with dependencies
-        node1 = PromptNode[WeatherQuery, str](prompt="test", name="node1")
+        node1 = create_test_agent_node("test", name="node1")
         node2 = ParserNode[str, WeatherInfo](
             parser_func=parse_weather_string,
-            input=node1.output,
+            inputs=(node1.output,),
             name="node2",
         )
 
@@ -676,7 +695,7 @@ class TestCoverageEdgeCases:
         flow = Flow(input_type=WeatherQuery, output_type=GenericFlowResults)
 
         # Create a node
-        node = PromptNode[WeatherQuery, str](prompt="test", name="test_node")
+        node = create_test_agent_node("test", name="test_node")
         flow.add_nodes(node)
 
         # Compilation should work
@@ -684,7 +703,7 @@ class TestCoverageEdgeCases:
 
     def test_node_type_hint_property(self):
         """Test the type_hint property of NodeOutput."""
-        node = PromptNode[WeatherQuery, str](prompt="test")
+        node = create_test_agent_node("test")
 
         # Access the type_hint property to cover line 27 in base.py
         type_hint = node.output.type_hint
@@ -694,17 +713,17 @@ class TestCoverageEdgeCases:
 
     def test_node_repr_method(self):
         """Test the __repr__ method of BaseNode."""
-        node = PromptNode[WeatherQuery, str](prompt="test", name="custom_name")
+        node = create_test_agent_node("test", name="custom_name")
 
         # Test the __repr__ method to cover line 70 in base.py
         repr_str = repr(node)
-        assert "PromptNode" in repr_str
+        assert "AgentNode" in repr_str
         assert "custom_name" in repr_str
 
         # Test with auto-generated name
-        node2 = PromptNode[WeatherQuery, str](prompt="test")
+        node2 = create_test_agent_node("test")
         repr_str2 = repr(node2)
-        assert "PromptNode" in repr_str2
+        assert "AgentNode" in repr_str2
 
     @pytest.mark.asyncio
     async def test_runtime_type_validation_paths(self):
@@ -738,7 +757,7 @@ class TestCoverageEdgeCases:
         flow = Flow(input_type=WeatherQuery, output_type=GenericFlowResults)
 
         # Create a simple node first
-        node = PromptNode[WeatherQuery, str](prompt="test", name="test_node")
+        node = create_test_agent_node("test", name="test_node")
         flow.add_nodes(node)
 
         # Create a bad node that raises exception when accessed

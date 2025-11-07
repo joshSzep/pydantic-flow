@@ -15,7 +15,6 @@ from pydantic_flow import RunConfig
 from pydantic_flow.core.errors import FlowError
 from pydantic_flow.core.routing import T_Route
 from pydantic_flow.nodes import BaseNode
-from pydantic_flow.nodes import NodeWithInput
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamEnd
 from pydantic_flow.streaming.core_events import StreamStart
@@ -376,7 +375,7 @@ class TestLoops:
         flow = Flow(input_type=CounterState, output_type=DependentNodeOutput)
         start_node = StartNode(name="start")
 
-        class DependentNode(NodeWithInput[CounterState, CounterState]):
+        class DependentNode(BaseNode[CounterState, CounterState]):
             """Node with explicit input dependency."""
 
             async def astream(
@@ -391,7 +390,7 @@ class TestLoops:
                     result=result.model_dump(),
                 )
 
-        dependent_node = DependentNode(input=start_node.output, name="dependent")
+        dependent_node = DependentNode(inputs=(start_node.output,), name="dependent")
         flow.add_nodes(start_node, dependent_node)
         flow.set_entry_nodes("start")
         flow.add_edge("start", "dependent")

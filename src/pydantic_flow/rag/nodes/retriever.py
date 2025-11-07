@@ -5,8 +5,8 @@ import uuid
 
 from pydantic import BaseModel
 
+from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.nodes.base import NodeOutput
-from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.rag.retrievers.base import Retriever
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamEnd
@@ -40,7 +40,7 @@ class RetrievalResult(BaseModel):
     query: str
 
 
-class VectorRetrieverNode(NodeWithInput[QueryInput, RetrievalResult]):
+class VectorRetrieverNode(BaseNode[QueryInput, RetrievalResult]):
     """Node that streams retrieval results using a Retriever.
 
     This node takes a Retriever and yields RetrievalItem events
@@ -56,7 +56,7 @@ class VectorRetrieverNode(NodeWithInput[QueryInput, RetrievalResult]):
         self,
         retriever: Retriever,
         *,
-        input: NodeOutput[QueryInput] | None = None,
+        inputs: tuple[NodeOutput, ...] | None = None,
         name: str | None = None,
         run_id: str | None = None,
     ) -> None:
@@ -64,12 +64,12 @@ class VectorRetrieverNode(NodeWithInput[QueryInput, RetrievalResult]):
 
         Args:
             retriever: Retriever instance.
-            input: Optional input from another node's output.
+            inputs: Optional tuple of inputs from other nodes.
             name: Optional unique identifier for this node.
             run_id: Optional run identifier for tracking execution.
 
         """
-        super().__init__(input, name, run_id)
+        super().__init__(inputs, name, run_id)
         self.retriever = retriever
 
     async def astream(self, input_data: QueryInput) -> AsyncIterator[ProgressItem]:

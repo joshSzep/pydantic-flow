@@ -19,8 +19,8 @@ from pydantic_flow.checkpoints.types import generate_run_id
 from pydantic_flow.checkpoints.types import generate_snapshot_id
 from pydantic_flow.hitl.decisions import InterruptDecision
 from pydantic_flow.hitl.interrupts import InterruptionRequested
+from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.nodes.base import NodeOutput
-from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamStart
 
@@ -60,7 +60,7 @@ class HumanResponse(BaseModel):
 
 
 class HumanNode[InputModel: BaseModel, OutputModel: BaseModel](
-    NodeWithInput[InputModel, OutputModel]
+    BaseNode[InputModel, OutputModel]
 ):
     """A node that always interrupts execution for human input.
 
@@ -90,7 +90,7 @@ class HumanNode[InputModel: BaseModel, OutputModel: BaseModel](
         response_parser: Callable[[HumanResponse], OutputModel] | None = None,
         input_type: str = "text",
         options: list[str] | None = None,
-        input: NodeOutput[InputModel] | None = None,
+        inputs: tuple[NodeOutput, ...] | None = None,
         name: str | None = None,
         run_id: str | None = None,
     ) -> None:
@@ -102,12 +102,12 @@ class HumanNode[InputModel: BaseModel, OutputModel: BaseModel](
                 If None, expects HumanResponse as the output type.
             input_type: Type of input expected (text, approval, choice, etc.).
             options: Optional list of choices for selection-type inputs.
-            input: Optional input from another node's output.
+            inputs: Optional tuple of inputs from other nodes.
             name: Optional unique identifier for this node.
             run_id: Optional run identifier for tracking execution.
 
         """
-        super().__init__(input, name, run_id)
+        super().__init__(inputs, name, run_id)
         self._prompt = prompt
         self._response_parser = response_parser
         self._human_input_type = input_type
@@ -215,7 +215,7 @@ class HumanNode[InputModel: BaseModel, OutputModel: BaseModel](
         return response  # type: ignore
 
 
-class ApprovalNode[InputModel: BaseModel](NodeWithInput[InputModel, HumanResponse]):
+class ApprovalNode[InputModel: BaseModel](BaseNode[InputModel, HumanResponse]):
     """Specialized HumanNode for approval workflows.
 
     This is a convenience node for simple approve/reject patterns.
@@ -225,7 +225,7 @@ class ApprovalNode[InputModel: BaseModel](NodeWithInput[InputModel, HumanRespons
         ```python
         approval = ApprovalNode(
             prompt="Approve this action?",
-            input=action_node.output,
+            inputs=(action_node.output,),
         )
         ```
 
@@ -235,7 +235,7 @@ class ApprovalNode[InputModel: BaseModel](NodeWithInput[InputModel, HumanRespons
         self,
         prompt: str | Callable[[InputModel], str],
         *,
-        input: NodeOutput[InputModel] | None = None,
+        inputs: tuple[NodeOutput, ...] | None = None,
         name: str | None = None,
         run_id: str | None = None,
     ) -> None:
@@ -243,13 +243,13 @@ class ApprovalNode[InputModel: BaseModel](NodeWithInput[InputModel, HumanRespons
 
         Args:
             prompt: Static prompt or function that takes input and returns prompt.
-            input: Optional input from another node's output.
+            inputs: Optional tuple of inputs from other nodes.
             name: Optional unique identifier for this node.
             run_id: Optional run identifier for tracking execution.
 
         """
         self._prompt = prompt
-        super().__init__(input, name, run_id)
+        super().__init__(inputs, name, run_id)
 
     def _format_prompt(self, input_data: InputModel) -> str:
         """Format the prompt based on input data."""

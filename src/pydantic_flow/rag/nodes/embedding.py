@@ -5,8 +5,8 @@ import uuid
 
 from pydantic import BaseModel
 
+from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.nodes.base import NodeOutput
-from pydantic_flow.nodes.base import NodeWithInput
 from pydantic_flow.rag.embeddings.base import EmbeddingProvider
 from pydantic_flow.streaming.base import ProgressItem
 from pydantic_flow.streaming.core_events import StreamEnd
@@ -37,7 +37,7 @@ class EmbeddingOutput(BaseModel):
     dimensions: int
 
 
-class EmbeddingNode(NodeWithInput[EmbeddingInput, EmbeddingOutput]):
+class EmbeddingNode(BaseNode[EmbeddingInput, EmbeddingOutput]):
     """Node that materializes embeddings for downstream use.
 
     This node takes an EmbeddingProvider and generates embeddings
@@ -52,7 +52,7 @@ class EmbeddingNode(NodeWithInput[EmbeddingInput, EmbeddingOutput]):
         self,
         embedding_provider: EmbeddingProvider,
         *,
-        input: NodeOutput[EmbeddingInput] | None = None,
+        inputs: tuple[NodeOutput, ...] | None = None,
         name: str | None = None,
         run_id: str | None = None,
     ) -> None:
@@ -60,12 +60,12 @@ class EmbeddingNode(NodeWithInput[EmbeddingInput, EmbeddingOutput]):
 
         Args:
             embedding_provider: Embedding provider instance.
-            input: Optional input from another node's output.
+            inputs: Optional tuple of inputs from other nodes.
             name: Optional unique identifier for this node.
             run_id: Optional run identifier for tracking execution.
 
         """
-        super().__init__(input, name, run_id)
+        super().__init__(inputs, name, run_id)
         self.embedding_provider = embedding_provider
 
     async def astream(self, input_data: EmbeddingInput) -> AsyncIterator[ProgressItem]:

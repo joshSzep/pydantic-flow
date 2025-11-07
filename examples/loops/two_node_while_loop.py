@@ -8,22 +8,10 @@ from pydantic import BaseModel
 from pydantic_flow import Flow
 from pydantic_flow import Route
 from pydantic_flow import RunConfig
-from pydantic_flow.core.routing import T_Route
 from pydantic_flow.nodes import BaseNode
-from pydantic_flow.nodes import NodeWithInput
 from pydantic_flow.streaming import ProgressItem
 from pydantic_flow.streaming import StreamEnd
 from pydantic_flow.streaming import StreamStart
-
-
-# Helper to extract result from stream
-async def extract_result_from_stream(stream):
-    """Extract final result from async stream of progress items."""
-    result = None
-    async for item in stream:
-        if hasattr(item, "result"):
-            result = item.result
-    return result
 
 
 class WorkState(BaseModel):
@@ -31,19 +19,6 @@ class WorkState(BaseModel):
 
     iterations: int
     total: int
-
-
-class PlanOutput(BaseModel):
-    """Output from plan node."""
-
-    plan: WorkState
-
-
-class FullOutput(BaseModel):
-    """Full output with both plan and execute results."""
-
-    plan: WorkState
-    execute: WorkState
 
 
 class PlanNode(BaseNode[WorkState, WorkState]):
@@ -67,7 +42,7 @@ class PlanNode(BaseNode[WorkState, WorkState]):
         return new_state
 
 
-class ExecuteNode(NodeWithInput[WorkState, WorkState]):
+class ExecuteNode(BaseNode[WorkState, WorkState]):
     """Execution node that performs work."""
 
     async def astream(self, input_data: WorkState) -> AsyncIterator[ProgressItem]:
@@ -86,20 +61,17 @@ class ExecuteNode(NodeWithInput[WorkState, WorkState]):
         return new_state
 
 
-def create_loop_router(max_iterations: int):
+def create_loop_router(max_iterations: int, plan_node: BaseNode):
     """Create a router that loops until max iterations reached."""
 
-    def router(state: BaseModel) -> T_Route:
+    def router(state: WorkState) -> BaseNode | Route:
         """Route back to plan or terminate with END."""
-        execute_state = getattr(state, "execute", None)
-        if execute_state and execute_state.iterations >= max_iterations:
-            print(
-                f"Reached {execute_state.iterations} iterations, "
-                f"total={execute_state.total}"
-            )
+        if state.iterations >= max_iterations:
+            print(f"Reached {state.iterations} iterations, total={state.total}")
             print("Terminating with Route.END")
             return Route.END
-        return "plan"
+        print(f"Looping back to plan after iteration {state.iterations}")
+        return plan_node
 
     return router
 
@@ -109,28 +81,28 @@ async def main() -> None:
     print("Two-Node While-Loop Example")
     print("=" * 50)
 
-    flow = Flow(input_type=WorkState, output_type=FullOutput)
+    plan_node = PlanNode()
+    execute_node = ExecuteNode(inputs=(plan_node.output,))
 
-    plan_node = PlanNode(name="plan")
-    execute_node = ExecuteNode(input=plan_node.output, name="execute")
-
+    flow = Flow[WorkState, WorkState](input_type=WorkState, output_type=WorkState)
     flow.add_nodes(plan_node, execute_node)
-    flow.set_entry_nodes("plan")
 
     # Static edge ensures execute runs after plan in each iteration
-    flow.add_edge("plan", "execute")
+    flow.add_edge(plan_node, execute_node)
 
-    router = create_loop_router(max_iterations=5)
-    flow.add_conditional_edges("execute", router)
+    router = create_loop_router(max_iterations=5, plan_node=plan_node)
+    flow.add_conditional_edges(execute_node, router)
 
-    config = RunConfig(max_steps=50, trace_iterations=True)
-    result = await extract_result_from_stream(
-        flow.astream(WorkState(iterations=0, total=0), config)
-    )
+    config = RunConfig(max_steps=50)
+    result = None
+    async for item in flow.astream(WorkState(iterations=0, total=0), config):
+        if isinstance(item, StreamEnd):
+            result = item.result
 
     print("\nFinal result:")
-    print(f"  Iterations: {result.execute.iterations}")
-    print(f"  Total: {result.execute.total}")
+    if result and isinstance(result, WorkState):
+        print(f"  Iterations: {result.iterations}")
+        print(f"  Total: {result.total}")
 
 
 if __name__ == "__main__":

@@ -12,7 +12,6 @@ from pydantic import BaseModel
 from pydantic_ai import Agent
 
 from pydantic_flow import AgentNode
-from pydantic_flow import LLMNode
 from pydantic_flow import ProgressType
 from pydantic_flow import StreamEnd
 from pydantic_flow import TokenChunk
@@ -87,7 +86,7 @@ async def example_2_structured_output():
     print("Example 2: Structured Output")
     print("=" * 60)
 
-    node = LLMNode[Query, StructuredAnswer](
+    node = AgentNode[Query, StructuredAnswer](
         agent=structured_agent,
         prompt_template="Question: {question}",
         name="structured_agent",

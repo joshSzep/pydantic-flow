@@ -7,10 +7,8 @@ first-class interface, emitting the correct sequence of ProgressItems.
 from pydantic import BaseModel
 import pytest
 
+from pydantic_flow.nodes import BaseNode
 from pydantic_flow.nodes import IfNode
-from pydantic_flow.nodes import MergeParserNode
-from pydantic_flow.nodes import MergeToolNode
-from pydantic_flow.nodes import NodeWithInput
 from pydantic_flow.nodes import ParserNode
 from pydantic_flow.nodes import RetryNode
 from pydantic_flow.nodes import ToolNode
@@ -137,7 +135,7 @@ async def test_parser_node_astream_sequence():
 async def test_if_node_astream_forwards_branch_progress():
     """Test that IfNode forwards progress from the chosen branch."""
 
-    class BranchNode(NodeWithInput[SimpleInput, SimpleOutput]):
+    class BranchNode(BaseNode[SimpleInput, SimpleOutput]):
         """Test branch node."""
 
         async def astream(self, input_data: SimpleInput):
@@ -188,7 +186,7 @@ async def test_if_node_astream_forwards_branch_progress():
 async def test_retry_node_emits_errors_on_retry():
     """Test that RetryNode emits NonFatalError on retries."""
 
-    class UnreliableNode(NodeWithInput[SimpleInput, SimpleOutput]):
+    class UnreliableNode(BaseNode[SimpleInput, SimpleOutput]):
         """Node that fails twice then succeeds."""
 
         def __init__(self, *args, **kwargs):
@@ -239,7 +237,7 @@ async def test_merge_tool_node_astream_sequence():
     node_a = ToolNode[SimpleInput, SimpleInput](tool_func=identity, name="node_a")
     node_b = ToolNode[SimpleInput, SimpleInput](tool_func=identity, name="node_b")
 
-    merge_node = MergeToolNode[SimpleInput, SimpleInput, MergedOutput](
+    merge_node = ToolNode[tuple[SimpleInput, SimpleInput], MergedOutput](  # type: ignore[type-var]
         inputs=(node_a.output, node_b.output),
         tool_func=merge_two_values,
         name="merge_node",
@@ -265,7 +263,7 @@ async def test_merge_tool_node_astream_sequence():
 
 @pytest.mark.asyncio
 async def test_merge_parser_node_astream_sequence():
-    """Test that MergeParserNode emits correct streaming sequence."""
+    """Test that ParserNode emits correct streaming sequence."""
 
     async def identity(x: SimpleInput) -> SimpleInput:
         return x
@@ -276,7 +274,7 @@ async def test_merge_parser_node_astream_sequence():
     node_a = ToolNode[SimpleInput, SimpleInput](tool_func=identity, name="node_a")
     node_b = ToolNode[SimpleInput, SimpleInput](tool_func=identity, name="node_b")
 
-    merge_parser = MergeParserNode[SimpleInput, SimpleInput, MergedOutput](
+    merge_parser = ParserNode[tuple[SimpleInput, SimpleInput], MergedOutput](
         inputs=(node_a.output, node_b.output),
         parser_func=parse_combined,
         name="merge_parser",

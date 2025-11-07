@@ -296,7 +296,7 @@ async def create_research_flow() -> Flow[ContentRequest, ResearchResults]:
     # Step 2: Validate research for accuracy
     validation_node = ToolNode[ResearchData, ValidatedResearch](
         tool_func=validate_research,
-        input=research_node.output,
+        inputs=(research_node.output,),
         name="validated_research",
     )
 
@@ -335,7 +335,7 @@ async def create_writing_flow() -> Flow[PlanningResults, WritingResults]:
 
     # Step 2: Review and edit content
     review_node = ToolNode[DraftContent, ReviewedContent](
-        tool_func=review_content, input=draft_node.output, name="reviewed_content"
+        tool_func=review_content, inputs=(draft_node.output,), name="reviewed_content"
     )
 
     writing_flow.add_nodes(draft_node, review_node)
@@ -385,15 +385,17 @@ async def create_content_pipeline() -> Flow[ContentRequest, ContentCreationResul
     )
 
     planning_flow_node = FlowNode[ResearchResults, PlanningResults](
-        flow=planning_flow, input=research_flow_node.output, name="planning_phase"
+        flow=planning_flow, inputs=(research_flow_node.output,), name="planning_phase"
     )
 
     writing_flow_node = FlowNode[PlanningResults, WritingResults](
-        flow=writing_flow, input=planning_flow_node.output, name="writing_phase"
+        flow=writing_flow, inputs=(planning_flow_node.output,), name="writing_phase"
     )
 
     publishing_flow_node = FlowNode[WritingResults, PublishingResults](
-        flow=publishing_flow, input=writing_flow_node.output, name="publishing_phase"
+        flow=publishing_flow,
+        inputs=(writing_flow_node.output,),
+        name="publishing_phase",
     )
 
     # Add all sub-flow nodes to master pipeline

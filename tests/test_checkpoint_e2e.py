@@ -14,7 +14,7 @@ from pydantic_flow.checkpoints import SQLiteCheckpointConfig
 from pydantic_flow.checkpoints.reconstructor import StateReconstructor
 from pydantic_flow.core.run_config import RunConfig
 from pydantic_flow.flow.flow import Flow
-from pydantic_flow.nodes.base import NodeWithInput
+from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.streaming import ProgressItem
 from pydantic_flow.streaming import StreamEnd
 from pydantic_flow.streaming import StreamStart
@@ -40,7 +40,7 @@ class SimpleOutput(BaseModel):
     c: SimpleState
 
 
-class IncrementNode(NodeWithInput[SimpleInput, SimpleInput]):
+class IncrementNode(BaseNode[SimpleInput, SimpleInput]):
     """Node that increments value."""
 
     async def astream(self, input_data: SimpleInput) -> AsyncIterator[ProgressItem]:
@@ -75,8 +75,8 @@ async def test_flow_execution_with_checkpoints(temp_checkpoint_backend):
     flow = Flow(input_type=SimpleInput, output_type=SimpleOutput)
 
     node_a = IncrementNode(name="a")
-    node_b = IncrementNode(name="b", input=node_a.output)
-    node_c = IncrementNode(name="c", input=node_b.output)
+    node_b = IncrementNode(name="b", inputs=(node_a.output,))
+    node_c = IncrementNode(name="c", inputs=(node_b.output,))
 
     flow.add_nodes(node_a, node_b, node_c)
 
@@ -142,8 +142,8 @@ async def test_state_reconstruction_from_real_execution(temp_checkpoint_backend)
     flow = Flow(input_type=SimpleInput, output_type=SimpleOutput)
 
     node_a = IncrementNode(name="a")
-    node_b = IncrementNode(name="b", input=node_a.output)
-    node_c = IncrementNode(name="c", input=node_b.output)
+    node_b = IncrementNode(name="b", inputs=(node_a.output,))
+    node_c = IncrementNode(name="c", inputs=(node_b.output,))
 
     flow.add_nodes(node_a, node_b, node_c)
 
@@ -192,8 +192,8 @@ async def test_full_snapshot_every_nth_wave_with_real_flow(temp_checkpoint_backe
     flow = Flow(input_type=SimpleInput, output_type=SimpleOutput)
 
     node_a = IncrementNode(name="a")
-    node_b = IncrementNode(name="b", input=node_a.output)
-    node_c = IncrementNode(name="c", input=node_b.output)
+    node_b = IncrementNode(name="b", inputs=(node_a.output,))
+    node_c = IncrementNode(name="c", inputs=(node_b.output,))
 
     flow.add_nodes(node_a, node_b, node_c)
 

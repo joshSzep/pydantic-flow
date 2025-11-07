@@ -25,7 +25,6 @@ from pydantic_flow.core.routing import Route
 from pydantic_flow.core.routing import T_Route
 from pydantic_flow.core.run_config import RunConfig
 from pydantic_flow.nodes import BaseNode
-from pydantic_flow.nodes.base import MergeNode
 from pydantic_flow.streaming import ProgressItem
 from pydantic_flow.streaming import StreamEnd
 from pydantic_flow.streaming import ToolResult
@@ -469,9 +468,7 @@ class DataflowEngine[InputT: BaseModel, OutputT: BaseModel]:
 
             result_value = results[input_node_name]
 
-            # If this is a MergeNode, wrap single result in tuple
-            if isinstance(node, MergeNode):
-                return (result_value,)
+            # Single input dependency - return directly
             return result_value
         else:
             # Multiple input dependencies - return as tuple

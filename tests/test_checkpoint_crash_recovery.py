@@ -27,7 +27,7 @@ from pydantic_flow.checkpoints.types import StateSnapshot
 from pydantic_flow.checkpoints.types import generate_run_id
 from pydantic_flow.checkpoints.types import generate_snapshot_id
 from pydantic_flow.checkpoints.types import generate_trace_id
-from pydantic_flow.nodes.base import NodeWithInput
+from pydantic_flow.nodes.base import BaseNode
 from pydantic_flow.streaming import ProgressItem
 from pydantic_flow.streaming import StreamEnd
 from pydantic_flow.streaming import StreamStart
@@ -46,7 +46,7 @@ class CrashRecoveryInput(BaseModel):
     value: int
 
 
-class FailingNode(NodeWithInput[CrashRecoveryInput, CrashRecoveryInput]):
+class FailingNode(BaseNode[CrashRecoveryInput, CrashRecoveryInput]):
     """Node that can be configured to fail at specific points."""
 
     fail_on_execution: bool = False

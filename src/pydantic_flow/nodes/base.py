@@ -44,16 +44,18 @@ class BaseNode[InputT, OutputT](ABC):
     """Abstract base class for all workflow nodes.
 
     All nodes have these capabilities built-in:
-    - Streaming via astream() and convenience run() method
+    - Streaming via astream() (primary interface)
     - Caching via cache_policy attribute
     - Interrupts via interrupt handler registration
     - Dependency tracking via dependencies property
+    - Flexible input: single NodeOutput, tuple of NodeOutputs, or None
 
-    This eliminates the need for mixins and provides a consistent interface.
+    This eliminates the need for separate Node and MergeNode classes.
     """
 
     def __init__(
         self,
+        inputs: tuple[NodeOutput, ...] | None = None,
         name: str | None = None,
         run_id: str | None = None,
         cache_policy: CachePolicy | None = None,
@@ -61,6 +63,10 @@ class BaseNode[InputT, OutputT](ABC):
         """Initialize the base node.
 
         Args:
+            inputs: Optional tuple of inputs from other nodes. Can be:
+                   - None: Entry node with no dependencies
+                   - (node.output,): Single input dependency
+                   - (node1.output, node2.output, ...): Multiple inputs (fan-in)
             name: Optional unique identifier for this node. If not provided,
                   will be auto-generated based on the class name.
             run_id: Optional run identifier for tracking execution.
@@ -72,6 +78,9 @@ class BaseNode[InputT, OutputT](ABC):
         self.cache_policy = cache_policy
         self._output: NodeOutput[OutputT] = NodeOutput(node=self)
         self._interrupt_handlers: list[InterruptHandlerRegistration] = []
+
+        # Store inputs - always a tuple (possibly empty)
+        self._inputs: tuple[NodeOutput, ...] = inputs if inputs is not None else ()
 
         # Store type information for runtime inspection
         # Find the base with generic type parameters (handles multiple inheritance)
@@ -87,6 +96,11 @@ class BaseNode[InputT, OutputT](ABC):
             # Fallback for edge cases
             self._input_type = Any  # type: ignore
             self._output_type = Any  # type: ignore
+
+    @property
+    def inputs(self) -> tuple[NodeOutput, ...]:
+        """Get all input dependencies."""
+        return self._inputs
 
     @property
     def output(self) -> NodeOutput[OutputT]:
@@ -105,7 +119,7 @@ class BaseNode[InputT, OutputT](ABC):
             this is an entry node (or has no explicit dependencies).
 
         """
-        return []
+        return [node_output.node for node_output in self._inputs]
 
     def register_interrupt_handler(
         self,
@@ -170,8 +184,11 @@ class BaseNode[InputT, OutputT](ABC):
     async def astream(self, input_data: InputT) -> AsyncIterator[ProgressItem]:
         """Stream progress items while executing the node's logic.
 
-        This is the primary interface for node execution. For convenience,
-        use run() to get the final result directly.
+        This is the primary interface for node execution. To get just the
+        final result, use collect_result() from streaming.helpers:
+
+            from pydantic_flow.streaming.helpers import collect_result
+            result = await collect_result(node.astream(input_data))
 
         Args:
             input_data: The input data for this node
@@ -195,32 +212,6 @@ class BaseNode[InputT, OutputT](ABC):
             run_id=self.run_id or "",
             node_id=self.name,
         )
-
-    async def run(self, input_data: InputT) -> OutputT:
-        """Consume the stream and return final result.
-
-        This method provides a simpler interface for users who don't need
-        streaming progress. It internally calls astream() and extracts the
-        final result.
-
-        Args:
-            input_data: The input data for this node
-
-        Returns:
-            The final output value of type OutputT
-
-        Raises:
-            ValueError: If the node execution completes without producing a result
-
-        """
-        result = None
-        async for item in self.astream(input_data):
-            if hasattr(item, "result") and item.result is not None:
-                result = item.result
-        if result is None:
-            msg = f"Node {self.name} did not produce a result"
-            raise ValueError(msg)
-        return result  # type: ignore
 
     def _record_stream_event(self, item: ProgressItem) -> None:
         """Record a streaming progress item as a span event.
@@ -287,114 +278,3 @@ class BaseNode[InputT, OutputT](ABC):
     def __repr__(self) -> str:
         """Return a string representation of the node."""
         return f"{self.__class__.__name__}(name='{self.name}')"
-
-
-class Node[InputT, OutputT](BaseNode[InputT, OutputT]):
-    """Concrete base class for nodes with optional single input dependency.
-
-    This is the primary base class for creating custom nodes. It provides
-    all the built-in capabilities (caching, interrupts, streaming) with
-    support for a single input dependency from another node.
-
-    For specialized behavior, use:
-    - AgentNode for LLM operations
-    - FlowNode for sub-flows
-    - ToolNode for function calls
-    - MergeNode for fan-in patterns with multiple inputs
-
-    Example:
-        class MyCustomNode(Node[Query, Answer]):
-            async def astream(self, input_data: Query):
-                yield StreamStart(...)
-                # Your logic here
-                yield StreamEnd(result=answer)
-
-    """
-
-    def __init__(
-        self,
-        input: NodeOutput[InputT] | None = None,
-        name: str | None = None,
-        run_id: str | None = None,
-        cache_policy: CachePolicy | None = None,
-    ) -> None:
-        """Initialize a node with optional input dependency.
-
-        Args:
-            input: Optional input from another node's output
-            name: Optional unique identifier for this node
-            run_id: Optional run identifier for tracking execution
-            cache_policy: Optional cache policy for this node
-
-        """
-        super().__init__(name, run_id, cache_policy)
-        self._input = input
-
-    @property
-    def input(self) -> NodeOutput[InputT] | None:
-        """Get the input node output reference."""
-        return self._input
-
-    @property
-    def dependencies(self) -> list[BaseNode[Any, Any]]:
-        """Get the list of nodes this node depends on."""
-        if self._input is None:
-            return []
-        return [self._input.node]
-
-
-# Keep NodeWithInput as an alias for backward compatibility during migration
-NodeWithInput = Node
-
-
-class MergeNode[*InputTs, OutputT](BaseNode[tuple[*InputTs], OutputT]):
-    """Base class for nodes that merge multiple inputs (fan-in pattern).
-
-    This class enables fan-in patterns where a node needs to combine
-    outputs from multiple upstream nodes.
-
-    Uses PEP 646 TypeVarTuple for arbitrary input types, allowing
-    full type safety across multiple inputs.
-
-    Example:
-        class CombineResults(MergeNode[DataA, DataB, Result]):
-            async def astream(self, inputs: tuple[DataA, DataB]):
-                data_a, data_b = inputs
-                yield StreamStart(...)
-                # Combine data_a and data_b
-                yield StreamEnd(result=combined)
-
-    """
-
-    def __init__(
-        self,
-        inputs: tuple[NodeOutput[Any], ...],
-        name: str | None = None,
-        run_id: str | None = None,
-        cache_policy: CachePolicy | None = None,
-    ) -> None:
-        """Initialize a merge node with multiple input dependencies.
-
-        Args:
-            inputs: Tuple of NodeOutput references from upstream nodes
-            name: Optional unique identifier for this node
-            run_id: Optional run identifier for tracking execution
-            cache_policy: Optional cache policy for this node
-
-        """
-        super().__init__(name, run_id, cache_policy)
-        self._inputs = inputs
-
-    @property
-    def inputs(self) -> tuple[NodeOutput[Any], ...]:
-        """Get the tuple of input node output references."""
-        return self._inputs
-
-    @property
-    def dependencies(self) -> list[BaseNode[Any, Any]]:
-        """Get all dependency nodes from multiple inputs."""
-        return [node_output.node for node_output in self._inputs]
-
-
-# Remove redundant protocol classes - BaseNode as ABC is sufficient
-# These added no value and violated the "clear APIs" principle

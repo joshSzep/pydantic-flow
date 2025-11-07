@@ -13,9 +13,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from pydantic_flow import AgentNode
 from pydantic_flow import Flow
-from pydantic_flow import PromptConfig
-from pydantic_flow import PromptNode
 from pydantic_flow import ToolNode
 from pydantic_flow.checkpoints.backends.sqlite import SQLiteCheckpointBackend
 from pydantic_flow.checkpoints.backends.sqlite import SQLiteCheckpointConfig
@@ -89,10 +88,10 @@ async def main():
         tool_func=calculate_risk_score, name="risk_analyzer"
     )
 
-    final_processor = PromptNode[ProcessedDocument, ProcessedDocument](
-        prompt="Finalize document with summary: {input.summary}",
-        config=PromptConfig(model="openai:gpt-4"),
-        input=risk_analyzer.output,
+    final_processor = AgentNode.from_prompt(
+        model="openai:gpt-4",
+        prompt_template="Finalize document with summary: {summary}",
+        inputs=(risk_analyzer.output,),
         name="final_processor",
     )
 
