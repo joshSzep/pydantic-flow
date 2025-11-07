@@ -1,7 +1,6 @@
 """Template classes for prompt rendering and structured output."""
 
 from collections.abc import Mapping
-from typing import TypeVar
 
 from pydantic import BaseModel
 
@@ -11,9 +10,6 @@ from pydantic_flow.prompt.enums import TemplateFormat
 from pydantic_flow.prompt.types import ChatMessage
 from pydantic_flow.prompt.types import OutputParser
 from pydantic_flow.prompt.types import PromptRenderer
-
-TIn = TypeVar("TIn", bound=BaseModel)
-TOut = TypeVar("TOut")
 
 
 class PromptTemplate[TIn: BaseModel, TOut]:

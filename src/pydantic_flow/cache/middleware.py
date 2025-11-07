@@ -12,7 +12,6 @@ from collections.abc import Callable
 import sys
 import time
 from typing import Any
-from typing import TypeVar
 
 from pydantic_flow.cache.base import CacheBackend
 from pydantic_flow.cache.base import CacheContentType
@@ -25,8 +24,6 @@ from pydantic_flow.cache.events import CacheWrite
 from pydantic_flow.cache.key import build_cache_key
 from pydantic_flow.cache.stampede import Singleflight
 from pydantic_flow.streaming.base import ProgressItem
-
-T = TypeVar("T")
 
 _singleflight = Singleflight()
 

@@ -3,14 +3,10 @@
 from collections.abc import Mapping
 from typing import Any
 from typing import Protocol
-from typing import TypeVar
 
 from pydantic import BaseModel
 
 from pydantic_flow.prompt.enums import ChatRole
-
-TIn = TypeVar("TIn", bound=BaseModel)
-TOut_co = TypeVar("TOut_co", covariant=True)
 
 
 class PromptRenderer(Protocol):

@@ -10,7 +10,6 @@ from collections.abc import AsyncIterator
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-from typing import TypeVar
 import uuid
 
 from pydantic import BaseModel
@@ -31,9 +30,6 @@ from pydantic_flow.memory import ConversationMemory
 from pydantic_flow.memory import MemoryConfig
 from pydantic_flow.nodes import BaseNode
 from pydantic_flow.streaming.base import ProgressItem
-
-InputT = TypeVar("InputT", bound=BaseModel)
-OutputT = TypeVar("OutputT", bound=BaseModel)
 
 
 @dataclass

@@ -7,15 +7,12 @@ field updates, with graceful handling of malformed input.
 from collections.abc import AsyncIterator
 import json
 from typing import Any
-from typing import TypeVar
 
 from pydantic import BaseModel
 from pydantic import ValidationError
 
 from pydantic_flow.streaming.core_events import PartialFields
 from pydantic_flow.streaming.system_events import NonFatalError
-
-T = TypeVar("T", bound=BaseModel)
 
 
 class StreamingParser[T: BaseModel]:

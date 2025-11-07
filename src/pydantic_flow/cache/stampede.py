@@ -10,9 +10,6 @@ import asyncio
 from collections.abc import Awaitable
 from collections.abc import Callable
 from typing import Any
-from typing import TypeVar
-
-T = TypeVar("T")
 
 
 class Singleflight:
@@ -27,7 +24,7 @@ class Singleflight:
         self._inflight: dict[str, asyncio.Future[Any]] = {}
         self._lock = asyncio.Lock()
 
-    async def do(
+    async def do[T](
         self,
         key: str,
         fn: Callable[[], Awaitable[T]],

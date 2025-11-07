@@ -4,8 +4,6 @@ from contextlib import asynccontextmanager
 from contextlib import contextmanager
 import time
 from typing import Any
-from typing import ParamSpec
-from typing import TypeVar
 
 from opentelemetry import trace
 from opentelemetry.trace import Status
@@ -18,9 +16,6 @@ from pydantic_flow.telemetry.setup import get_meter
 from pydantic_flow.telemetry.setup import get_tracer
 from pydantic_flow.telemetry.setup import is_enabled
 from pydantic_flow.telemetry.setup import set_active_span
-
-P = ParamSpec("P")
-T = TypeVar("T")
 
 
 @contextmanager

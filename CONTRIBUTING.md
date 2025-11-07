@@ -91,15 +91,59 @@ pydantic-flow follows strict code style guidelines for consistency and type safe
   - Use `dict`/`list`/`tuple` never `Dict`/`List`/`Tuple`
   - Use `A | B` never `Union[A, B]`
   - Use `A | None` never `Optional[A]`
+  - Use PEP 695 type parameter syntax for generics (Python 3.14+)
 
 ```python
-# ✅ Good
+# ✅ Good - Modern Python 3.14 syntax
 async def process_data(items: list[str]) -> dict[str, int] | None:
     pass
 
-# ❌ Bad
+# ✅ Good - PEP 695 type parameters for generic classes
+class Container[T: BaseModel]:
+    def __init__(self, value: T) -> None:
+        self.value = value
+
+# ✅ Good - PEP 695 type parameters for generic functions
+async def transform[T](data: T) -> T:
+    return data
+
+# ❌ Bad - Old-style typing imports
+from typing import Dict, List, Optional, Union, TypeVar
+
 async def process_data(items: List[str]) -> Optional[Dict[str, int]]:
     pass
+
+# ❌ Bad - Old-style TypeVar declarations
+T = TypeVar("T", bound=BaseModel)
+
+class Container(Generic[T]):  # Don't use Generic base class
+    def __init__(self, value: T) -> None:
+        self.value = value
+```
+
+**Exception:** Some typing constructs still require imports:
+- `Protocol` for structural subtyping
+- `TYPE_CHECKING` for avoiding circular imports
+- `cast` for type narrowing
+- `runtime_checkable` for Protocol runtime checks
+- `Annotated` for metadata annotations
+- `ParamSpec` for decorator type parameters (not yet supported by PEP 695)
+- Contravariant/covariant `TypeVar` in Protocols (not yet supported by PEP 695)
+
+```python
+# ✅ Acceptable - These still need typing imports
+from typing import Protocol, TYPE_CHECKING, cast, ParamSpec, runtime_checkable
+
+if TYPE_CHECKING:
+    from pydantic_flow.core import RunConfig
+
+@runtime_checkable
+class Renderable(Protocol):
+    def render(self) -> str: ...
+
+# Decorator signatures still need ParamSpec
+P = ParamSpec("P")
+def decorator(func: Callable[P, T]) -> Callable[P, T]: ...
 ```
 
 ### Data Structures
