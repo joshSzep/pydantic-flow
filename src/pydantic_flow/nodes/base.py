@@ -184,34 +184,60 @@ class BaseNode[InputT, OutputT](ABC):
     async def astream(self, input_data: InputT) -> AsyncIterator[ProgressItem]:
         """Stream progress items while executing the node's logic.
 
-        This is the primary interface for node execution. To get just the
-        final result, use collect_result() from streaming.helpers:
+        This is the primary interface for node execution. Subclasses must implement
+        this method to define their streaming behavior.
 
-            from pydantic_flow.streaming.helpers import collect_result
-            result = await collect_result(node.astream(input_data))
+        **Implementation Requirements:**
+
+        Implementations MUST follow this structure:
+
+        1. **Start**: Emit a `StreamStart` event at the beginning:
+           ```python
+           yield StreamStart(
+               run_id=self.run_id or "",
+               node_id=self.name,
+               input_preview=self._preview_input(input_data),
+           )
+           ```
+
+        2. **Body**: Emit progress items during execution (tokens, tool calls, etc.):
+           ```python
+           # Example: emit tokens during LLM generation
+           async for token in llm_stream:
+               yield TokenChunk(text=token, ...)
+
+           # Example: emit tool calls
+           yield ToolCall(tool_name="search", ...)
+           yield ToolResult(result=search_result, ...)
+           ```
+
+        3. **End**: Emit a `StreamEnd` event with the final result:
+           ```python
+           yield StreamEnd(
+               run_id=self.run_id or "",
+               node_id=self.name,
+               result=final_result,
+           )
+           ```
+
+        **Consuming Results:**
+
+        To get just the final result without processing the stream:
+
+        ```python
+        from pydantic_flow.streaming.helpers import collect_result
+        result = await collect_result(node.astream(input_data))
+        ```
 
         Args:
             input_data: The input data for this node
 
         Yields:
-            Progress items representing execution progress.
+            Progress items representing execution progress. Must include
+            StreamStart at the beginning and StreamEnd at the end.
 
         """
-        # Emit start marker
-        yield StreamStart(
-            run_id=self.run_id or "",
-            node_id=self.name,
-            input_preview=self._preview_input(input_data),
-        )
-
-        # Subclass implements actual streaming logic here
-        yield  # type: ignore
-
-        # Emit end marker (subclass should do this)
-        yield StreamEnd(
-            run_id=self.run_id or "",
-            node_id=self.name,
-        )
+        ...
 
     def _record_stream_event(self, item: ProgressItem) -> None:
         """Record a streaming progress item as a span event.
@@ -223,7 +249,6 @@ class BaseNode[InputT, OutputT](ABC):
         from pydantic_flow.cache.events import CacheHit
         from pydantic_flow.cache.events import CacheMiss
         from pydantic_flow.cache.events import CacheWrite
-        from pydantic_flow.streaming.core_events import StreamStart
         from pydantic_flow.streaming.core_events import TokenChunk
         from pydantic_flow.streaming.tool_events import ToolCall
         from pydantic_flow.telemetry.attributes import EventName
